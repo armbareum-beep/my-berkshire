@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ENUF — CEO Dashboard</title>
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.8/dist/web/static/pretendard.css" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#f2f4f6; --card:#fff; --ink:#191f28; --sub:#6b7684; --faint:#8b95a1;
+  --line:#e5e8eb; --action:#3182f6; --gain:#f04452; --loss:#1b64da; --chip:#eef1f4;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font-family:Pretendard,sans-serif;background:var(--bg);color:var(--ink);padding-bottom:88px}
+.wrap{max-width:480px;margin:0 auto;padding:0 16px}
+.nav{display:flex;justify-content:space-between;align-items:center;padding:16px 0}
+.nav .co{display:flex;align-items:center;gap:8px;font-weight:800;font-size:18px}
+.nav .logo{width:30px;height:30px;border-radius:50%;background:var(--action)}
+.nav .ic{display:flex;gap:6px;color:var(--sub)}
+.nav .ic button{border:none;background:none;cursor:pointer;color:inherit;padding:6px;border-radius:50%}
+.ms{font-family:'Material Symbols Outlined';font-size:22px;line-height:1}
+/* 히어로 — 안 눌림, 깔끔히 표시만 */
+.hero{padding:8px 4px 20px}
+.hero .lab{color:var(--sub);font-size:15px;margin-bottom:4px}
+.hero .big{font-size:40px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.hero .chg{display:flex;align-items:center;gap:4px;color:var(--gain);font-weight:600;font-size:14px;margin-top:6px}
+.cta{width:100%;border:none;background:var(--action);color:#fff;border-radius:14px;padding:16px;
+  font-size:16px;font-weight:800;font-family:inherit;cursor:pointer;margin-top:16px}
+.cta:active{transform:scale(.99)}
+/* 카드 공통 */
+.card{background:var(--card);border-radius:18px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,.04);margin-bottom:12px}
+/* 누를 수 있는 카드: 우상단 › 어포던스 + 눌림 반응 */
+.tap{cursor:pointer;position:relative;transition:.12s}
+.tap:active{transform:scale(.985);background:#fafbfc}
+.tap .chev{position:absolute;top:16px;right:16px;color:var(--faint);font-size:20px}
+.ch{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.ch h2{font-size:16px;font-weight:700;margin:0}
+.ch .more{display:flex;align-items:center;gap:2px;color:var(--action);font-size:13px;font-weight:600;
+  border:none;background:none;cursor:pointer;font-family:inherit}
+/* 지표 2열 */
+.metrics{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.metric{background:var(--card);border-radius:18px;padding:18px;box-shadow:0 2px 8px rgba(0,0,0,.04);
+  position:relative;cursor:pointer;transition:.12s}
+.metric:active{transform:scale(.98);background:#fafbfc}
+.metric .lab{font-size:12.5px;color:var(--sub);margin-bottom:8px;padding-right:16px}
+.metric .val{font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.metric .chev{position:absolute;top:14px;right:12px;color:var(--faint);font-size:18px}
+.metric .val.gain{color:var(--gain)}
+/* 벤치마크 토글 */
+.bm{border:none;background:var(--chip);color:var(--sub);font-family:inherit;font-size:12px;font-weight:700;
+  padding:5px 11px;border-radius:99px;cursor:pointer}
+.bm.on{background:var(--ink);color:#fff}
+/* 막대 */
+.bar{margin-bottom:14px}.bar:last-child{margin:0}
+.bar .t{display:flex;justify-content:space-between;font-size:13px;font-weight:600;margin-bottom:7px}
+.bar .track{height:8px;border-radius:99px;background:var(--line);overflow:hidden}
+.bar .fill{height:100%;border-radius:99px}
+/* 종목/활동 행 — 행 자체가 누름 */
+.row{display:flex;align-items:center;gap:12px;padding:12px 8px;border-radius:12px;cursor:pointer;transition:.1s}
+.row:active{background:#fafbfc}
+.row .logo{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-weight:800;color:#fff;flex-shrink:0;font-size:14px}
+.row .nm{font-weight:700}.row .tk{font-size:12px;color:var(--faint)}
+.row .rt{margin-left:auto;text-align:right;display:flex;align-items:center;gap:6px}
+.row .rt .p{font-weight:700;font-variant-numeric:tabular-nums}.row .rt .c{font-size:12px;font-weight:600}
+.row .chev{color:var(--faint);font-size:18px}
+.divider{height:1px;background:var(--line);margin:2px 8px}
+/* 하단 탭 */
+.tabbar{position:fixed;bottom:0;left:0;right:0;background:#fff;box-shadow:0 -2px 8px rgba(0,0,0,.04);
+  display:flex;justify-content:space-around;padding:8px 0 14px;max-width:480px;margin:0 auto}
+.tabbar button{border:none;background:none;display:flex;flex-direction:column;align-items:center;gap:3px;
+  color:var(--faint);font-size:11px;font-weight:600;font-family:inherit;cursor:pointer}
+.tabbar button.on{color:var(--action)}
+.tabbar .ms{font-size:24px}
+.toast{position:fixed;bottom:96px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;
+  padding:10px 18px;border-radius:99px;font-size:13px;font-weight:600;opacity:0;transition:.2s;pointer-events:none;white-space:nowrap}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="nav">
+    <div class="co" onclick="openCo()"><div class="logo"></div><span id="coName">바름캐피탈</span> <span class="ms" style="font-size:18px;color:var(--sub)">expand_more</span></div>
+    <div class="ic">
+      <button onclick="go('알림')"><span class="ms">notifications</span></button>
+      <button onclick="go('설정')"><span class="ms">settings</span></button>
+    </div>
+  </div>
+
+  <!-- 히어로: 안 눌림 (그 자체가 끝) -->
+  <div class="hero">
+    <div class="lab">순자산</div>
+    <div class="big">₩235,420,000</div>
+    <div class="chg">▲ 49,956원 <span style="color:var(--faint);font-weight:500">(1일 전 대비)</span></div>
+    <button class="cta" onclick="go('거래 입력')">거래 기록하기</button>
+  </div>
+
+  <!-- 벤치마크 비교: 시장을 이겼는가 (S&P500 기본, 토글) -->
+  <div class="card tap" onclick="go('벤치마크 상세')" style="padding:16px 20px">
+    <span class="chev ms">chevron_right</span>
+    <div style="display:flex;gap:6px;margin-bottom:12px">
+      <button class="bm on" onclick="bm(event,'S&P500',9.0)">S&P500</button>
+      <button class="bm" onclick="bm(event,'코스피',6.2)">코스피</button>
+      <button class="bm" onclick="bm(event,'버크셔',11.3)">버크셔</button>
+    </div>
+    <div style="display:flex;align-items:flex-end;justify-content:space-between">
+      <div>
+        <div style="font-size:12.5px;color:var(--sub)" id="bmName">S&P500 대비</div>
+        <div style="font-size:13px;color:var(--faint);margin-top:2px"><span id="bmMkt">S&P500 +9.0%</span> · 나 +18.4%</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:22px;font-weight:800;color:var(--gain);font-variant-numeric:tabular-nums" id="bmGap">+9.4%p</div>
+        <div style="font-size:11px;color:var(--faint)">앞섰습니다</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 지표: 각 카드 누르면 상세 (› 표시) -->
+  <div class="metrics">
+    <div class="metric" onclick="go('XIRR 상세')">
+      <span class="chev ms">chevron_right</span>
+      <div class="lab">XIRR (연환산수익률)</div><div class="val gain">18.4%</div></div>
+    <div class="metric" onclick="go('수익 상세')">
+      <span class="chev ms">chevron_right</span>
+      <div class="lab">누적 수익금</div><div class="val">₩45,210,000</div></div>
+    <div class="metric" onclick="go('자산배분')">
+      <span class="chev ms">chevron_right</span>
+      <div class="lab">현금 비중</div><div class="val">12.5%</div></div>
+    <div class="metric" onclick="go('마찰비용 상세')">
+      <span class="chev ms">chevron_right</span>
+      <div class="lab">마찰비용 (수수료·세금)</div><div class="val">₩1,245,000</div></div>
+  </div>
+
+  <!-- 자산 배분: 카드 누르면 상세 -->
+  <div class="card tap" onclick="go('자산배분 상세')">
+    <span class="chev ms">chevron_right</span>
+    <div class="ch"><h2>자산 배분</h2></div>
+    <div class="bar"><div class="t"><span>주식</span><span>70%</span></div>
+      <div class="track"><div class="fill" style="width:70%;background:var(--action)"></div></div></div>
+    <div class="bar"><div class="t"><span>현금</span><span>15%</span></div>
+      <div class="track"><div class="fill" style="width:15%;background:var(--faint)"></div></div></div>
+    <div class="bar"><div class="t"><span>대체자산</span><span>15%</span></div>
+      <div class="track"><div class="fill" style="width:15%;background:#c4ccd4"></div></div></div>
+  </div>
+
+  <!-- 자산 추이 차트: 헤더에 전체보기, 차트 누르면 전체화면 -->
+  <div class="card">
+    <div class="ch"><h2>자산 추이</h2>
+      <button class="more" onclick="go('자산추이 전체')">전체보기 <span class="ms" style="font-size:16px">chevron_right</span></button></div>
+    <div class="tap" onclick="go('자산추이 전체')" style="border-radius:12px">
+      <svg viewBox="0 0 400 120" style="width:100%;height:140px">
+        <defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#3182f6" stop-opacity=".18"/><stop offset="100%" stop-color="#3182f6" stop-opacity="0"/></linearGradient></defs>
+        <path d="M0,95 Q60,85 110,60 T220,38 T320,46 T400,16" fill="none" stroke="#3182f6" stroke-width="2.5" stroke-linecap="round"/>
+        <path d="M0,95 Q60,85 110,60 T220,38 T320,46 T400,16 L400,120 L0,120 Z" fill="url(#g1)"/>
+      </svg>
+    </div>
+  </div>
+
+  <!-- 보유 종목: 행마다 누르면 종목 상세, 헤더에 전체보기 + 사업부 선택 -->
+  <div class="card">
+    <div class="ch"><h2>보유 종목</h2>
+      <button class="more" onclick="toggleSel()" id="selBtn">사업부 선택 <span class="ms" style="font-size:16px">tune</span></button></div>
+
+    <!-- 기여도 분석 결과 바 (선택 모드일 때만 표시) -->
+    <div id="contribBar" style="display:none;background:#F1F5FF;border:1px solid #DCE6FF;border-radius:12px;padding:12px 14px;margin-bottom:12px">
+      <div style="font-size:12px;color:var(--sub);margin-bottom:2px">선택한 사업부 조합 수익률(XIRR)</div>
+      <div style="display:flex;align-items:baseline;gap:8px">
+        <span id="contribRet" style="font-size:22px;font-weight:800;color:var(--gain)">18.4%</span>
+        <span id="contribDelta" style="font-size:13px;font-weight:700;color:var(--sub)">전체와 동일</span>
+      </div>
+      <div style="font-size:11px;color:var(--sub);margin-top:4px">체크를 끄면 그 종목을 뺐을 때 수익률로 재계산됩니다</div>
+    </div>
+
+    <div class="row" id="rowSS" onclick="rowTap('삼성전자')">
+      <input type="checkbox" class="selchk" data-ret="22.0" checked onclick="event.stopPropagation();recalc()" style="display:none;width:20px;height:20px;margin-right:4px;accent-color:var(--gain)">
+      <div class="logo" style="background:#1428A0">삼</div>
+      <div><div class="nm">삼성전자</div><div class="tk">005930</div></div>
+      <div class="rt"><div><div class="p">₩324,500</div><div class="c" style="color:var(--gain);text-align:right">+8.5%</div></div>
+        <span class="chev ms">chevron_right</span></div></div>
+    <div class="divider"></div>
+    <div class="row" id="rowHD" onclick="rowTap('현대차')">
+      <input type="checkbox" class="selchk" data-ret="14.0" checked onclick="event.stopPropagation();recalc()" style="display:none;width:20px;height:20px;margin-right:4px;accent-color:var(--gain)">
+      <div class="logo" style="background:#002C5F">현</div>
+      <div><div class="nm">현대차</div><div class="tk">005380</div></div>
+      <div class="rt"><div><div class="p">₩210,000</div><div class="c" style="color:var(--gain);text-align:right">+4.2%</div></div>
+        <span class="chev ms">chevron_right</span></div></div>
+    <div class="divider"></div>
+    <div class="row" id="rowNV" onclick="rowTap('NAVER')">
+      <input type="checkbox" class="selchk" data-ret="-3.0" checked onclick="event.stopPropagation();recalc()" style="display:none;width:20px;height:20px;margin-right:4px;accent-color:var(--gain)">
+      <div class="logo" style="background:#03C75A">N</div>
+      <div><div class="nm">NAVER</div><div class="tk">035420</div></div>
+      <div class="rt"><div><div class="p">₩195,200</div><div class="c" style="color:var(--loss);text-align:right">-1.5%</div></div>
+        <span class="chev ms">chevron_right</span></div></div>
+  </div>
+
+  <!-- 최근 활동: 행마다 누르면 이벤트 상세 -->
+  <div class="card">
+    <div class="ch"><h2>최근 활동</h2>
+      <button class="more" onclick="go('활동 전체')">전체보기 <span class="ms" style="font-size:16px">chevron_right</span></button></div>
+    <div class="row" onclick="go('이벤트 상세')">
+      <div class="logo" style="background:#1428A0">삼</div>
+      <div><div class="nm">인수 · 삼성전자</div><div class="tk">10주 · 2일 전</div></div>
+      <div class="rt"><div class="p">₩724,500</div><span class="chev ms">chevron_right</span></div></div>
+    <div class="divider"></div>
+    <div class="row" onclick="go('이벤트 상세')">
+      <div class="logo" style="background:#002C5F">현</div>
+      <div><div class="nm">매각 · 현대차</div><div class="tk">5주 · 3일 전</div></div>
+      <div class="rt"><div class="p">₩1,050,000</div><span class="chev ms">chevron_right</span></div></div>
+    <div class="divider"></div>
+    <div class="row" onclick="go('이벤트 상세')">
+      <div class="logo" style="background:#03C75A">N</div>
+      <div><div class="nm">배당 · NAVER</div><div class="tk">입금 완료 · 5일 전</div></div>
+      <div class="rt"><div class="p">₩12,400</div><span class="chev ms">chevron_right</span></div></div>
+  </div>
+</div>
+
+<div class="tabbar">
+  <button class="on"><span class="ms">home</span>홈</button>
+  <button onclick="go('자산 탭')"><span class="ms">account_balance_wallet</span>자산</button>
+  <button onclick="go('거래 입력')"><span class="ms">add_circle</span>기록</button>
+  <button onclick="go('연혁 탭')"><span class="ms">history</span>연혁</button>
+</div>
+
+<!-- 회사 정보 시트: 이름 변경 + 회사 전환 -->
+<div id="coSheet" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:50" onclick="closeCo(event)">
+  <div style="position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:100%;max-width:480px;background:#fff;border-radius:24px 24px 0 0;padding:8px 0 0;max-height:88vh;overflow-y:auto">
+    <div style="width:36px;height:5px;background:#E2E8F0;border-radius:3px;margin:8px auto 4px"></div>
+
+    <!-- 회사명 변경 -->
+    <div style="padding:18px 24px 22px">
+      <div style="font-size:15px;font-weight:800;margin-bottom:14px">회사명</div>
+      <div style="display:flex;gap:10px">
+        <input id="coInput" value="바름캐피탈"
+          style="flex:1;border:none;background:#F4F6F9;border-radius:16px;padding:16px 18px;font-size:17px;font-weight:700;box-sizing:border-box">
+        <button onclick="saveCo()"
+          style="background:#111827;color:#fff;border:none;border-radius:16px;padding:0 22px;font-size:15px;font-weight:700">변경</button>
+      </div>
+    </div>
+
+    <div style="height:8px;background:#F4F6F9"></div>
+
+    <!-- 계좌별 선택 (도미노식 토글) -->
+    <div style="padding:20px 24px 8px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <div style="font-size:15px;font-weight:800">대시보드에 포함할 계좌</div>
+        <button onclick="acctAll()" style="border:none;background:none;color:#3B82F6;font-size:13px;font-weight:700">전체</button>
+      </div>
+      <div style="font-size:12px;color:var(--sub);margin-bottom:8px">선택한 계좌만 합산해 수익률·자산을 봅니다</div>
+    </div>
+    <div id="acctList" style="padding:0 12px"></div>
+
+    <!-- 회사 전환 -->
+    <div style="height:8px;background:#F4F6F9;margin-top:14px"></div>
+    <div style="padding:20px 24px 8px;font-size:15px;font-weight:800">내 투자회사 전환</div>
+    <div style="padding:0 16px 8px">
+      <div onclick="switchCo('바름캐피탈')" style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:16px;background:#F1F5FF">
+        <div class="logo" style="width:40px;height:40px"></div>
+        <div><div style="font-weight:800;font-size:16px">바름캐피탈</div><div style="font-size:12px;color:var(--sub)">장부 모드 · 3개 자회사</div></div>
+        <span style="margin-left:auto;font-size:12px;color:#3B82F6;font-weight:800">현재</span></div>
+      <div onclick="switchCo('ENUF 챌린지')" style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:16px;margin-top:6px">
+        <div class="logo" style="width:40px;height:40px;background:#E2E8F0"></div>
+        <div><div style="font-weight:800;font-size:16px">ENUF 챌린지</div><div style="font-size:12px;color:var(--sub)">챌린지 모드</div></div></div>
+      <div onclick="go('새 회사 설립')" style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:16px;margin-top:6px;color:var(--sub)">
+        <div style="width:40px;height:40px;border-radius:12px;background:#F4F6F9;display:flex;align-items:center;justify-content:center"><span class="ms">add</span></div>
+        <div style="font-weight:700;font-size:16px">새 회사 설립하기</div></div>
+    </div>
+
+    <div style="padding:14px 20px 28px">
+      <button onclick="document.getElementById('coSheet').style.display='none'"
+        style="width:100%;background:#F4F6F9;color:#111827;border:none;border-radius:16px;padding:17px;font-size:16px;font-weight:800">확인</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script>
+let t;
+const MYRET=18.4;
+function bm(e,name,mkt){
+  e.stopPropagation();
+  document.querySelectorAll('.bm').forEach(b=>b.classList.remove('on'));
+  e.target.classList.add('on');
+  document.getElementById('bmName').textContent=name+' 대비';
+  document.getElementById('bmMkt').textContent=name+' +'+mkt.toFixed(1)+'%';
+  const gap=(MYRET-mkt);
+  const g=document.getElementById('bmGap');
+  g.textContent=(gap>=0?'+':'')+gap.toFixed(1)+'%p';
+  g.style.color=gap>=0?'var(--gain)':'var(--loss)';
+  document.querySelector('#bmGap').nextElementSibling.textContent=gap>=0?'앞섰습니다':'뒤처졌습니다';
+}
+function go(where){
+  const el=document.getElementById('toast');
+  el.textContent='→ '+where+' 화면으로 이동';
+  el.classList.add('show');clearTimeout(t);
+  t=setTimeout(()=>el.classList.remove('show'),1400);
+}
+
+// 회사 정보 시트
+const ACCTS=[
+  {id:'kb', nm:'KB증권 일반', sub:'국내주식', val:'52,340,000', logo:'#FFB800', ini:'KB', on:true},
+  {id:'kiwoom', nm:'키움증권 ISA', sub:'절세계좌', val:'31,200,000', logo:'#D7000F', ini:'키', on:true},
+  {id:'toss', nm:'토스증권 해외', sub:'미국주식', val:'48,990,000', logo:'#3B82F6', ini:'T', on:true},
+  {id:'pension', nm:'연금저축', sub:'노후·세액공제', val:'18,500,000', logo:'#10B981', ini:'연', on:false},
+];
+function acctRender(){
+  const box=document.getElementById('acctList');if(!box)return;box.innerHTML='';
+  ACCTS.forEach(a=>{
+    const el=document.createElement('div');
+    el.style.cssText='display:flex;align-items:center;gap:12px;padding:14px;border-radius:16px;cursor:pointer';
+    el.onclick=()=>{a.on=!a.on;acctRender();};
+    el.innerHTML=`
+      <div class="logo" style="width:40px;height:40px;background:${a.logo}">${a.ini}</div>
+      <div><div style="font-weight:800;font-size:16px">${a.nm}</div>
+        <div style="font-size:12px;color:var(--sub)">${a.sub} · ₩${a.val}</div></div>
+      <span class="ms" style="margin-left:auto;font-size:26px;color:${a.on?'#111827':'#CBD5E1'}">
+        ${a.on?'check_circle':'radio_button_unchecked'}</span>`;
+    box.appendChild(el);
+  });
+}
+function acctAll(){ ACCTS.forEach(a=>a.on=true); acctRender(); }
+function openCo(){document.getElementById('coSheet').style.display='block';acctRender();}
+function closeCo(e){if(e.target.id==='coSheet')document.getElementById('coSheet').style.display='none';}
+function saveCo(){
+  const v=document.getElementById('coInput').value.trim();
+  if(v){document.getElementById('coName').textContent=v;}
+  document.getElementById('coSheet').style.display='none';
+  go('회사명 변경됨: '+v);
+}
+function switchCo(name){
+  document.getElementById('coName').textContent=name;
+  document.getElementById('coSheet').style.display='none';
+  go(name+'(으)로 전환');
+}
+
+// 사업부 선택(기여도 분석) 모드
+let selMode=false;
+function toggleSel(){
+  selMode=!selMode;
+  document.querySelectorAll('.selchk').forEach(c=>c.style.display=selMode?'block':'none');
+  document.getElementById('contribBar').style.display=selMode?'block':'none';
+  document.getElementById('selBtn').innerHTML=selMode
+    ? '완료 <span class="ms" style="font-size:16px">check</span>'
+    : '사업부 선택 <span class="ms" style="font-size:16px">tune</span>';
+  if(selMode)recalc();
+}
+function rowTap(name){ if(!selMode) go('종목 상세 · '+name); }
+// 선택 종목 조합의 XIRR 근사 재계산 (데모: 종목별 기여 수익률의 가중평균 느낌)
+function recalc(){
+  const chks=[...document.querySelectorAll('.selchk')];
+  const on=chks.filter(c=>c.checked);
+  const FULL=18.4;
+  let ret;
+  if(on.length===0){ ret=0; }
+  else {
+    // 데모 근사: 선택 종목 data-ret 평균을 전체(18.4)에 맞춰 스케일
+    const avg=on.reduce((s,c)=>s+parseFloat(c.dataset.ret),0)/on.length;
+    const fullAvg=chks.reduce((s,c)=>s+parseFloat(c.dataset.ret),0)/chks.length;
+    ret=FULL+(avg-fullAvg); // 빠진 종목 영향 반영
+  }
+  const r=document.getElementById('contribRet');
+  r.textContent=ret.toFixed(1)+'%';
+  r.style.color=ret>=0?'var(--gain)':'var(--loss)';
+  const d=document.getElementById('contribDelta');
+  const gap=ret-FULL;
+  if(on.length===chks.length){ d.textContent='전체와 동일'; d.style.color='var(--sub)'; }
+  else if(on.length===0){ d.textContent='종목을 1개 이상 선택하세요'; d.style.color='var(--sub)'; }
+  else { d.textContent=(gap>=0?'전체보다 +':'전체보다 ')+gap.toFixed(1)+'%p'; d.style.color=gap>=0?'var(--gain)':'var(--loss)'; }
+}
+</script>
+</body>
+</html>

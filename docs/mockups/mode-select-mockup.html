@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ENUF — 시작하기</title>
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.8/dist/web/static/pretendard.css" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#f2f4f6; --card:#fff; --ink:#191f28; --sub:#6b7684; --faint:#8b95a1;
+  --line:#e5e8eb; --action:#3182f6; --gain:#f04452;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font-family:Pretendard,sans-serif;background:var(--bg);color:var(--ink);
+  min-height:100vh;display:flex;justify-content:center}
+.phone{width:100%;max-width:430px;min-height:100vh;display:flex;flex-direction:column;padding:0 20px}
+.top{padding:16px 0}
+.top button{border:none;background:none;font-size:24px;color:var(--ink);cursor:pointer}
+.head{padding:8px 4px 24px}
+.eyebrow{font-size:13px;color:var(--faint);font-weight:600;margin-bottom:8px}
+.q{font-size:26px;font-weight:800;letter-spacing:-.02em;line-height:1.3}
+.q .accent{color:var(--action)}
+.opts{display:flex;flex-direction:column;gap:14px}
+.opt{background:var(--card);border-radius:18px;padding:22px;box-shadow:0 2px 8px rgba(0,0,0,.04);
+  cursor:pointer;transition:.14s;border:2px solid transparent;position:relative}
+.opt:active{transform:scale(.985)}
+.opt.sel{border-color:var(--action)}
+.opt .emoji{font-size:30px;margin-bottom:12px}
+.opt .t{font-size:19px;font-weight:800;margin-bottom:6px;display:flex;align-items:center;gap:8px}
+.opt .badge{font-size:11px;font-weight:700;padding:3px 8px;border-radius:99px}
+.badge.live{background:#eef4ff;color:var(--action)}
+.badge.real{background:#fdeef0;color:var(--gain)}
+.opt .d{font-size:14px;color:var(--sub);line-height:1.55}
+.opt .compete{font-size:12px;color:var(--faint);margin-top:10px;font-weight:600}
+.opt.dim{opacity:.55;cursor:not-allowed}
+.opt.dim .soon{position:absolute;top:22px;right:22px;font-size:12px;font-weight:700;color:var(--faint);
+  background:var(--line);padding:4px 10px;border-radius:99px}
+.note{font-size:12.5px;color:var(--faint);text-align:center;margin:18px 0 0;line-height:1.5}
+.foot{margin-top:auto;padding:16px 0 28px}
+.cta{width:100%;border:none;background:var(--action);color:#fff;border-radius:16px;padding:18px;
+  font-size:17px;font-weight:800;font-family:inherit;cursor:pointer;transition:.12s}
+.cta:disabled{background:var(--line);color:var(--faint);cursor:default}
+.cta:active:not(:disabled){transform:scale(.99)}
+.toast{position:fixed;bottom:96px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;
+  padding:11px 20px;border-radius:99px;font-size:13px;font-weight:600;opacity:0;transition:.2s;
+  pointer-events:none;white-space:nowrap;text-align:center}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="top"><button>‹</button></div>
+
+  <div class="head">
+    <div class="eyebrow">START</div>
+    <div class="q">어떻게 <span class="accent">시작</span>할까요?</div>
+  </div>
+
+  <div class="opts">
+    <!-- 챌린지 -->
+    <div class="opt" id="challenge" onclick="sel('challenge')">
+      <div class="emoji">📈</div>
+      <div class="t">챌린지로 시작 <span class="badge live">오늘부터</span></div>
+      <div class="d">돈 없이 오늘부터 가상으로 투자해요. 모두 같은 조건이라, 남들과 정정당당하게 실력을 겨룰 수 있어요.</div>
+      <div class="compete">🎯 경쟁 상대 · 다른 투자자 + 시장</div>
+    </div>
+
+    <!-- 장부 -->
+    <div class="opt" id="ledger" onclick="sel('ledger')">
+      <div class="emoji">📒</div>
+      <div class="t">장부로 시작 <span class="badge real">내 진짜 기록</span></div>
+      <div class="d">과거 거래까지 기록해 내 진짜 수익률을 확인해요. 남이 아니라 과거의 나, 그리고 시장이 경쟁 상대예요.</div>
+      <div class="compete">🎯 경쟁 상대 · 과거의 나 + 시장(KOSPI·버크셔)</div>
+    </div>
+
+    <!-- 라이브 (준비 중) -->
+    <div class="opt dim" id="live">
+      <div class="soon">준비 중</div>
+      <div class="emoji">🔵</div>
+      <div class="t">라이브</div>
+      <div class="d">증권사 계좌를 연동해 진짜 돈으로. 검증된 공식 순위에 오릅니다.</div>
+    </div>
+  </div>
+
+  <div class="note">나중에 다른 모드의 회사도 설립할 수 있어요.<br>지금 선택이 영구적인 건 아니에요.</div>
+
+  <div class="foot">
+    <button class="cta" id="cta" disabled onclick="start()">회사 설립하러 가기</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script>
+let picked=null,t;
+function sel(m){
+  picked=m;
+  document.getElementById('challenge').classList.toggle('sel',m==='challenge');
+  document.getElementById('ledger').classList.toggle('sel',m==='ledger');
+  const cta=document.getElementById('cta');
+  cta.disabled=false;
+  cta.textContent = m==='challenge' ? '챌린지 회사 설립하러 가기' : '장부 회사 설립하러 가기';
+}
+function start(){
+  const el=document.getElementById('toast');
+  el.textContent = '→ '+(picked==='challenge'?'챌린지':'장부')+' 모드로 회사 설립 (J1)';
+  el.classList.add('show');clearTimeout(t);
+  t=setTimeout(()=>el.classList.remove('show'),1600);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ENUF — 거래 체결</title>
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.8/dist/web/static/pretendard.css" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#f2f4f6; --card:#fff; --ink:#191f28; --sub:#6b7684; --faint:#8b95a1;
+  --line:#e5e8eb; --action:#3182f6; --gain:#f04452; --loss:#1b64da; --chip:#f2f4f6;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font-family:Pretendard,-apple-system,sans-serif;background:var(--bg);color:var(--ink);
+  min-height:100vh;display:flex;justify-content:center}
+.phone{width:100%;max-width:430px;background:var(--bg);min-height:100vh;display:flex;flex-direction:column;position:relative}
+.top{display:flex;align-items:center;gap:12px;padding:16px 20px}
+.top button{border:none;background:none;font-size:24px;color:var(--ink);cursor:pointer;line-height:1}
+.dots{display:flex;gap:6px;flex:1;justify-content:center}
+.dot{width:8px;height:8px;border-radius:99px;background:var(--line);transition:.25s}
+.dot.on{background:var(--ink);width:22px}
+.kind{font-weight:700;font-size:15px;color:var(--action)}
+.stage{flex:1;padding:8px 20px 0;display:flex;flex-direction:column}
+.q{font-size:24px;font-weight:700;letter-spacing:-.02em;margin:8px 0 4px}
+.qsub{color:var(--faint);font-size:14px;margin-bottom:20px}
+/* live calc bar */
+.calc{background:#eef4ff;color:var(--action);border-radius:14px;padding:14px 16px;font-weight:700;
+  font-size:18px;font-variant-numeric:tabular-nums;margin-bottom:16px;display:none}
+.calc.show{display:block;animation:pop .25s}
+@keyframes pop{from{transform:scale(.97);opacity:.5}to{transform:scale(1);opacity:1}}
+/* search rows */
+.search{position:relative;margin-bottom:8px}
+.search input{width:100%;border:none;background:var(--card);border-radius:14px;padding:16px 16px 16px 46px;
+  font-size:16px;font-family:inherit;outline:none;box-shadow:0 2px 8px rgba(0,0,0,.04)}
+.search .ic{position:absolute;left:16px;top:50%;transform:translateY(-50%);color:var(--faint)}
+.row{display:flex;align-items:center;gap:12px;background:var(--card);border-radius:14px;padding:14px 16px;
+  margin-top:10px;box-shadow:0 2px 8px rgba(0,0,0,.04);cursor:pointer;transition:.12s}
+.row:active{transform:scale(.98)}
+.logo{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-weight:800;color:#fff;flex-shrink:0;font-size:15px}
+.row .nm{font-weight:700}.row .tk{font-size:12px;color:var(--faint)}
+.row .pr{margin-left:auto;text-align:right}.row .pr .p{font-weight:700;font-variant-numeric:tabular-nums}
+.row .pr .c{font-size:12px;font-weight:600}
+/* numeric display */
+.bignum{font-size:44px;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums;
+  text-align:center;padding:24px 0;min-height:96px}
+.bignum .won{color:var(--faint);font-size:28px}
+.bignum.ph{color:var(--line)}
+/* date chips */
+.datewrap{display:flex;flex-direction:column;gap:10px}
+.todaybtn{background:var(--action);color:#fff;border:none;border-radius:16px;padding:20px;font-size:20px;
+  font-weight:800;font-family:inherit;cursor:pointer}
+.dateinput{border:none;background:var(--card);border-radius:14px;padding:16px;font-size:16px;font-family:inherit;
+  box-shadow:0 2px 8px rgba(0,0,0,.04);outline:none;color:var(--ink)}
+/* review */
+.review{background:var(--card);border-radius:18px;padding:24px;box-shadow:0 2px 8px rgba(0,0,0,.04);margin-top:8px}
+.review .big{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+.review .big .nm{font-size:20px;font-weight:800}
+.review .big .tk{font-size:13px;color:var(--faint)}
+.line{display:flex;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--line);
+  font-size:15px}.line:last-child{border:none}
+.line .k{color:var(--sub)}.line .v{font-weight:700;font-variant-numeric:tabular-nums}
+.line.total .v{color:var(--action);font-size:18px}
+/* keypad */
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:auto;padding:16px 0}
+.pad button{border:none;background:none;font-size:24px;font-weight:600;font-family:inherit;padding:16px 0;
+  border-radius:14px;cursor:pointer;color:var(--ink)}
+.pad button:active{background:var(--line)}
+/* footer cta */
+.foot{padding:12px 20px 28px}
+.cta{width:100%;border:none;background:var(--action);color:#fff;border-radius:16px;padding:18px;
+  font-size:17px;font-weight:800;font-family:inherit;cursor:pointer;transition:.12s}
+.cta:active{transform:scale(.98)}
+.cta.ghost{background:var(--chip);color:var(--faint)}
+/* success overlay */
+.done{position:absolute;inset:0;background:var(--bg);display:none;flex-direction:column;align-items:center;
+  justify-content:center;gap:16px;text-align:center;padding:40px}
+.done.show{display:flex;animation:fade .3s}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.stamp{width:96px;height:96px;border-radius:50%;background:var(--action);color:#fff;display:flex;
+  align-items:center;justify-content:center;font-size:52px;animation:stamp .4s cubic-bezier(.2,1.4,.4,1)}
+@keyframes stamp{0%{transform:scale(0) rotate(-18deg);opacity:0}60%{transform:scale(1.12) rotate(4deg)}100%{transform:scale(1) rotate(0);opacity:1}}
+.done h2{font-size:24px;font-weight:800;margin:4px 0 0}
+.done p{color:var(--faint);margin:0}
+.material-symbols-outlined{font-family:'Material Symbols Outlined'}
+.toggle{font-size:13px;color:var(--faint);text-align:center;padding:6px;cursor:pointer;text-decoration:underline}
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+</head>
+<body>
+<div class="phone">
+  <div class="top">
+    <button onclick="back()">‹</button>
+    <div class="dots" id="dots"></div>
+    <span class="kind">인수</span>
+  </div>
+
+  <div class="stage" id="stage"></div>
+
+  <div class="foot" id="foot"></div>
+
+  <!-- success -->
+  <div class="done" id="done">
+    <div class="stamp">✓</div>
+    <h2 id="doneTitle">체결되었습니다</h2>
+    <p id="doneSub">회사 연혁에 기록되었습니다</p>
+    <button class="cta" style="max-width:240px;margin-top:12px" onclick="reset()">계속</button>
+  </div>
+</div>
+
+<script>
+const STOCKS=[
+  {nm:"삼성전자",tk:"005930",p:324500,c:8.5,bg:"#1428A0",ini:"삼"},
+  {nm:"SK하이닉스",tk:"000660",p:2162000,c:2.9,bg:"#D7000F",ini:"SK"},
+  {nm:"현대차",tk:"005380",p:615000,c:3.0,bg:"#002C5F",ini:"현"},
+  {nm:"NAVER",tk:"035420",p:242500,c:8.2,bg:"#03C75A",ini:"N"},
+  {nm:"LG전자",tk:"066570",p:228000,c:0.8,bg:"#A50034",ini:"LG"},
+];
+const won=v=>"₩"+Math.round(v).toLocaleString("ko-KR");
+let step=1, pick=null, price=0, qty=0, date="오늘";
+const TOTAL=5;
+const stage=document.getElementById('stage'), foot=document.getElementById('foot'), dots=document.getElementById('dots');
+
+function renderDots(){dots.innerHTML='';for(let i=1;i<=TOTAL;i++){const d=document.createElement('div');d.className='dot'+(i<=step?' on':'');dots.appendChild(d);}}
+
+function render(){
+  renderDots(); foot.innerHTML='';
+  if(step===1){
+    stage.innerHTML=`<div class="q">무엇을 인수할까요?</div>
+      <div class="qsub">종목을 검색하거나 선택하세요</div>
+      <div class="search"><span class="ic material-symbols-outlined">search</span>
+        <input placeholder="종목명 또는 티커" oninput="filter(this.value)"/></div>
+      <div id="rows"></div>`;
+    rows(STOCKS);
+  }
+  if(step===2){
+    stage.innerHTML=`<div class="q">얼마에 인수했나요?</div>
+      <div class="qsub">${pick.nm} · 현재가 ${won(pick.p)}</div>
+      <div class="bignum ${price?'':'ph'}">${price?won(price):'₩0'}</div>`;
+    pad(v=>{price=v;render();});
+    foot.innerHTML=`<button class="cta" onclick="useCur()">현재가 ${won(pick.p)}로 입력</button>`;
+  }
+  if(step===3){
+    stage.innerHTML=`<div class="q">몇 주 인수했나요?</div>
+      <div class="qsub">${pick.nm} · ${won(price)}</div>
+      <div class="calc ${qty?'show':''}" id="calc">${qty?`= ${won(price*qty)}  (${qty}주 × ${won(price)})`:''}</div>
+      <div class="bignum ${qty?'':'ph'}">${qty?qty+'주':'0주'}</div>`;
+    pad(v=>{qty=v;render();});
+    if(qty)foot.innerHTML=`<button class="cta" onclick="next()">다음</button>`;
+  }
+  if(step===4){
+    stage.innerHTML=`<div class="q">언제 인수했나요?</div>
+      <div class="qsub">대부분 오늘입니다</div>
+      <div class="datewrap">
+        <button class="todaybtn" onclick="setDate('오늘')">오늘 (6/13)</button>
+        <input class="dateinput" type="date" onchange="setDate(this.value)"/>
+      </div>`;
+  }
+  if(step===5){
+    const total=price*qty, fee=Math.round(total*0.00015);
+    stage.innerHTML=`<div class="q">이대로 체결할까요?</div>
+      <div class="qsub">마지막 확인</div>
+      <div class="review">
+        <div class="big"><div class="logo" style="background:${pick.bg}">${pick.ini}</div>
+          <div><div class="nm">${pick.nm} 인수</div><div class="tk">${pick.tk}</div></div></div>
+        <div class="line"><span class="k">단가</span><span class="v">${won(price)}</span></div>
+        <div class="line"><span class="k">수량</span><span class="v">${qty}주</span></div>
+        <div class="line"><span class="k">거래일</span><span class="v">${date}</span></div>
+        <div class="line"><span class="k">수수료·세금 (자동)</span><span class="v">${won(fee)}</span></div>
+        <div class="line total"><span class="k">총 인수 금액</span><span class="v">${won(total+fee)}</span></div>
+      </div>`;
+    foot.innerHTML=`<button class="cta" onclick="commit()">인수 체결</button>`;
+  }
+}
+function rows(list){
+  const r=document.getElementById('rows');if(!r)return;r.innerHTML='';
+  list.forEach(s=>{const el=document.createElement('div');el.className='row';
+    el.onclick=()=>{pick=s;price=0;qty=0;step=2;render();};
+    const up=s.c>=0;
+    el.innerHTML=`<div class="logo" style="background:${s.bg}">${s.ini}</div>
+      <div><div class="nm">${s.nm}</div><div class="tk">${s.tk}</div></div>
+      <div class="pr"><div class="p">${won(s.p)}</div>
+      <div class="c" style="color:${up?'var(--gain)':'var(--loss)'}">${up?'+':''}${s.c}%</div></div>`;
+    r.appendChild(el);});
+}
+function filter(v){rows(STOCKS.filter(s=>s.nm.includes(v)||s.tk.includes(v)));}
+function pad(cb){
+  let buf=String(cb===setPriceCb?price:'' );
+  // build keypad
+  const keys=['1','2','3','4','5','6','7','8','9','00','0','⌫'];
+  const wrap=document.createElement('div');wrap.className='pad';
+  let cur= step===2?String(price||''):String(qty||'');
+  keys.forEach(k=>{const b=document.createElement('button');b.textContent=k;
+    b.onclick=()=>{if(k==='⌫')cur=cur.slice(0,-1);else cur=(cur==='0'?'':cur)+k;
+      cb(parseInt(cur||'0',10));};
+    wrap.appendChild(b);});
+  stage.appendChild(wrap);
+}
+function setPriceCb(){}
+function useCur(){price=pick.p;step=3;render();}
+function setDate(v){date=v==='오늘'?'오늘':v;step=5;render();}
+function next(){if(step<5){step++;render();}}
+function back(){if(step>1){if(step===3)qty=0;if(step===2)price=0;step--;render();}}
+function commit(){document.getElementById('done').classList.add('show');}
+function reset(){step=1;pick=null;price=0;qty=0;date="오늘";
+  document.getElementById('done').classList.remove('show');render();}
+render();
+</script>
+</body>
+</html>

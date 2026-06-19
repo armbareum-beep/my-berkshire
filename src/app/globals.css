@@ -1,26 +1,250 @@
+/* Pretendard — 단일 산세리프 패밀리(디자인 단일 기준 v1 §3) */
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css");
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * 디자인 토큰 — /docs/design-strategy-v1.md 가 단일 기준.
+ * 토스/뱅크샐러드식 모던: 옅은 쿨그레이 배경 + 순백 카드 + soft shadow.
+ * 라이트 단일 테마(다크 미적용). 컬러는 변화·액션에만 점처럼.
+ * shadcn 컴포넌트가 요구하는 변수 전체를 우리 팔레트로 매핑.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f2f4f6; /* 옅은 쿨그레이 — 카드를 띄우는 바탕 */
+  --foreground: #191f28; /* 잉크 블랙 */
+  --card: #ffffff; /* 순백 카드 */
+  --card-foreground: #191f28;
+  --popover: #ffffff;
+  --popover-foreground: #191f28;
+  --primary: #3182f6; /* 토스 블루 — 메인 액션·링크 */
+  --primary-foreground: #ffffff;
+  --secondary: #f2f4f6; /* 옅은 회색 pill(보조 버튼) */
+  --secondary-foreground: #4e5968;
+  --muted: #f2f4f6;
+  --muted-foreground: #8b95a1; /* 보조 텍스트 */
+  --accent: #eaf2fe; /* 토스블루 옅은 틴트(호버·배지) */
+  --accent-foreground: #3182f6;
+  --destructive: #f04452;
+  --border: #e5e8eb; /* 구분선 */
+  --input: #e5e8eb;
+  --ring: #3182f6; /* 포커스 링 = 프라이머리 */
+  --radius: 0.875rem; /* shadcn 기본(0.625)보다 크게 — 토스 무드 */
+
+  /* 커스텀 토큰(한국식 등락) */
+  --rise: #f04452; /* 상승 레드 */
+  --fall: #3182f6; /* 하락 블루 */
+  /* 시맨틱 '주의' — 등락 빨강/파랑과 충돌 없이 경고로 읽히는 앰버.
+     단정 아님(PRD): 위험 단언이 아니라 '확인거리'라 빨강이 아닌 앰버를 씀. */
+  --warn: #f59e0b;
+  --warn-tint: #fffbeb; /* 경고 신호 카드 배경 옅은 틴트 */
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.04); /* 테두리 대신 그림자로 분리 (하위 호환) */
+  --shadow-card-sm: 0 2px 8px rgba(0, 0, 0, 0.04); /* 기본 카드 */
+  --shadow-card-md: 0 8px 24px rgba(0, 0, 0, 0.08); /* 바텀시트, 팝오버 */
+  --shadow-card-lg: 0 16px 32px rgba(0, 0, 0, 0.12); /* 최상위 모달, 알림 */
+
+  /* 차트 — 절제된 무채색 + 포인트 1색 */
+  --chart-1: #3182f6;
+  --chart-2: #8b95a1;
+  --chart-3: #4e5968;
+  --chart-4: #b0b8c1;
+  --chart-5: #e5e8eb;
+
+  /* 사이드바(모바일 단일 레이아웃이라 미사용 — 하모니 위해 정의만) */
+  --sidebar: #ffffff;
+  --sidebar-foreground: #191f28;
+  --sidebar-primary: #3182f6;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f2f4f6;
+  --sidebar-accent-foreground: #191f28;
+  --sidebar-border: #e5e8eb;
+  --sidebar-ring: #3182f6;
 }
 
+/* Tailwind 유틸로 노출(bg-background, text-rise, shadow-card 등) */
 @theme inline {
+  --font-sans:
+    "Pretendard Variable", Pretendard, system-ui, -apple-system, sans-serif;
+  --font-heading: var(--font-sans);
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* 커스텀 등락 색 — text-rise / text-fall / bg-rise 등으로 사용 */
+  --color-rise: var(--rise);
+  --color-fall: var(--fall);
+  /* 시맨틱 주의 — text-warn / bg-warn / border-warn / bg-warn-tint */
+  --color-warn: var(--warn);
+  --color-warn-tint: var(--warn-tint);
+
+  --shadow-card: var(--shadow-card);
+  --shadow-card-sm: var(--shadow-card-sm);
+  --shadow-card-md: var(--shadow-card-md);
+  --shadow-card-lg: var(--shadow-card-lg);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+html {
+  color-scheme: light;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+  }
+  body {
+    @apply bg-background text-foreground;
+    /* 모든 수치 tabular-nums(자리 안 흔들리게) */
+    font-feature-settings: "tnum";
+    -webkit-font-smoothing: antialiased;
+  }
+  /* 타이포그래피 자간 세밀 튜닝 — 큰 글씨일수록 tight 하게 */
+  h1, h2, h3, .text-2xl, .text-3xl, .text-4xl, .text-5xl {
+    letter-spacing: -0.02em;
+  }
+  /* 클릭 가능한 요소는 손가락 커서(비활성은 제외) */
+  button:not(:disabled),
+  [role="button"]:not(:disabled),
+  a[href] {
+    cursor: pointer;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* 거래 체결 성공 — 도장 찍힘(목업 거래 플로우). 살짝 튕기며 회전 후 정착. */
+@keyframes stamp {
+  0% {
+    transform: scale(0) rotate(-18deg);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.12) rotate(4deg);
+  }
+  100% {
+    transform: scale(1) rotate(0);
+    opacity: 1;
+  }
 }
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+/* 페이지 진입 — 라우트 전환 시 살짝 떠오르며 페이드(template.tsx). */
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+/* 리스트 항목 순차 등장 — 부모에 .stagger, 자식이 자동 지연 페이드업. */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-stamp {
+  animation: stamp 0.4s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+.animate-fade-in {
+  animation: fade-in 0.3s ease both;
+}
+.animate-page-in {
+  animation: page-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+/* 부모에 적용 — 직계 자식이 차례로 떠오른다(최대 10개까지 지연, 그 외 즉시). */
+.stagger > * {
+  animation: rise-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.stagger > *:nth-child(1) { animation-delay: 0.02s; }
+.stagger > *:nth-child(2) { animation-delay: 0.06s; }
+.stagger > *:nth-child(3) { animation-delay: 0.1s; }
+.stagger > *:nth-child(4) { animation-delay: 0.14s; }
+.stagger > *:nth-child(5) { animation-delay: 0.18s; }
+.stagger > *:nth-child(6) { animation-delay: 0.22s; }
+.stagger > *:nth-child(7) { animation-delay: 0.26s; }
+.stagger > *:nth-child(8) { animation-delay: 0.3s; }
+@media (prefers-reduced-motion: reduce) {
+  .animate-stamp,
+  .animate-fade-in,
+  .animate-page-in,
+  .stagger > *,
+  .animate-page-in main:not([aria-busy]) > * {
+    animation: none;
+    opacity: 1;
+  }
+}
+
+/* ─── 페이지 카드 순차 등장 ─────────────────────────────────────────────
+   .animate-page-in(template.tsx) 안의 main 직계 자식에 자동 적용.
+   스켈레톤(aria-busy)은 제외 — 뼈대는 한꺼번에 표시.
+   Suspense 로 나중에 스트리밍되는 카드도 DOM 교체 시 애니메이션 재생.
+ ────────────────────────────────────────────────────────────────────── */
+.animate-page-in main:not([aria-busy]) > * {
+  animation: rise-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+  opacity: 0;
+}
+.animate-page-in main:not([aria-busy]) > *:nth-child(1)  { animation-delay:   0ms; }
+.animate-page-in main:not([aria-busy]) > *:nth-child(2)  { animation-delay:  60ms; }
+.animate-page-in main:not([aria-busy]) > *:nth-child(3)  { animation-delay: 120ms; }
+.animate-page-in main:not([aria-busy]) > *:nth-child(4)  { animation-delay: 180ms; }
+.animate-page-in main:not([aria-busy]) > *:nth-child(5)  { animation-delay: 240ms; }
+.animate-page-in main:not([aria-busy]) > *:nth-child(6)  { animation-delay: 300ms; }
+.animate-page-in main:not([aria-busy]) > *:nth-child(7)  { animation-delay: 360ms; }
+.animate-page-in main:not([aria-busy]) > *:nth-child(8)  { animation-delay: 420ms; }
+.animate-page-in main:not([aria-busy]) > *:nth-child(9)  { animation-delay: 480ms; }
+.animate-page-in main:not([aria-busy]) > *:nth-child(10) { animation-delay: 540ms; }
+.animate-page-in main:not([aria-busy]) > *:nth-child(n+11) { animation-delay: 600ms; }

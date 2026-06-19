@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ENUF — 회사 설립</title>
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.8/dist/web/static/pretendard.css" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#f2f4f6; --card:#fff; --ink:#191f28; --sub:#6b7684; --faint:#8b95a1;
+  --line:#e5e8eb; --action:#3182f6; --gain:#f04452; --gold:#b08d4f;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font-family:Pretendard,-apple-system,sans-serif;background:var(--bg);color:var(--ink);
+  min-height:100vh;display:flex;justify-content:center}
+.phone{width:100%;max-width:430px;min-height:100vh;display:flex;flex-direction:column;position:relative;overflow:hidden}
+.top{display:flex;align-items:center;gap:12px;padding:16px 20px}
+.top button{border:none;background:none;font-size:24px;color:var(--ink);cursor:pointer;line-height:1}
+.dots{display:flex;gap:6px;flex:1;justify-content:center}
+.dot{width:8px;height:8px;border-radius:99px;background:var(--line);transition:.25s}
+.dot.on{background:var(--ink);width:22px}
+.eyebrow{font-size:13px;color:var(--faint);font-weight:600}
+.stage{flex:1;padding:8px 24px 0;display:flex;flex-direction:column}
+.q{font-size:24px;font-weight:800;letter-spacing:-.02em;margin:10px 0 4px}
+.qsub{color:var(--faint);font-size:14px;margin-bottom:24px;line-height:1.5}
+/* 간판: 이름이 새겨지는 곳 */
+.sign{background:var(--card);border-radius:18px;box-shadow:0 2px 8px rgba(0,0,0,.04);
+  padding:40px 24px;text-align:center;margin-bottom:16px;position:relative}
+.sign .rule{width:40px;height:3px;background:var(--gold);margin:0 auto 18px;border-radius:2px}
+.signname{font-size:34px;font-weight:800;letter-spacing:-.02em;min-height:42px}
+.signname.ph{color:var(--line)}
+.sign .role{font-size:13px;color:var(--faint);margin-top:10px}
+.namein{width:100%;border:none;background:var(--card);border-radius:14px;padding:16px;font-size:18px;
+  font-family:inherit;outline:none;box-shadow:0 2px 8px rgba(0,0,0,.04);text-align:center;font-weight:700}
+/* 날짜 */
+.todaybtn{width:100%;background:var(--action);color:#fff;border:none;border-radius:16px;padding:22px;
+  font-size:20px;font-weight:800;font-family:inherit;cursor:pointer;margin-bottom:10px}
+.dateinput{width:100%;border:none;background:var(--card);border-radius:14px;padding:16px;font-size:16px;
+  font-family:inherit;box-shadow:0 2px 8px rgba(0,0,0,.04);outline:none;color:var(--ink)}
+/* 큰 숫자 */
+.bignum{font-size:42px;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums;
+  text-align:center;padding:20px 0;min-height:88px}
+.bignum.ph{color:var(--line)}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:auto;padding:12px 0 4px}
+.pad button{border:none;background:none;font-size:24px;font-weight:600;font-family:inherit;padding:16px 0;
+  border-radius:14px;cursor:pointer;color:var(--ink)}
+.pad button:active{background:var(--line)}
+.hint{font-size:12px;color:var(--faint);text-align:center;margin-bottom:8px}
+/* 보유 종목 등기 */
+.hrow{display:flex;align-items:center;gap:12px;background:var(--card);border-radius:14px;padding:14px 16px;
+  margin-bottom:10px;box-shadow:0 2px 8px rgba(0,0,0,.04)}
+.hrow .logo{width:38px;height:38px;font-size:14px}
+.hrow .hnm{font-weight:700}.hrow .htk{font-size:12px;color:var(--faint)}
+.hrow .hq{margin-left:auto;text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+.hrow .havg{font-size:11px;color:var(--faint);font-weight:500}
+.hrow .hx{border:none;background:none;color:var(--faint);font-size:22px;cursor:pointer;padding:0 0 0 6px;line-height:1}
+.addrow{display:flex;align-items:center;gap:10px;border:1.5px dashed var(--line);border-radius:14px;
+  padding:16px;cursor:pointer;color:var(--action);font-weight:700}
+.addrow:active{background:#eef4ff}
+.addrow .plus{width:24px;height:24px;border-radius:50%;background:#eef4ff;display:flex;align-items:center;
+  justify-content:center;font-size:18px}
+.foot{padding:12px 24px 28px}
+.cta{width:100%;border:none;background:var(--action);color:#fff;border-radius:16px;padding:18px;
+  font-size:17px;font-weight:800;font-family:inherit;cursor:pointer;transition:.12s}
+.cta:active{transform:scale(.98)}
+.cta:disabled{background:var(--line);color:var(--faint);cursor:default}
+/* 설립 의식 (마지막) */
+.ceremony{position:absolute;inset:0;background:var(--bg);display:none;flex-direction:column;
+  align-items:center;justify-content:center;padding:32px;text-align:center}
+.ceremony.show{display:flex;animation:fade .4s}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.cert{width:100%;max-width:330px;background:var(--card);border-radius:20px;padding:32px 28px;
+  box-shadow:0 8px 30px rgba(0,0,0,.10);border:1px solid var(--line);position:relative;
+  animation:rise .5s cubic-bezier(.2,1,.4,1)}
+@keyframes rise{from{transform:translateY(16px);opacity:0}to{transform:translateY(0);opacity:1}}
+.cert .label{font-size:12px;letter-spacing:.15em;color:var(--gold);font-weight:700;margin-bottom:6px}
+.cert .grule{width:36px;height:2px;background:var(--gold);margin:0 auto 20px}
+.cert .cn{font-size:28px;font-weight:800;letter-spacing:-.02em;margin-bottom:24px}
+.cert .crow{display:flex;justify-content:space-between;padding:9px 0;font-size:14px;border-top:1px solid var(--line)}
+.cert .crow .k{color:var(--faint)}.cert .crow .v{font-weight:700;font-variant-numeric:tabular-nums}
+.stamp{position:absolute;right:18px;bottom:18px;width:74px;height:74px;border-radius:50%;
+  border:2.5px solid var(--gold);color:var(--gold);display:flex;align-items:center;justify-content:center;
+  font-weight:800;font-size:13px;transform:rotate(-12deg);opacity:0;line-height:1.1;
+  animation:stamp .5s .35s cubic-bezier(.2,1.5,.4,1) forwards}
+@keyframes stamp{0%{transform:rotate(-12deg) scale(0)}70%{transform:rotate(-12deg) scale(1.15)}100%{transform:rotate(-12deg) scale(1);opacity:1}}
+.ceremony h2{font-size:22px;font-weight:800;margin:26px 0 4px}
+.ceremony p{color:var(--faint);margin:0 0 4px}
+.ceo{color:var(--ink);font-weight:700;margin-top:8px}
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="top">
+    <button onclick="back()">‹</button>
+    <div class="dots" id="dots"></div>
+    <span class="eyebrow" id="eyebrow">STEP 1 / 4</span>
+  </div>
+
+  <div class="stage" id="stage"></div>
+  <div class="foot" id="foot"></div>
+
+  <!-- 설립 의식 -->
+  <div class="ceremony" id="ceremony">
+    <div class="cert">
+      <div class="label">CERTIFICATE OF INCORPORATION</div>
+      <div class="grule"></div>
+      <div class="cn" id="certName">바름캐피탈</div>
+      <div class="crow"><span class="k">설립일</span><span class="v" id="certDate">2026.06.13</span></div>
+      <div class="crow"><span class="k">현금 보유</span><span class="v" id="certCap">₩10,000,000</span></div>
+      <div class="crow"><span class="k">자회사</span><span class="v" id="certSubs">2개</span></div>
+      <div class="crow"><span class="k">대표</span><span class="v">이바름</span></div>
+      <div class="stamp">설립<br>인가</div>
+    </div>
+    <h2 id="cdone">바름캐피탈이 설립되었습니다</h2>
+    <p>워런 버핏에게 버크셔가 있었듯,</p>
+    <p class="ceo">오늘부터 당신은 이 회사의 CEO입니다.</p>
+    <div class="foot" style="width:100%;max-width:330px">
+      <button class="cta" onclick="enter()">대시보드로 입장</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const won=v=>"₩"+Math.round(v).toLocaleString("ko-KR");
+let step=1, name="", date="2026.06.13", cap=0, holds=[];
+const TOTAL=4;
+const stage=document.getElementById('stage'),foot=document.getElementById('foot'),
+      dots=document.getElementById('dots'),eyebrow=document.getElementById('eyebrow');
+
+function dotsR(){dots.innerHTML='';for(let i=1;i<=TOTAL;i++){const d=document.createElement('div');
+  d.className='dot'+(i<=step?' on':'');dots.appendChild(d);}eyebrow.textContent=`STEP ${step} / ${TOTAL}`;}
+
+function render(){
+  dotsR();foot.innerHTML='';
+  if(step===1){
+    stage.innerHTML=`<div class="q">당신의 투자회사를 설립하세요</div>
+      <div class="qsub">워런 버핏에게 버크셔가 있었듯,<br>당신에게는 당신만의 지주회사가 있습니다.</div>
+      <div class="sign"><div class="rule"></div>
+        <div class="signname ${name?'':'ph'}" id="sn">${name||'여기에 회사 이름'}</div>
+        <div class="role">대표 이바름</div></div>
+      <input class="namein" placeholder="회사명 입력 (예: 바름캐피탈)" value="${name}"
+        oninput="name=this.value;document.getElementById('sn').textContent=this.value||'여기에 회사 이름';
+        document.getElementById('sn').className='signname '+(this.value?'':'ph');
+        document.getElementById('c1').disabled=!this.value.trim();"/>`;
+    foot.innerHTML=`<button class="cta" id="c1" ${name.trim()?'':'disabled'} onclick="next()">회사 설립하기</button>`;
+  }
+  if(step===2){
+    stage.innerHTML=`<div class="q">언제 설립하나요?</div>
+      <div class="qsub">${name}의 설립일입니다. 대부분 오늘입니다.</div>
+      <button class="todaybtn" onclick="date='2026.06.13';next()">오늘 · 2026년 6월 13일</button>
+      <input class="dateinput" type="date" onchange="date=this.value.replaceAll('-','.');next()"/>`;
+  }
+  if(step===3){
+    stage.innerHTML=`<div class="q">현금은 얼마나 갖고 계신가요?</div>
+      <div class="qsub">아직 주식을 안 산 여윳돈(예수금)입니다. 투자 원금은 다음 단계의 보유 종목(평단)에서 자동 계산되니, 여기선 <b>현금만</b> 넣으세요. 없으면 0.</div>
+      <div class="bignum ${cap?'':'ph'}">${cap?won(cap):'₩0'}</div>`;
+    pad(v=>{cap=v;render();});
+    foot.innerHTML=`<button class="cta" onclick="next()">${cap?'다음':'현금 없이 다음'}</button>`;
+  }
+  if(step===4){
+    stage.innerHTML=`<div class="q">지금 갖고 계신 종목이 있나요?</div>
+      <div class="qsub">이미 보유한 주식을 자회사로 등기합니다.<br><b>수량·평단(산 가격)은 필수</b> — 그래야 수익이 계산됩니다.<br>매수일은 선택입니다(넣으면 정확한 연복리 수익률, 몰라도 시작됩니다).</div>
+      <div id="holds"></div>
+      <div class="addrow" id="addrow" onclick="addHold()">
+        <div class="plus">+</div><div class="addtx">보유 종목 추가</div></div>`;
+    holdsR();
+    foot.innerHTML = holds.length
+      ? `<button class="cta" onclick="found()">설립 등기 완료 · ${holds.length}개 자회사</button>`
+      : `<button class="cta" onclick="found()">보유 종목 없이 시작</button>`;
+  }
+}
+function holdsR(){
+  const h=document.getElementById('holds');if(!h)return;h.innerHTML='';
+  holds.forEach((s,i)=>{const el=document.createElement('div');el.className='hrow';
+    const dateline = s.lots
+      ? `${s.lots}건 분할매수 · 가중평단`
+      : (s.date ? `매수일 ${s.date}` : `<span style="color:var(--faint)">매수일 미입력 · 설립일 기준</span>`);
+    el.innerHTML=`<div class="logo" style="background:${s.bg}">${s.ini}</div>
+      <div><div class="hnm">${s.nm}</div><div class="htk">${s.tk} · ${dateline}</div></div>
+      <div class="hq">${s.qty}주<div class="havg">평단 ${won(s.avg)}</div></div>
+      <button class="hx" onclick="holds.splice(${i},1);render()">×</button>`;
+    h.appendChild(el);});
+}
+// ── 보유 종목 추가 = 거래입력 목업과 동일한 검색 시퀀스 재사용 ──
+// (실제 빌드에선 거래입력 컴포넌트를 그대로 호출. 여기선 같은 흐름을 시연)
+const STOCKS=[
+  {nm:"삼성전자",tk:"005930",bg:"#1428A0",ini:"삼",p:324500},
+  {nm:"SK하이닉스",tk:"000660",bg:"#D7000F",ini:"SK",p:215000},
+  {nm:"현대차",tk:"005380",bg:"#002C5F",ini:"현",p:210000},
+  {nm:"NAVER",tk:"035420",bg:"#03C75A",ini:"N",p:195200},
+  {nm:"KODEX 반도체",tk:"091160",bg:"#1428A0",ini:"K",p:42000},
+];
+let sub=null; // {phase:'search'|'avg'|'qty'|'date', pick, avg, qty, date}
+function addHold(){ sub={phase:'search',pick:null,avg:0,qty:0,date:null}; renderSub(); }
+function renderSub(){
+  // 검색
+  if(sub.phase==='search'){
+    stage.innerHTML=`<div class="q">어떤 종목인가요?</div>
+      <div class="qsub">자회사로 등기할 종목을 검색하세요</div>
+      <div style="position:relative;margin-bottom:8px">
+        <input id="subsearch" oninput="subFilter(this.value)" placeholder="종목명 또는 코드"
+          style="width:100%;border:none;background:#F1F3F6;border-radius:14px;padding:16px;font-size:16px;box-sizing:border-box">
+      </div><div id="subrows"></div>`;
+    foot.innerHTML=`<button class="cta" style="background:#E2E8F0;color:#64748B" onclick="sub=null;render()">취소</button>`;
+    subRows(STOCKS);
+  }
+  // 평단(산 가격)
+  else if(sub.phase==='avg'){
+    stage.innerHTML=`<div class="q">평단(산 가격)은 얼마인가요?</div>
+      <div class="qsub">${sub.pick.nm} · 1주당 매입 단가 [필수]<br><span style="color:#94A3B8">현재가 ${won(sub.pick.p)}</span></div>
+      <div class="bignum ${sub.avg?'':'ph'}">${sub.avg?won(sub.avg):'₩0'}</div>`;
+    subPad(v=>{sub.avg=v;renderSub();});
+    if(sub.avg)foot.innerHTML=`<button class="cta" onclick="sub.phase='qty';renderSub()">다음</button>`;
+  }
+  // 수량
+  else if(sub.phase==='qty'){
+    stage.innerHTML=`<div class="q">몇 주 갖고 계신가요?</div>
+      <div class="qsub">${sub.pick.nm} · 평단 ${won(sub.avg)}
+        ${sub.qty?`<br><b>= ${won(sub.avg*sub.qty)}</b> (${sub.qty}주 × ${won(sub.avg)})`:''}</div>
+      <div class="bignum ${sub.qty?'':'ph'}">${sub.qty?sub.qty+'주':'0주'}</div>`;
+    subPad(v=>{sub.qty=v;renderSub();});
+    if(sub.qty)foot.innerHTML=`<button class="cta" onclick="sub.phase='date';renderSub()">다음</button>`;
+  }
+  // 매수일 (선택) + 분할 매수 옵션
+  else if(sub.phase==='date'){
+    const lotInfo = (sub.lots&&sub.lots.length)
+      ? `<div style="background:#F1F5FF;border-radius:12px;padding:12px 14px;margin-bottom:12px;font-size:13px">
+           <b>${sub.lots.length}건으로 나눠 입력 중</b><br>
+           ${sub.lots.map(l=>`· ${l.qty}주 · ${won(l.avg)} · ${l.date||'날짜미입력'}`).join('<br>')}
+         </div>` : '';
+    stage.innerHTML=`<div class="q">언제 사셨나요? <span style="font-size:14px;color:#94A3B8">(선택)</span></div>
+      <div class="qsub">매수일을 넣으면 정확한 연복리 수익률(XIRR)이 계산됩니다.<br>모르면 건너뛰세요 — 설립일 기준으로 시작합니다.</div>
+      ${lotInfo}
+      <input class="dateinput" type="date" onchange="sub.date=this.value.replaceAll('-','.');commitHold()"/>
+      <div onclick="splitLot()" style="display:flex;align-items:center;gap:8px;justify-content:center;margin-top:14px;padding:14px;border:1.5px dashed #CBD5E1;border-radius:14px;color:#64748B;font-weight:600;font-size:14px;cursor:pointer">
+        <span class="ms" style="font-size:18px">call_split</span>여러 번 나눠 샀어요 (날짜별로 입력)</div>`;
+    foot.innerHTML=`<button class="cta" style="background:#E2E8F0;color:#64748B" onclick="sub.date=null;commitHold()">매수일 모름 · 건너뛰기</button>`;
+  }
+}
+function subRows(list){
+  const box=document.getElementById('subrows');if(!box)return;box.innerHTML='';
+  list.forEach(s=>{const el=document.createElement('div');
+    el.style.cssText='display:flex;align-items:center;gap:12px;padding:14px;border-radius:12px;cursor:pointer';
+    el.onmouseover=()=>el.style.background='#F8FAFC';el.onmouseout=()=>el.style.background='';
+    el.innerHTML=`<div class="logo" style="background:${s.bg}">${s.ini}</div>
+      <div><div class="hnm">${s.nm}</div><div class="htk">${s.tk} · 현재가 ${won(s.p)}</div></div>`;
+    el.onclick=()=>{sub.pick=s;sub.avg=0;sub.qty=0;sub.phase='avg';renderSub();};
+    box.appendChild(el);});
+}
+function subFilter(v){subRows(STOCKS.filter(s=>s.nm.includes(v)||s.tk.includes(v)));}
+function subPad(cb){
+  const keys=['1','2','3','4','5','6','7','8','9','00','0','⌫'];
+  let cur=String(sub.phase==='avg'?(sub.avg||''):(sub.qty||''));
+  const wrap=document.createElement('div');wrap.className='pad';
+  keys.forEach(k=>{const b=document.createElement('button');b.textContent=k;
+    b.onclick=()=>{if(k==='⌫')cur=cur.slice(0,-1);else cur=(cur==='0'?'':cur)+k;
+      cb(parseInt(cur||'0',10));};wrap.appendChild(b);});
+  stage.appendChild(wrap);
+}
+// 분할 매수: 현재 입력을 lot으로 저장하고 같은 종목으로 추가 입력 반복
+function splitLot(){
+  if(!sub.lots) sub.lots=[];
+  sub.lots.push({qty:sub.qty, avg:sub.avg, date:sub.date});
+  // 같은 종목 유지, 수량부터 다시
+  sub.avg=sub.pick.p; sub.qty=0; sub.date=null;
+  sub.phase='qty'; renderSub();
+}
+function commitHold(){
+  // 분할 매수가 있으면 현재 입력도 마지막 lot으로 합쳐 가중평균 계산
+  let qty, avg, date;
+  if(sub.lots && sub.lots.length){
+    const all=[...sub.lots, {qty:sub.qty, avg:sub.avg, date:sub.date}];
+    qty = all.reduce((s,l)=>s+l.qty,0);
+    avg = Math.round(all.reduce((s,l)=>s+l.avg*l.qty,0)/qty); // 가중평균 평단
+    date = all.find(l=>l.date)?.date || null; // 대표 날짜(가장 이른 입력)
+    holds.push({nm:sub.pick.nm,tk:sub.pick.tk,bg:sub.pick.bg,ini:sub.pick.ini,
+                qty,avg,date,lots:all.length});
+  } else {
+    holds.push({nm:sub.pick.nm,tk:sub.pick.tk,bg:sub.pick.bg,ini:sub.pick.ini,
+                qty:sub.qty,avg:sub.avg,date:sub.date});
+  }
+  sub=null;render();
+}
+function pad(cb){
+  const keys=['1','2','3','4','5','6','7','8','9','00','0','⌫'];
+  let cur=String(cap||'');
+  const wrap=document.createElement('div');wrap.className='pad';
+  keys.forEach(k=>{const b=document.createElement('button');b.textContent=k;
+    b.onclick=()=>{if(k==='⌫')cur=cur.slice(0,-1);else cur=(cur==='0'?'':cur)+k;
+      cb(parseInt(cur||'0',10));};wrap.appendChild(b);});
+  stage.appendChild(wrap);
+  const h=document.createElement('div');h.className='hint';h.textContent='숫자를 입력하세요';
+  stage.insertBefore(h,wrap);
+}
+function next(){if(step<TOTAL){step++;render();}}
+function back(){if(step>1){step--;render();}}
+function found(){
+  document.getElementById('certName').textContent=name;
+  document.getElementById('certDate').textContent=date;
+  document.getElementById('certCap').textContent=won(cap);
+  document.getElementById('certSubs').textContent = holds.length ? holds.length+'개' : '백지 시작';
+  document.getElementById('cdone').textContent=name+'이(가) 설립되었습니다';
+  document.getElementById('ceremony').classList.add('show');
+}
+function enter(){
+  document.getElementById('ceremony').classList.remove('show');
+  step=1;name="";cap=0;holds=[];render();
+}
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,126 @@
+/**
+ * 계좌별 집계 — 자산 탭의 "계좌별 접이식" 뷰용.
+ * 각 계좌의 보유종목·평가액·현금을 표시 통화로 계산.
+ */
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "./supabase/database.types";
+import { netQuantities, type InvestmentEvent } from "./finance/valuation";
+import { activeEventRows } from "./portfolio";
+import { findCatalogItem } from "./finance/catalog";
+import type { AccountType } from "./config/tax";
+
+export interface AccountHolding {
+  symbol: string;
+  name: string;
+  quantity: number;
+  value: number; // 표시 통화
+  /** 평단 대비 현재가 등락(소수). 평단 0이면 null. 비율이라 통화 무관. */
+  changeRate: number | null;
+  /** 평가차익(표시 통화) = (현재가 − 평단) × 수량. 평단 0이면 null. */
+  gain: number | null;
+}
+
+export interface AccountGroup {
+  id: string;
+  name: string;
+  accountType: AccountType;
+  value: number; // 보유 종목 평가액(표시 통화). 현금은 회사 레벨이라 제외.
+  /** 계좌 전체 평단 대비 등락(소수) = 평단확인 보유의 (현재가합/평단합 − 1). 비율이라 통화 무관. */
+  changeRate: number | null;
+  /** 계좌 전체 평가차익(표시 통화) = Σ 평단확인 보유의 (현재가−평단)×수량. */
+  gain: number | null;
+  holdings: AccountHolding[];
+}
+
+/**
+ * 계좌별 그룹 로드 — 계좌는 자회사(종목)만 담는다. 현금은 계좌 밖(회사 금고).
+ * prices 는 ₩, factor 로 표시 통화 환산.
+ */
+export async function loadAccountGroups(
+  supabase: SupabaseClient<Database>,
+  opts: {
+    holdingId: string;
+    prices: Record<string, number>; // ₩
+    names: Record<string, string>;
+    factor: number; // ₩ → 표시통화
+  },
+): Promise<AccountGroup[]> {
+  const { holdingId, prices, names, factor } = opts;
+
+  const { data: accountRows } = await supabase
+    .from("accounts")
+    .select("id, name, account_type")
+    .eq("holding_id", holdingId)
+    .order("created_at", { ascending: true });
+  const accounts = accountRows ?? [];
+  if (accounts.length === 0) return [];
+
+  const accountIds = accounts.map((a) => a.id);
+  const { data: eventRows } = await supabase
+    .from("events")
+    .select("*")
+    .in("account_id", accountIds);
+
+  const nameOf = (s: string) => names[s] ?? findCatalogItem(s)?.name ?? s;
+
+  return accounts.map((acc) => {
+    const active = activeEventRows(
+      (eventRows ?? []).filter((r) => r.account_id === acc.id),
+    );
+    const mapped: InvestmentEvent[] = active.map((r) => ({
+      type: r.type,
+      symbol: r.symbol,
+      quantity: r.quantity === null ? null : Number(r.quantity),
+      priceOrAmount: Number(r.price_or_amount),
+      feeAndTax: Number(r.fee_and_tax),
+      date: r.date,
+    }));
+
+    // 종목별 평단(활성 BUY 기준) — 평단 대비 등락 계산용. computeDashboard 와 동일 방식.
+    const buyAgg: Record<string, { qty: number; cost: number }> = {};
+    for (const e of mapped) {
+      if (e.type === "BUY" && e.symbol && e.quantity) {
+        const a = (buyAgg[e.symbol] ??= { qty: 0, cost: 0 });
+        a.qty += e.quantity;
+        a.cost += e.quantity * e.priceOrAmount;
+      }
+    }
+
+    const nets = netQuantities(mapped);
+    const holdings: AccountHolding[] = [];
+    // 계좌 수익률 = 평단확인 보유만 합산(현재가합/평단합). 평단 없는 보유는 비율 왜곡 방지로 제외.
+    let curForCostKrw = 0;
+    let costKrw = 0;
+    for (const [symbol, qty] of Object.entries(nets)) {
+      if (qty === 0) continue;
+      const price = prices[symbol] ?? 0; // ₩
+      const agg = buyAgg[symbol];
+      const avgCost = agg && agg.qty > 0 ? agg.cost / agg.qty : 0; // ₩
+      if (avgCost > 0) {
+        curForCostKrw += price * qty;
+        costKrw += avgCost * qty;
+      }
+      holdings.push({
+        symbol,
+        name: nameOf(symbol),
+        quantity: qty,
+        value: qty * price * factor,
+        // 평단 대비 등락 = 현재가/평단 − 1. ₩끼리라 factor 무관(비율).
+        changeRate: avgCost > 0 ? price / avgCost - 1 : null,
+        // 평가차익(표시통화) = (현재가 − 평단) × 수량 × factor.
+        gain: avgCost > 0 ? (price - avgCost) * qty * factor : null,
+      });
+    }
+    holdings.sort((a, b) => b.value - a.value);
+
+    return {
+      id: acc.id,
+      name: acc.name,
+      accountType: acc.account_type as AccountType,
+      value: holdings.reduce((s, h) => s + h.value, 0),
+      changeRate: costKrw > 0 ? curForCostKrw / costKrw - 1 : null,
+      gain: costKrw > 0 ? (curForCostKrw - costKrw) * factor : null,
+      holdings,
+    };
+  });
+}
