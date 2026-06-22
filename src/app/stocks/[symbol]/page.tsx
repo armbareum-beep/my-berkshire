@@ -35,6 +35,12 @@ import { PeriodSelector } from "@/components/stocks/PeriodSelector";
 import { computeIntrinsic, discountRate } from "@/lib/finance/intrinsic";
 import { parseSelection, computeBasis, basisFromFundamentals } from "@/lib/finance/normalize";
 import { won, wonCompact, pct, signedPct, changeColor } from "@/lib/format";
+import { getEtfStats } from "@/lib/finance/etfStats";
+import { getKrxIndexStats } from "@/lib/finance/indexStats";
+import { getKrxEtfHoldingsSnapshot } from "@/lib/finance/krxEtfHoldings";
+import { getKrxEtfProduct } from "@/lib/finance/krxEtf";
+import { buildEtfDescription } from "@/lib/finance/etfDescription";
+import { EtfFundamentalsSection } from "@/components/etf/EtfFundamentalsSection";
 
 const EVENT_LABEL: Record<string, string> = {
   BUY: "매수",
@@ -73,8 +79,25 @@ export default async function StockDetailPage({
         ? "records"
         : "overview";
   const needsFundamentals = view !== "records";
+  const catalogItem = findCatalogItem(symbol);
+  const requestedAssetType = typeof sp.assetType === "string" ? sp.assetType : null;
+  const [storedMetaMap, krxEtfProduct] = await Promise.all([
+    loadSecurityMeta(supabase, [symbol]),
+    getKrxEtfProduct(symbol, supabase),
+  ]);
+  const storedMeta = storedMetaMap[symbol];
+  const isEtf =
+    catalogItem?.assetType === "ETF" ||
+    requestedAssetType === "ETF" ||
+    storedMeta?.assetType === "ETF" ||
+    krxEtfProduct != null;
   const name =
-    portfolio.names[symbol] ?? nameParam ?? findCatalogItem(symbol)?.name ?? symbol;
+    portfolio.names[symbol] ??
+    nameParam ??
+    krxEtfProduct?.name ??
+    catalogItem?.name ??
+    storedMeta?.name ??
+    symbol;
   const qty = portfolio.positions[symbol] ?? 0;
   const held = qty > 0;
 
@@ -85,7 +108,7 @@ export default async function StockDetailPage({
   const heldPrice = portfolio.prices[symbol] ?? null;
 
   // 종목 상세의 독립적인 외부 조회를 한 번에 병렬 — 시세(미보유 시)·관심종목·배당·공시·펀더멘털.
-  const [priceFetch, watchSymbols, feed, disclosures, fundamentalSet] =
+  const [priceFetch, watchSymbols, feed, disclosures, fundamentalSet, etfStats] =
     await Promise.all([
       heldPrice == null
         ? getKrwPrices([symbol])
@@ -99,14 +122,36 @@ export default async function StockDetailPage({
       view === "overview"
         ? getDisclosures(symbol, fromDisc, today, 5)
         : Promise.resolve([]),
-      needsFundamentals
+      needsFundamentals && !isEtf
         ? getLatestFundamentalSet(symbol, Number(today.slice(0, 4)), supabase)
         : Promise.resolve({
             ttm: null,
             latestAnnual: null,
-            fallbackReason: "내 기록 탭에서는 재무 데이터를 불러오지 않습니다.",
+            fallbackReason: isEtf
+              ? "ETF는 구성 자산 기준으로 분석합니다."
+              : "내 기록 탭에서는 재무 데이터를 불러오지 않습니다.",
           }),
+      isEtf ? getEtfStats(symbol, catalogItem?.yahooProxy) : Promise.resolve(null),
     ]);
+
+  // KRX 구성종목(실제 한국 ETF 보유 종목)이 있으면 Yahoo 프록시 holdings보다 우선 사용.
+  // KOSPI200 등 Yahoo 미제공 국내 지수 추종 ETF는 KRX 지수 캐시에서 PER/PBR fallback.
+  const [krxHoldingsSnapshot, krxIdxStats] = await Promise.all([
+    isEtf ? getKrxEtfHoldingsSnapshot(symbol, supabase) : Promise.resolve(null),
+    isEtf && catalogItem?.krxIndexSymbol
+      ? getKrxIndexStats(catalogItem.krxIndexSymbol)
+      : Promise.resolve(null),
+  ]);
+  const krxHoldings = krxHoldingsSnapshot?.holdings ?? null;
+  const EMPTY_ETF_STATS = { equityHoldings: { per: null, pbr: null, roe: null, psr: null }, sectors: [], holdings: [], dividendYield: null };
+  const baseStats = etfStats ?? (krxIdxStats ? {
+    ...EMPTY_ETF_STATS,
+    equityHoldings: { per: krxIdxStats.per, pbr: krxIdxStats.pbr, roe: null, psr: null },
+    dividendYield: krxIdxStats.dividendYield,
+  } : null);
+  const etfStatsWithKrx = krxHoldings
+    ? { ...(baseStats ?? EMPTY_ETF_STATS), holdings: krxHoldings }
+    : baseStats;
   const fundamentals = fundamentalSet.latestAnnual;
   const price =
     heldPrice ?? (priceFetch ? priceFetch.prices[symbol] ?? null : null);
@@ -385,14 +430,13 @@ export default async function StockDetailPage({
   // 시세차트 — 짧은 구간은 1년 일봉, 긴 구간(5년·최대)은 상장 이후 월봉. 병렬 조회로 지연 최소화.
   // ₩ 환산(외화는 현재 환율). 미보유·해외도 가능. 실패 시 빈 배열 → 해당 칩 숨김.
   const oneYearAgo = `${Number(today.slice(0, 4)) - 1}${today.slice(4)}`;
-  const dailyPromise =
-    view === "overview"
-      ? getDailyKrwCloses([symbol], oneYearAgo, today)
-      : Promise.resolve({ series: {}, available: true });
-  const monthlyPromise =
-    view === "overview"
-      ? getDailyKrwCloses([symbol], "1990-01-01", today, "1mo")
-      : Promise.resolve({ series: {}, available: true });
+  const needsChart = isEtf || view === "overview";
+  const dailyPromise = needsChart
+    ? getDailyKrwCloses([symbol], oneYearAgo, today)
+    : Promise.resolve({ series: {}, available: true });
+  const monthlyPromise = needsChart
+    ? getDailyKrwCloses([symbol], "1990-01-01", today, "1mo")
+    : Promise.resolve({ series: {}, available: true });
 
   // 매수 딥링크 — 보유·미보유 공통. 체결 후 이 상세로 복귀.
   const buyHref = `/transactions?type=BUY&symbol=${symbol}&from=/stocks/${symbol}`;
@@ -411,7 +455,7 @@ export default async function StockDetailPage({
       <BackButton />
 
       <div className="flex items-center gap-3">
-        <SymbolAvatar name={name} />
+        <SymbolAvatar name={name} symbol={symbol} />
         <div className="min-w-0">
           <p className="truncate text-xl font-extrabold tracking-tight">{name}</p>
           <p className="text-sm text-muted-foreground">{symbol}</p>
@@ -421,30 +465,32 @@ export default async function StockDetailPage({
         </div>
       </div>
 
-      <nav className="grid grid-cols-3 rounded-xl bg-secondary p-1">
-        {(
-          [
-            ["overview", "개요"],
-            ["analysis", "기업 분석"],
-            ["records", "내 기록"],
-          ] as const
-        ).map(([key, label]) => (
-          <Link
-            key={key}
-            href={tabHref(key)}
-            scroll={false}
-            className={`rounded-lg px-2 py-2 text-center text-sm font-semibold transition ${
-              view === key
-                ? "bg-card text-foreground shadow-sm"
-                : "text-muted-foreground"
-            }`}
-          >
-            {label}
-          </Link>
-        ))}
-      </nav>
+      {!isEtf && (
+        <nav className="grid grid-cols-3 rounded-xl bg-secondary p-1">
+          {(
+            [
+              ["overview", "개요"],
+              ["analysis", "기업 분석"],
+              ["records", "내 기록"],
+            ] as const
+          ).map(([key, label]) => (
+            <Link
+              key={key}
+              href={tabHref(key)}
+              scroll={false}
+              className={`rounded-lg px-2 py-2 text-center text-sm font-semibold transition ${
+                view === key
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground"
+              }`}
+            >
+              {label}
+            </Link>
+          ))}
+        </nav>
+      )}
 
-      {view !== "analysis" && (
+      {(isEtf || view !== "analysis") && (
       <section className="rounded-2xl bg-card p-6 shadow-card">
         {held ? (
           <>
@@ -508,19 +554,25 @@ export default async function StockDetailPage({
       </section>
       )}
 
-      {view === "overview" && (
+      {(isEtf || view === "overview") && (
         <Suspense fallback={<BusinessSummarySkeleton />}>
           <BusinessSummary
             symbol={symbol}
             name={name}
             supabase={supabase}
+            isEtf={isEtf}
+            trackedIndex={catalogItem?.trackedIndex ?? null}
+            etfStats={etfStatsWithKrx}
+            etfSourceDate={
+              krxHoldingsSnapshot?.sourceDate ?? krxEtfProduct?.sourceDate ?? null
+            }
           />
         </Suspense>
       )}
 
       {/* 시세차트 — 짧은 구간=일봉, 긴 구간(5년·최대)=월봉 자동. 데이터 없으면 숨김.
           보유 시 평단선 오버레이(₩). */}
-      {view === "overview" && (
+      {(isEtf || view === "overview") && (
       <Suspense fallback={<PriceChartSkeleton />}>
         <PriceChartStreamed
           symbol={symbol}
@@ -553,6 +605,16 @@ export default async function StockDetailPage({
             />
           </div>
         </section>
+      )}
+
+      {isEtf && (
+        <EtfFundamentalsSection
+          stats={etfStatsWithKrx}
+          catalogItem={catalogItem}
+          divYield={divYield}
+          isProxyData={!!catalogItem?.yahooProxy && !krxHoldings}
+          isKrxHoldings={!!krxHoldings}
+        />
       )}
 
       {view === "analysis" && (fundamentals ? (
@@ -1018,6 +1080,14 @@ export default async function StockDetailPage({
             </a>
           </p>
         </section>
+      ) : isEtf ? (
+        <EtfFundamentalsSection
+          stats={etfStatsWithKrx}
+          catalogItem={catalogItem}
+          divYield={divYield}
+          isProxyData={!!catalogItem?.yahooProxy && !krxHoldings}
+          isKrxHoldings={!!krxHoldings}
+        />
       ) : (
         <Link
           href="/soon?t=기본지표(PER·ROE)·펀더멘털"
@@ -1033,7 +1103,7 @@ export default async function StockDetailPage({
         </Link>
       ))}
 
-      {view === "overview" && disclosures.length > 0 && (
+      {(isEtf || view === "overview") && disclosures.length > 0 && (
         <section className="rounded-2xl bg-card p-5 shadow-card">
           <div className="mb-3 flex items-center justify-between">
             <p className="text-sm font-semibold">최근 공시</p>
@@ -1051,7 +1121,7 @@ export default async function StockDetailPage({
         </section>
       )}
 
-      {view === "records" && (
+      {(isEtf || view === "records") && (
       <section className="rounded-2xl bg-card p-5 shadow-card">
         <p className="mb-3 text-sm font-semibold">거래 내역</p>
         {history.length === 0 ? (
@@ -1112,16 +1182,59 @@ async function BusinessSummary({
   symbol,
   name,
   supabase,
+  isEtf,
+  trackedIndex,
+  etfStats,
+  etfSourceDate,
 }: {
   symbol: string;
   name: string;
   supabase: Awaited<ReturnType<typeof createClient>>;
+  isEtf: boolean;
+  trackedIndex: string | null;
+  etfStats: Awaited<ReturnType<typeof getEtfStats>>;
+  etfSourceDate: string | null;
 }) {
   const [profile, metaMap] = await Promise.all([
-    getCompanyProfile(symbol),
+    isEtf ? Promise.resolve(null) : getCompanyProfile(symbol),
     loadSecurityMeta(supabase, [symbol]),
   ]);
   const meta = metaMap[symbol];
+  if (isEtf) {
+    const sectors = etfStats?.sectors.slice(0, 3) ?? [];
+    const holdings = etfStats?.holdings.slice(0, 3) ?? [];
+    const description = buildEtfDescription({ name, trackedIndex, sectors, holdings });
+    const basisLabel =
+      description.basis === "index"
+        ? "추종지수·구성 데이터"
+        : description.basis === "composition"
+          ? "공식 상품명·구성 데이터"
+          : "공식 상품명";
+
+    return (
+      <section className="rounded-2xl bg-card p-5 shadow-card">
+        <p className="text-sm font-semibold">어디에 투자하나요?</p>
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {description.tags.map((tag) => (
+            <span
+              key={tag}
+              className="rounded-full bg-secondary px-2.5 py-1 text-[11px] text-muted-foreground"
+            >
+              {tag}
+            </span>
+          ))}
+        </div>
+        <p className="mt-3 text-sm leading-6 text-muted-foreground">
+          {description.text}
+        </p>
+        <p className="mt-2 text-[10px] text-muted-foreground">
+          근거: {basisLabel}
+          {etfSourceDate ? ` · KRX ${etfSourceDate} 기준` : ""} · 구성과 비중은 변동될 수 있어요.
+        </p>
+      </section>
+    );
+  }
+
   const tags = [...new Set([profile?.sector, profile?.industry, meta?.sector])].filter(
     (tag): tag is string => Boolean(tag),
   );

@@ -159,7 +159,7 @@ async function LookThroughBodyStreamed({
             <section className="rounded-2xl border border-primary/20 bg-primary/5 p-5 shadow-card">
               <p className="text-xs font-semibold text-primary">MVP 사업부</p>
               <div className="mt-2 flex items-center gap-3">
-                <SymbolAvatar name={mvp.name} />
+                <SymbolAvatar name={mvp.name} symbol={mvp.symbol} />
                 <div className="min-w-0">
                   <p className="truncate font-extrabold tracking-tight">{mvp.name}</p>
                   <p className="text-xs text-muted-foreground">
@@ -522,7 +522,7 @@ function OtherRow({
   const chip = STATUS_CHIP[leg.status];
   return (
     <li className="flex items-center gap-3">
-      <SymbolAvatar name={leg.name} />
+      <SymbolAvatar name={leg.name} symbol={leg.symbol} />
       <span className="flex min-w-0 flex-col">
         <span className="truncate font-medium">{leg.name}</span>
         <span className="text-xs text-muted-foreground">{leg.reason}</span>

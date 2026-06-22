@@ -26,11 +26,14 @@ export default async function SearchPage() {
   if (!portfolio) redirect("/onboarding");
 
   const symbols = await loadWatchlist(supabase, portfolio.holding.id);
-  const names = await loadSecurityNames(supabase, symbols);
+  // 종목명(DB)·시세(야후)는 둘 다 symbols 만 있으면 되므로 병렬 — 순차 왕복 제거.
   const presetName = new Map(PRESET_QUOTES.map((p) => [p.symbol, p.name]));
   // 네이티브 시세(환산 X) + 전일종가 + 통화/유형.
-  const { prices, previousCloses, currencies, instrumentTypes } =
-    await getPrices(symbols);
+  const [names, { prices, previousCloses, currencies, instrumentTypes }] =
+    await Promise.all([
+      loadSecurityNames(supabase, symbols),
+      getPrices(symbols),
+    ]);
 
   /** 시세·변동 표시(종목=통화기호, 지수·환율=숫자). */
   function quoteText(sym: string) {
@@ -78,7 +81,7 @@ export default async function SearchPage() {
               const quoteOnly = isQuoteOnly(sym, instrumentTypes[sym]);
               const inner = (
                 <>
-                  <SymbolAvatar name={nm} />
+                  <SymbolAvatar name={nm} symbol={sym} />
                   <span className="flex min-w-0 flex-col">
                     <span className="truncate font-bold">{nm}</span>
                     <span className="text-sm text-muted-foreground">{sym}</span>
@@ -98,16 +101,25 @@ export default async function SearchPage() {
                   </span>
                 </>
               );
-              // 지수·환율은 펀더멘털이 없어 상세 진입 X(시세 전용). 종목만 링크.
+              const presetMeta = PRESET_QUOTES.find((p) => p.symbol === sym);
+              const indexHref = presetMeta?.isIndex
+                ? `/index/${encodeURIComponent(sym)}`
+                : null;
+              // 지수는 /index/[sym], 환율 등 quoteOnly는 시세 전용, 종목은 /stocks/[sym].
               return (
                 <li key={sym}>
-                  {quoteOnly ? (
+                  {quoteOnly && !indexHref ? (
                     <div className="flex items-center gap-3 rounded-xl bg-card p-3 shadow-card">
                       {inner}
                     </div>
                   ) : (
                     <Link
-                      href={`/stocks/${encodeURIComponent(sym)}?name=${encodeURIComponent(nm)}`}
+                      href={
+                        indexHref ??
+                        `/stocks/${encodeURIComponent(sym)}?name=${encodeURIComponent(nm)}${
+                          instrumentTypes[sym] === "ETF" ? "&assetType=ETF" : ""
+                        }`
+                      }
                       className="flex items-center gap-3 rounded-xl bg-card p-3 shadow-card transition active:scale-[0.99]"
                     >
                       {inner}

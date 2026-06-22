@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Search, Clock, Plus, type LucideIcon } from "lucide-react";
+import { Home, Search, Trophy, Plus, type LucideIcon } from "lucide-react";
 
 /**
- * 하단 탭바 — **평시(resting) 화면에만**(대시보드·자산·연혁·현금·자산배분·리밸런싱·계좌·종목 등).
+ * 하단 탭바 — **평시(resting) 화면에만**(대시보드·자산·챌린지·현금·자산배분·리밸런싱·계좌·종목 등).
  * ⛔ "여정 중" 화면엔 넣지 않는다(이탈 방지, 디자인 §4): 온보딩·로그인 + **거래 입력(/transactions·/acquire)**.
  * 기록은 가운데 강조된 ＋ 버튼(토스식). 아이콘은 거래화면과 동일한 lucide 라인(이모지 금지).
  */
@@ -18,7 +18,7 @@ const TABS: {
   { href: "/dashboard", label: "홈", icon: Home },
   { href: "/search", label: "검색", icon: Search },
   { href: "/transactions", label: "기록", action: true },
-  { href: "/activity", label: "연혁", icon: Clock },
+  { href: "/leaderboard", label: "챌린지", icon: Trophy },
 ];
 
 export function BottomTabBar() {

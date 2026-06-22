@@ -69,6 +69,7 @@ export async function upsertSecurities(
         name: it.name,
         exchange: it.exchange ?? null,
         currency: it.currency ?? "KRW",
+        instrumentType: it.instrumentType ?? null,
       });
   }
   if (seen.size === 0) return;

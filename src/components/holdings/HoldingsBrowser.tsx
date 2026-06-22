@@ -141,7 +141,7 @@ export function HoldingsBrowser({
                   href={`/stocks/${h.symbol}`}
                   className="flex items-center gap-3 rounded-xl py-2 transition active:scale-[0.99]"
                 >
-                  <SymbolAvatar name={h.name} />
+                  <SymbolAvatar name={h.name} symbol={h.symbol} />
                   <span className="flex min-w-0 flex-col">
                     <span className="truncate font-medium">{h.name}</span>
                     <span className="truncate text-sm text-muted-foreground">

@@ -11,6 +11,7 @@ import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
 import { HoldingStructureTree } from "@/components/structure/HoldingStructureTree";
 import { Check, Plus } from "lucide-react";
 import { renameActiveCompany, switchCompany } from "./actions";
+import { DeleteCompanyButton } from "@/components/company/DeleteCompanyButton";
 
 /**
  * 회사 정보 — 헤더 회사명 탭의 목적지(user-rails §145, 회장이 회사를 관리하는 진입점).
@@ -124,31 +125,34 @@ export default async function CompanyPage() {
             const active = company.id === holding.id;
             const action = switchCompany.bind(null, company.id);
             return (
-              <form action={action} key={company.id}>
-                <button
-                  type="submit"
-                  disabled={active}
-                  className="flex w-full items-center justify-between gap-3 py-3 text-left transition active:scale-[0.99] disabled:cursor-default"
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate font-semibold">
-                      {company.name}
+              <div key={company.id} className="flex items-center gap-2 py-2 border-b border-border last:border-0">
+                <form action={action} className="min-w-0 flex-1">
+                  <button
+                    type="submit"
+                    disabled={active}
+                    className="flex w-full items-center justify-between gap-3 text-left transition active:scale-[0.99] disabled:cursor-default"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate font-semibold">
+                        {company.name}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {company.founded_at} · {company.mode === "challenge" ? "챌린지" : "장부"}
+                      </span>
                     </span>
-                    <span className="text-xs text-muted-foreground">
-                      {company.founded_at} · {company.mode === "challenge" ? "챌린지" : "장부"}
-                    </span>
-                  </span>
-                  {active ? (
-                    <span className="flex shrink-0 items-center gap-1 text-xs font-semibold text-primary">
-                      <Check size={15} strokeWidth={1.75} /> 활성
-                    </span>
-                  ) : (
-                    <span className="shrink-0 rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-foreground">
-                      전환
-                    </span>
-                  )}
-                </button>
-              </form>
+                    {active ? (
+                      <span className="flex shrink-0 items-center gap-1 text-xs font-semibold text-primary">
+                        <Check size={15} strokeWidth={1.75} /> 활성
+                      </span>
+                    ) : (
+                      <span className="shrink-0 rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-foreground">
+                        전환
+                      </span>
+                    )}
+                  </button>
+                </form>
+                <DeleteCompanyButton holdingId={company.id} name={company.name} />
+              </div>
             );
           })}
         </div>

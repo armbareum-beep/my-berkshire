@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -23,6 +24,8 @@ import {
   type HoldingYield,
 } from "@/components/dividends/DividendYields";
 
+type PortfolioSnapshot = NonNullable<Awaited<ReturnType<typeof getPortfolio>>>;
+
 /**
  * 배당 탭 — "언제 얼마 받(았/을)나".
  *  · 확정: 자동 생성된 DIVIDEND 이벤트(정확, 계좌세금 반영).
@@ -46,8 +49,41 @@ export default async function DividendsPage({
   ]);
   if (!portfolio) redirect("/onboarding");
 
-  const { events, positions, names, usdKrw, holding, prices } = portfolio;
   const today = todayKST();
+  const displayCcy =
+    cookieStore.get("display_ccy")?.value === "USD" ? "USD" : "KRW";
+  const { year: yearParam } = await searchParams;
+
+  return (
+    <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
+      <BottomTabBar />
+      <BackButton />
+      <h1 className="text-2xl font-extrabold tracking-tight">배당</h1>
+      {/* 배당 피드(야후, 보유 종목별)가 무거워 본문은 스트리밍 — 제목은 즉시 보인다. */}
+      <Suspense fallback={<DividendsSkeleton />}>
+        <DividendsBody
+          portfolio={portfolio}
+          today={today}
+          yearParam={yearParam}
+          displayCcy={displayCcy}
+        />
+      </Suspense>
+    </main>
+  );
+}
+
+async function DividendsBody({
+  portfolio,
+  today,
+  yearParam,
+  displayCcy,
+}: {
+  portfolio: PortfolioSnapshot;
+  today: string;
+  yearParam?: string;
+  displayCcy: "KRW" | "USD";
+}) {
+  const { events, positions, names, usdKrw, holding, prices } = portfolio;
   const currentYear = Number(today.slice(0, 4));
 
   // 투입원금(₩) = 설립자본 + 증자 − 인출
@@ -162,7 +198,7 @@ export default async function DividendsPage({
   const divYears = all.map((l) => Number(l.exDate.slice(0, 4)));
   const minYear = divYears.length ? Math.min(currentYear, ...divYears) : currentYear;
   const maxYear = divYears.length ? Math.max(currentYear, ...divYears) : currentYear;
-  const reqYear = Number((await searchParams).year) || currentYear;
+  const reqYear = Number(yearParam) || currentYear;
   const year = Math.min(maxYear, Math.max(minYear, reqYear));
 
   // 선택 연도분(차트·합계·받은 배당의 기준).
@@ -179,16 +215,11 @@ export default async function DividendsPage({
       ? projected.filter((l) => l.exDate > yearEnd && l.exDate <= cutoff)
       : [];
 
-  const displayCcy =
-    cookieStore.get("display_ccy")?.value === "USD" ? "USD" : "KRW";
   const useUsd = displayCcy === "USD" && !!usdKrw;
   const factor = useUsd ? 1 / (usdKrw as number) : 1;
 
   return (
-    <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
-      <BottomTabBar />
-      <BackButton />
-      <h1 className="text-2xl font-extrabold tracking-tight">배당</h1>
+    <>
       <DividendYields
         items={holdingYields}
         totalAnnualDivKrw={totalAnnualDivKrw}
@@ -207,6 +238,22 @@ export default async function DividendsPage({
         factor={factor}
         currency={useUsd ? "USD" : "KRW"}
       />
-    </main>
+    </>
+  );
+}
+
+/** 배당 본문 로딩 스켈레톤. */
+function DividendsSkeleton() {
+  return (
+    <>
+      <div className="rounded-2xl bg-card p-5 shadow-card" aria-busy="true">
+        <div className="h-4 w-28 animate-pulse rounded bg-secondary" />
+        <div className="mt-3 h-7 w-40 animate-pulse rounded bg-secondary" />
+      </div>
+      <div className="rounded-2xl bg-card p-5 shadow-card" aria-busy="true">
+        <div className="h-4 w-24 animate-pulse rounded bg-secondary" />
+        <div className="mt-3 h-32 w-full animate-pulse rounded bg-secondary" />
+      </div>
+    </>
   );
 }

@@ -91,7 +91,7 @@ export function AccountGroups({
                     href={`/stocks/${h.symbol}`}
                     className="flex items-center gap-3 rounded-xl py-2 transition active:scale-[0.99]"
                   >
-                    <SymbolAvatar name={h.name} />
+                    <SymbolAvatar name={h.name} symbol={h.symbol} />
                     <span className="flex flex-col">
                       <span className="font-medium">{h.name}</span>
                       <span className="text-sm text-muted-foreground">
