@@ -25,6 +25,7 @@
 .DS_Store
 *.pem
 .krx-storage-state.json
+/logs/
 
 # debug
 npm-debug.log*

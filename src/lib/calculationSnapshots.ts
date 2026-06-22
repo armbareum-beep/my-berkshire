@@ -92,6 +92,20 @@ function computeAndStore<T>(
         },
       ),
     );
+
+    // 쌓임 방지 — 새 revision 메모를 성공적으로 쓴 뒤 같은 종류의 옛 revision 메모는 삭제.
+    // (데이터가 바뀌어 revision 이 오르면 옛 revision 은 더는 유효하지 않다. 실패-폴백은
+    //  '새 계산 실패 시'라 이 시점 이전에만 옛 메모를 참조 — 여기선 이미 새 메모가 존재.)
+    if (options.portfolioRevision > 0) {
+      await options.supabase
+        .from("calculation_snapshots")
+        .delete()
+        .eq("holding_id", options.holdingId)
+        .eq("kind", options.kind)
+        .eq("parameters_hash", parametersHash)
+        .lt("portfolio_revision", options.portfolioRevision);
+    }
+
     return data;
   })();
 

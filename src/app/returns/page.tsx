@@ -28,6 +28,7 @@ import { MarketSection } from "@/components/benchmark/MarketSection";
 import { FrictionCard } from "@/components/dashboard/cards";
 import { businessCandidates } from "@/lib/finance/businessContribution";
 import { BusinessContribution } from "@/components/returns/BusinessContribution";
+import { upsertPerfSnapshot } from "@/lib/perf/snapshot";
 
 /**
  * 수익률 (통합) — 기간 수익률 + 누적손익(실현/미실현) + vs시장 차트.
@@ -61,8 +62,8 @@ export default async function ReturnsPage() {
 
   const seed = { foundedAt, initialValuation };
 
-  // 가장 큰 대기 둘을 겹친다 — 종목 일별 시세(야후 히스토리) + 비교 지수 6종 시계열을 병렬로.
-  // (getDailyKrwCloses 는 종목이 없으면 페치 없이 즉시 빈 결과를 돌려준다.)
+  const defaultIndexLabel = cur === "USD" ? "S&P 500" : "코스피";
+
   const [{ data: valueSeries }, indexData] = await Promise.all([
     loadPortfolioValueSeries({
       supabase,
@@ -82,10 +83,30 @@ export default async function ReturnsPage() {
   ]);
   const series = valueSeries.closes;
 
+  // 알파 계산 (누적수익률 기반, 90일 제한 없음) — 스냅샷 저장용
+  const defaultBenchmarkEntry = indexData.find((d) => d.index.label === defaultIndexLabel);
+  const benchmarkCumulative = defaultBenchmarkEntry?.s
+    ? indexSummaryFromSeries(defaultBenchmarkEntry.s, seed, events, today).benchmarkCumulative
+    : null;
+  const alpha =
+    result.cumulativeReturn != null && benchmarkCumulative != null
+      ? result.cumulativeReturn - benchmarkCumulative
+      : null;
+
+  // 스냅샷 저장 (non-blocking, 결과 불필요)
+  upsertPerfSnapshot(
+    supabase,
+    holding.id,
+    user.id,
+    result,
+    result.currentValuation,
+    holding.mode,
+    holding.initial_capital != null ? Number(holding.initial_capital) : null,
+    alpha,
+    defaultBenchmarkEntry?.index.symbol ?? null,
+  ).catch(() => {});
+
   // ── 1) 기간 수익률 ──
-  // 전체(설립~오늘)·신생 구간은 메인 수익률 엔진 결과(result)를 그대로 쓴다 — 설립일·설립 전
-  // 흐름까지 일관 처리(initial_valuation=0 + 설립일 증자 모델에서도 누적이 정상, 대시보드와 일치).
-  // 그보다 짧은 구간만 시작시점 평가액을 재구성(pointAt)해 periodReturn 으로 계산.
   const periods: PeriodView[] =
     endValue == null
       ? []
@@ -131,6 +152,7 @@ export default async function ReturnsPage() {
         const gain = qty * (e.priceOrAmount - avgCostOf(e.symbol as string));
         return {
           kind: "SELL" as const,
+          symbol: e.symbol as string,
           name,
           qty,
           date: e.date,
@@ -142,6 +164,7 @@ export default async function ReturnsPage() {
       const net = e.priceOrAmount - e.feeAndTax;
       return {
         kind: "DIVIDEND" as const,
+        symbol: e.symbol as string,
         name,
         qty: null,
         date: e.date,
@@ -162,13 +185,10 @@ export default async function ReturnsPage() {
     .filter((u) => u.quantity > 0)
     .sort((a, b) => b.pnl - a.pnl);
 
-  // ── 3) vs 시장(시계열) — 지수 드롭다운 + 추이 차트 + (90일 후) 연환산 %p 표.
-  //    그래프(추이)는 1일차부터(로망), "시장 초과 %"·표는 설립 90일 후(연환산 안정)에 나타난다(정직).
-  //    (기존 /benchmark 페이지를 흡수 — 지수별 비교를 여기 한 곳에서.) ──
+  // ── 3) vs 시장(시계열) ──
   const mine: LinePoint[] = valueSeries.points.map(
     (p) => ({ date: p.date, value: p.value }),
   );
-  // 위에서 병렬로 받아 둔 지수 시계열로 연환산(표) + 추이 라인(차트)을 같은 시리즈에서 산출.
   const indices = indexData
     .filter((d) => d.s)
     .map(({ index, s }) => ({
@@ -179,7 +199,6 @@ export default async function ReturnsPage() {
         value: benchmarkValueOn(s!, seed, events, p.date),
       })),
     }));
-  const defaultIndexLabel = cur === "USD" ? "S&P 500" : "코스피";
   const periodLabel = `${foundedAt} ~ 오늘 · ${daysSince(foundedAt, today)}일`;
   const contributionCandidates = businessCandidates(events, names);
 
@@ -200,8 +219,6 @@ export default async function ReturnsPage() {
         )}
       </div>
 
-      {/* 1) 기간 수익률 — 보여줄 숫자가 아직 없으면(전 구간 "—") 카드 자체를 숨김.
-          숫자가 생기면 그때 나타난다(빈 "—" 카드를 띄우지 않기). */}
       {periods.length === 0 ? (
         <p className="rounded-2xl bg-card p-6 text-center text-sm text-muted-foreground shadow-card">
           시세를 불러오지 못해 수익률을 계산할 수 없어요. 잠시 후 다시 시도해 주세요.
@@ -210,7 +227,6 @@ export default async function ReturnsPage() {
         <PeriodReturns periods={periods} />
       ) : null}
 
-      {/* 특정 사업부를 인수하지 않았을 때의 반사실 XIRR. 매각 완료 종목도 이벤트 이력에서 포함. */}
       {result.currentValuation != null &&
         contributionCandidates.length > 0 && (
           <BusinessContribution
@@ -223,7 +239,6 @@ export default async function ReturnsPage() {
           />
         )}
 
-      {/* 2) vs 시장 — 지수 드롭다운 + 추이 차트 + (90일 후) 연환산 %p 표 */}
       {mine.length >= 2 && indices.length > 0 && (
         <MarketSection
           mine={mine}
@@ -236,7 +251,7 @@ export default async function ReturnsPage() {
         />
       )}
 
-      {/* 3) 실현 손익 */}
+      {/* 실현 손익 */}
       <section className="rounded-2xl bg-card p-5 shadow-card">
         <div className="mb-3 flex items-center justify-between">
           <p className="text-sm font-semibold">실현 손익</p>
@@ -257,8 +272,7 @@ export default async function ReturnsPage() {
           <ul className="flex flex-col gap-3">
             {realized.map((r, i) => (
               <li key={i} className="flex items-center gap-3">
-                {/* 종목 아바타로 통일(§4-1) — 이벤트 종류는 아래 라벨로 구분 */}
-                <SymbolAvatar name={r.name} size="md" />
+                <SymbolAvatar name={r.name} symbol={r.symbol} size="md" />
                 <span className="flex flex-col">
                   <span className="font-bold">
                     {r.kind === "DIVIDEND" ? "배당" : "매도"} · {r.name}
@@ -290,7 +304,7 @@ export default async function ReturnsPage() {
         )}
       </section>
 
-      {/* 4) 미실현 손익 */}
+      {/* 미실현 손익 */}
       <section className="rounded-2xl bg-card p-5 shadow-card">
         <div className="mb-3 flex items-center justify-between">
           <p className="text-sm font-semibold">미실현 손익</p>
@@ -331,7 +345,6 @@ export default async function ReturnsPage() {
         )}
       </section>
 
-      {/* 마찰비용 — 수수료·세금이 수익률을 끌어내린 정도(누적수익률 맥락). */}
       <FrictionCard friction={data.friction} drag={data.drag} currency={cur} />
     </main>
   );

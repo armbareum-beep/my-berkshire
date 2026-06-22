@@ -40,14 +40,14 @@
 |---|---|---|
 | **연차보고서**(ENUF Annual Report) | ✅ | `/annual-report`. 설립 1년 잠금·직전 1년 XIRR·투시·베스트/워스트·CFO총평·인쇄/PDF 저장 |
 | **사업부 기여도**(leave-one-out XIRR) | ✅ | `/returns#contribution`. 복수 사업부 체크 제외·외부현금흐름 유지·XIRR 즉시 재계산 |
-| **백분위 공유 카드**(상위 X%+히스토그램+공유) | ✗ | PRD §8-6. 바이럴. 단 분포는 유저 수 필요 |
+| **백분위 공유 카드**(상위 X%+히스토그램+공유) | ✅ | `/returns` 하단 "전체 순위" 카드. user_perf_snapshots 스냅샷 → get_xirr_percentile/histogram(security definer). 유저 1명일 땐 "비교할 유저 부족" 안내, 2명+부터 순위 표시 |
 | 투자스타일 칭호 multi-axis | ✅ | 행동 기반 7축 점수·주 성향 1개·보조 성향 2개·근거·행동 불일치 인사이트 |
 | 기업 등급 사다리(규모·연수) | 제외 | 개인투자자를 낮은 단계로 두는 위계가 "투자엔 여러 길이 있다"는 철학과 충돌해 의도적으로 구현하지 않음 |
 | ISA/연금/해외 세금 + 세액공제 트래킹 | ✅ | `tax.ts` TaxCreditConfig 추가. `/friction` 하단 "절세계좌 세액공제 현황" 섹션. 계좌유형별 연간 납입액·한도·예상 공제액 표시 |
 | 마찰비용 심화(ETF TER 누적₩·회전율·상세화면) | ✅ | `/friction`. 실제비용 유형·계좌·월별 집계, 회전율, ETF TER 연간·누적 추정 |
 | ETF 실질부담비용 순위 | ✗ | 동일지수 ETF 비용 비교 섹션은 사용자 요청으로 제거. catalog에 trackedIndex·getEtfIndexGroups() 코드는 남아 있음. 재도입 시 friction 또는 검색에 추가 |
 | 계좌별 자산배분 | ✅ | `/holdings` 계좌별·전체 보기 + 대시보드 `AccountGroups`. `/allocation` 탭 중복 구현은 하지 않음 |
-| 리그/순위 UI | ✗ | PRD §5-2 의도적 보류(유저 모여야 의미) |
+| 리그/순위 UI | ✅ | `/leaderboard`. 연환산 XIRR 익명 순위. get_xirr_leaderboard(security definer), 내 행 "나" 배지 강조, 상위 30명 표시 |
 | 레전드 PME 비교(거장과 동일현금흐름) | ✗ | 거장 13F 열람은 됨. 단 13F에 취득가 없어 XIRR 비교 불가 |
 
 ---

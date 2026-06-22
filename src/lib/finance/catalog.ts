@@ -16,6 +16,17 @@ export interface CatalogItem {
   ter?: number;
   /** 추종 지수 — 동일지수 ETF 비용 비교 그룹핑용. ETF만 사용. */
   trackedIndex?: string;
+  /**
+   * Yahoo Finance 대리 심볼 — 한국 ETF는 Yahoo가 구성종목·섹터를 제공하지 않으므로
+   * 동일 지수를 추종하는 미국 ETF 심볼로 대체 조회. 구성 데이터가 실질적으로 동일.
+   * 예) S&P500 → "SPY", NASDAQ100 → "QQQ"
+   */
+  yahooProxy?: string;
+  /**
+   * KRX 지수 심볼 — Yahoo 미제공 국내 지수 추종 ETF용. PER/PBR을 krx_index_stats_cache에서 조회.
+   * 예) KOSPI200 → "^KS11", KOSDAQ150 → "^KQ11"
+   */
+  krxIndexSymbol?: string;
 }
 
 // ETF는 같은 지수 내에서 **총보수 낮은 상품 위주**로 선별. ter 은 참고용(확인 필요).
@@ -25,14 +36,29 @@ export const CATALOG: CatalogItem[] = [
   { symbol: "035420", name: "NAVER" },
   { symbol: "AAPL", name: "Apple" },
   { symbol: "TSLA", name: "Tesla" },
-  // ETF(야후 검증된 코드) — ter=총보수(참고용 공시값), trackedIndex=추종지수
-  { symbol: "379800", name: "KODEX 미국S&P500", assetType: "ETF", ter: 0.0009, trackedIndex: "S&P500" },
-  { symbol: "360750", name: "TIGER 미국S&P500", assetType: "ETF", ter: 0.0007, trackedIndex: "S&P500" },
-  { symbol: "133690", name: "TIGER 미국나스닥100", assetType: "ETF", ter: 0.0007, trackedIndex: "NASDAQ100" },
-  { symbol: "278530", name: "KODEX 200TR", assetType: "ETF", ter: 0.0005, trackedIndex: "KOSPI200" },
-  { symbol: "069500", name: "KODEX 200", assetType: "ETF", ter: 0.0015, trackedIndex: "KOSPI200" },
+  // ETF(야후 검증된 코드) — ter=총보수(참고용 공시값), trackedIndex=추종지수, yahooProxy=구성데이터 대리조회
+  // S&P 500 — Yahoo가 한국 ETF 구성데이터 미제공 → SPY로 대리 조회 (동일 지수, 구성 실질 동일)
+  { symbol: "360750", name: "TIGER 미국S&P500", assetType: "ETF", ter: 0.0007, trackedIndex: "S&P500", yahooProxy: "SPY" },
+  { symbol: "379800", name: "KODEX 미국S&P500", assetType: "ETF", ter: 0.0009, trackedIndex: "S&P500", yahooProxy: "SPY" },
+  { symbol: "360200", name: "ACE 미국S&P500", assetType: "ETF", ter: 0.0007, trackedIndex: "S&P500", yahooProxy: "SPY" },
+  { symbol: "473640", name: "KBSTAR 미국S&P500", assetType: "ETF", ter: 0.0009, trackedIndex: "S&P500", yahooProxy: "SPY" },
+  { symbol: "449770", name: "HANARO 미국S&P500", assetType: "ETF", ter: 0.0007, trackedIndex: "S&P500", yahooProxy: "SPY" },
+  // NASDAQ 100 — QQQ로 대리 조회
+  { symbol: "133690", name: "TIGER 미국나스닥100", assetType: "ETF", ter: 0.0007, trackedIndex: "NASDAQ100", yahooProxy: "QQQ" },
+  { symbol: "367380", name: "ACE 미국나스닥100", assetType: "ETF", ter: 0.0007, trackedIndex: "NASDAQ100", yahooProxy: "QQQ" },
+  { symbol: "379810", name: "KODEX 미국나스닥100TR", assetType: "ETF", ter: 0.0009, trackedIndex: "NASDAQ100", yahooProxy: "QQQ" },
+  { symbol: "429513", name: "KBSTAR 미국나스닥100", assetType: "ETF", ter: 0.0009, trackedIndex: "NASDAQ100", yahooProxy: "QQQ" },
+  // KOSPI 200 — Yahoo 미제공, KRX ^KS11 캐시로 PER/PBR 대체
+  { symbol: "278530", name: "KODEX 200TR", assetType: "ETF", ter: 0.0005, trackedIndex: "KOSPI200", krxIndexSymbol: "^KS11" },
+  { symbol: "102110", name: "TIGER 200", assetType: "ETF", ter: 0.0005, trackedIndex: "KOSPI200", krxIndexSymbol: "^KS11" },
+  { symbol: "069500", name: "KODEX 200", assetType: "ETF", ter: 0.0015, trackedIndex: "KOSPI200", krxIndexSymbol: "^KS11" },
+  { symbol: "152100", name: "ACE 코스피200", assetType: "ETF", ter: 0.0007, trackedIndex: "KOSPI200", krxIndexSymbol: "^KS11" },
+  // CSI 300 — proxy 없음
   { symbol: "192090", name: "TIGER 차이나CSI300", assetType: "ETF", ter: 0.0019, trackedIndex: "CSI300" },
+  { symbol: "204480", name: "KODEX 차이나CSI300", assetType: "ETF", ter: 0.0035, trackedIndex: "CSI300" },
+  // 항셍테크 — proxy 없음
   { symbol: "371160", name: "TIGER 차이나항셍테크", assetType: "ETF", ter: 0.0049, trackedIndex: "항셍테크" },
+  { symbol: "372910", name: "KODEX 차이나항셍테크", assetType: "ETF", ter: 0.0045, trackedIndex: "항셍테크" },
   // 원자재(commodity) ETF — KRX 상장, ₩로 매수 가능. ter 참고용.
   { symbol: "411060", name: "ACE KRX금현물", assetType: "원자재", ter: 0.005 },
   { symbol: "144600", name: "KODEX 은선물(H)", assetType: "원자재", ter: 0.0068 },

@@ -8,6 +8,46 @@ import {
   setActiveHoldingCookie,
 } from "@/lib/holdings";
 
+export async function deleteCompany(holdingId: string): Promise<void> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { data: holding } = await supabase
+    .from("holdings")
+    .select("id")
+    .eq("id", holdingId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!holding) throw new Error("회사를 찾을 수 없습니다.");
+
+  const { data: accounts } = await supabase
+    .from("accounts")
+    .select("id")
+    .eq("holding_id", holdingId);
+  const accountIds = (accounts ?? []).map((a) => a.id);
+
+  if (accountIds.length > 0) {
+    await supabase.from("events").delete().in("account_id", accountIds);
+    await supabase.from("accounts").delete().in("id", accountIds);
+  }
+  await supabase.from("holdings").delete().eq("id", holdingId);
+
+  const { data: remaining } = await supabase
+    .from("holdings")
+    .select("id")
+    .eq("user_id", user.id)
+    .limit(1);
+  if (remaining && remaining.length > 0) {
+    await setActiveHoldingCookie(remaining[0].id);
+    revalidatePath("/", "layout");
+    redirect("/company");
+  } else {
+    revalidatePath("/", "layout");
+    redirect("/onboarding");
+  }
+}
+
 export async function switchCompany(holdingId: string): Promise<void> {
   const supabase = await createClient();
   const {

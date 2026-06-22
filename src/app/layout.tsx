@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
+import { MarketAutoRefresh } from "@/components/MarketAutoRefresh";
 
 export const metadata: Metadata = {
   title: "ENUF",
@@ -20,6 +21,7 @@ export default function RootLayout({
         <div className="mx-auto min-h-dvh w-full max-w-[480px] bg-background">
           {children}
         </div>
+        <MarketAutoRefresh />
         <Toaster position="top-center" />
       </body>
     </html>

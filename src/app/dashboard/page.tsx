@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { Search, ReceiptText } from "lucide-react";
+import { Search, ReceiptText, Upload } from "lucide-react";
 import { after } from "next/server";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -393,6 +393,23 @@ async function DashboardContent({
           <PriceUnavailableCard missing={result.missingSymbols} />
           {cardMap.recent}
         </>
+      )}
+
+      {/* 거래내역 가져오기 — 장부 모드 전용 */}
+      {holding.mode === "ledger" && (
+        <Link
+          href="/import"
+          className="flex items-center gap-3 rounded-2xl bg-card p-5 shadow-card transition active:scale-[0.99]"
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <Upload size={18} />
+          </span>
+          <div>
+            <p className="text-sm font-semibold">거래내역 가져오기</p>
+            <p className="text-xs text-muted-foreground">키움·KB·미래에셋 등 파일 업로드</p>
+          </div>
+          <span className="ml-auto text-muted-foreground">›</span>
+        </Link>
       )}
 
       <BottomTabBar />
