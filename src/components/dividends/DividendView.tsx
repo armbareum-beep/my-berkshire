@@ -355,7 +355,7 @@ function DivRow({
       : l.exDate.slice(5).replace("-", "/");
   return (
     <li className="flex items-center gap-3">
-      <SymbolAvatar name={l.name} size="md" />
+      <SymbolAvatar name={l.name} symbol={l.symbol} size="md" />
       <span className="flex flex-col">
         <span className="font-bold">
           {l.name}

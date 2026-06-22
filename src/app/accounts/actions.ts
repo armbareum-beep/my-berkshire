@@ -50,6 +50,38 @@ export async function createAccount(
   return { ok: true };
 }
 
+/** 계좌 삭제 — 소속 이벤트 포함 영구 삭제. 마지막 계좌는 삭제 불가. */
+export async function deleteAccount(accountId: string): Promise<Result> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "로그인이 필요합니다." };
+
+  // 소유권 확인 (RLS + holding 소속 검증)
+  const { data: account } = await supabase
+    .from("accounts")
+    .select("id, holding_id")
+    .eq("id", accountId)
+    .maybeSingle();
+  if (!account) return { ok: false, error: "계좌를 찾을 수 없습니다." };
+
+  // 같은 회사에 계좌가 최소 2개 있어야 삭제 가능
+  const { count } = await supabase
+    .from("accounts")
+    .select("id", { count: "exact", head: true })
+    .eq("holding_id", account.holding_id);
+  if ((count ?? 0) <= 1)
+    return { ok: false, error: "마지막 계좌는 삭제할 수 없습니다." };
+
+  await supabase.from("events").delete().eq("account_id", accountId);
+  const { error } = await supabase.from("accounts").delete().eq("id", accountId);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/accounts");
+  revalidatePath("/holdings");
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
 /** 계좌 수정 — 이름·유형·수수료율 변경(세금은 유형에서 자동). */
 export async function updateAccount(
   id: string,

@@ -31,10 +31,7 @@ export function SearchModal({
 
   useEffect(() => {
     const query = q.trim();
-    if (!query) {
-      setResults([]);
-      return;
-    }
+    if (!query) return;
     const ctrl = new AbortController();
     const t = setTimeout(async () => {
       setLoading(true);
@@ -80,6 +77,9 @@ export function SearchModal({
     });
   }
 
+  const hasQuery = q.trim() !== "";
+  const visibleResults = hasQuery ? results : [];
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
       <div className="flex items-center gap-2 border-b border-border p-4">
@@ -100,7 +100,7 @@ export function SearchModal({
       </div>
 
       <div className="flex-1 overflow-y-auto p-3">
-        {q.trim() === "" && (
+        {!hasQuery && (
           <div className="px-1 py-4">
             <p className="mb-2 text-xs font-medium text-muted-foreground">
               지수·환율 빠른 추가
@@ -132,16 +132,16 @@ export function SearchModal({
             </p>
           </div>
         )}
-        {loading && (
+        {hasQuery && loading && (
           <p className="px-1 text-sm text-muted-foreground">검색 중…</p>
         )}
-        {!loading && q.trim() !== "" && results.length === 0 && (
+        {!loading && hasQuery && visibleResults.length === 0 && (
           <p className="px-1 text-sm text-muted-foreground">
             결과가 없어요. 티커(005930)나 영문명으로도 시도해보세요.
           </p>
         )}
         <ul className="flex flex-col gap-1">
-          {results.map((item) => {
+          {visibleResults.map((item) => {
             const on = watched.has(item.symbol);
             return (
               <li
@@ -150,14 +150,18 @@ export function SearchModal({
               >
                 <button
                   type="button"
-                  onClick={() =>
-                    router.push(
-                      `/stocks/${item.symbol}?name=${encodeURIComponent(item.name)}`,
-                    )
-                  }
+                  onClick={() => {
+                    const preset = PRESET_QUOTES.find((p) => p.symbol === item.symbol);
+                    const href = preset?.isIndex
+                      ? `/index/${encodeURIComponent(item.symbol)}`
+                      : `/stocks/${item.symbol}?name=${encodeURIComponent(item.name)}${
+                          item.assetType ? `&assetType=${encodeURIComponent(item.assetType)}` : ""
+                        }`;
+                    router.push(href);
+                  }}
                   className="flex min-w-0 flex-1 items-center gap-3 text-left"
                 >
-                  <SymbolAvatar name={item.name} />
+                  <SymbolAvatar name={item.name} symbol={item.symbol} />
                   <span className="flex min-w-0 flex-col">
                     <span className="flex min-w-0 items-center gap-1.5">
                       <span className="truncate font-bold">{item.name}</span>

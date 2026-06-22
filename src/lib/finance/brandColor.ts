@@ -86,11 +86,46 @@ function fgFor(hex: string): string {
   return lum > 0.62 ? INK : WHITE;
 }
 
+/** KRX ETF 운용사 브랜드 맵 (ETF명 첫 단어 → 운용사 약칭 + 브랜드색) */
+const ETF_BRANDS: Record<string, { label: string; bg: string }> = {
+  KODEX:      { label: "삼성", bg: "#1428A0" },
+  TIGER:      { label: "미래", bg: "#E8380D" },
+  KBSTAR:     { label: "KB",   bg: "#FFBC00" },
+  RISE:       { label: "KB",   bg: "#FFBC00" },
+  ACE:        { label: "ACE",  bg: "#003C71" },
+  "1Q":       { label: "1Q",   bg: "#003C71" },
+  SOL:        { label: "신한", bg: "#0046AD" },
+  KOSEF:      { label: "키움", bg: "#D7000F" },
+  HANARO:     { label: "NH",   bg: "#009A44" },
+  ARIRANG:    { label: "한화", bg: "#FF6600" },
+  PLUS:       { label: "한화", bg: "#FF6600" },
+  FOCUS:      { label: "교보", bg: "#005BAB" },
+  TIMEFOLIO:  { label: "TF",   bg: "#1A1A2E" },
+  WOORI:      { label: "우리", bg: "#0069B4" },
+  MASTER:     { label: "마스터", bg: "#444444" },
+  TREX:       { label: "대신", bg: "#CF2027" },
+  SMART:      { label: "스마트", bg: "#2E5EAA" },
+};
+
+/** ETF명에서 운용사 브랜드 추출. 6자리 코드 ETF만 적용. */
+function etfBrand(symbol?: string, name?: string): { label: string; bg: string } | null {
+  if (!symbol || !/^\d{6}$/.test(symbol)) return null;
+  if (!name) return null;
+  const brand = name.split(/[\s\d]/)[0].toUpperCase();
+  return ETF_BRANDS[brand] ?? null;
+}
+
+/** 종목/계좌 로고 색 + 표시 레이블. ETF는 운용사 약칭, 그 외는 이름 첫 글자. */
+export function brandLogoLabel(symbol?: string, name?: string): Logo & { label: string } {
+  const etf = etfBrand(symbol, name);
+  if (etf) return { bg: etf.bg, fg: fgFor(etf.bg), label: etf.label };
+  const curated = curatedLookup(symbol, name);
+  const bg = curated ?? `hsl(${hashHue(norm(symbol || name || "?"))} 38% 47%)`;
+  return { bg, fg: fgFor(bg), label: (name ?? symbol ?? "?").slice(0, 1) };
+}
+
 /** 종목/계좌 로고 색 1쌍(배경·글자). symbol 우선, 없으면 name 으로. */
 export function brandLogo(symbol?: string, name?: string): Logo {
-  const curated = curatedLookup(symbol, name);
-  if (curated) return { bg: curated, fg: fgFor(curated) };
-  // 폴백 — 채도 낮춘 중간톤(흰 글자 항상 가독). 회색 대신 차분한 고유색.
-  const hue = hashHue(norm(symbol || name || "?"));
-  return { bg: `hsl(${hue} 38% 47%)`, fg: WHITE };
+  const { bg, fg } = brandLogoLabel(symbol, name);
+  return { bg, fg };
 }

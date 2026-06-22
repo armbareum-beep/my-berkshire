@@ -34,6 +34,15 @@ headless and only need:
 npm run sync:krx-ter
 ```
 
+To automate it locally, register the Windows scheduled task once:
+
+```powershell
+npm run register:krx-ter-task
+```
+
+It runs at 09:00 on day 2 of every month and appends output to
+`logs/krx-ter-sync.log`. The computer must be on and the Windows user must be signed in.
+
 The script loads Supabase credentials from `.env.local` and writes with
 `SUPABASE_SERVICE_ROLE_KEY`. Set `KRX_TRADE_DATE=YYYYMMDD` only when a specific trading date
 is needed.

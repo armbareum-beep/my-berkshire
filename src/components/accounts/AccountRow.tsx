@@ -41,13 +41,13 @@ export function AccountRow({
   holdingsCount = 0,
   accountValue,
   currency = "KRW",
+  deleteButton,
 }: {
   account: AccountRowData;
-  /** 이 계좌의 보유 종목 수(요약 표기용). */
   holdingsCount?: number;
-  /** 계좌 평가액(표시 통화). */
   accountValue?: number;
   currency?: Currency;
+  deleteButton?: React.ReactNode;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -116,10 +116,7 @@ export function AccountRow({
         </Link>
         <button
           type="button"
-          onClick={() => {
-            reset();
-            setEditing(true);
-          }}
+          onClick={() => { reset(); setEditing(true); }}
           className="shrink-0 rounded-full bg-secondary px-3 py-1.5 text-sm font-medium text-secondary-foreground"
         >
           수정
@@ -180,6 +177,7 @@ export function AccountRow({
         >
           취소
         </Button>
+        {deleteButton}
       </div>
     </li>
   );

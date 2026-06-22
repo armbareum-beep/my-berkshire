@@ -1,17 +1,59 @@
-import { cn } from "@/lib/utils";
-import { brandLogo } from "@/lib/finance/brandColor";
+"use client";
 
-/**
- * 종목/계좌 이니셜 원형 — **브랜드색 배경 + 이니셜**(디자인 §4-1, 목업과 동일 무드).
- * 색은 symbol(없으면 name)으로 결정: 큐레이트된 주요 종목은 실제 브랜드색,
- * 그 외는 해시 기반 차분한 고유색. 회색 이니셜의 휑함을 없앤다.
- * 순수 컴포넌트(서버 호환). 사이즈 통일(h-10/h-9/h-7 → size prop).
- */
+import { useState } from "react";
+import { cn } from "@/lib/utils";
+import { brandLogoLabel } from "@/lib/finance/brandColor";
+
 const SIZE = {
-  sm: "h-7 w-7 text-xs",
-  md: "h-9 w-9 text-sm",
-  lg: "h-10 w-10 text-base",
+  sm: "h-7 w-7 text-[9px]",
+  md: "h-9 w-9 text-[10px]",
+  lg: "h-10 w-10 text-[11px]",
 } as const;
+
+function gfavicon(domain: string) {
+  return `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+}
+
+/** 한국 대형주 코드 → 공식 도메인. 확실한 것만 등록(없으면 텍스트 아바타). */
+const KR_DOMAINS: Record<string, string> = {
+  "005930": "samsung.com",
+  "000660": "skhynix.com",
+  "005380": "hyundai.com",
+  "000270": "kia.com",
+  "035420": "navercorp.com",
+  "035720": "kakao.com",
+  "066570": "lg.com",
+  "051910": "lgchem.com",
+  "105560": "kbfg.com",
+  "055550": "shinhangroup.com",
+  "068270": "celltrion.com",
+  "207940": "samsungbiologics.com",
+  "005490": "posco.com",
+  "003550": "lggroup.com",
+};
+
+/** 미국 주요 종목 티커 → 도메인. */
+const US_DOMAINS: Record<string, string> = {
+  AAPL: "apple.com", MSFT: "microsoft.com", GOOGL: "google.com",
+  GOOG: "google.com", AMZN: "amazon.com", TSLA: "tesla.com",
+  NVDA: "nvidia.com", META: "meta.com", NFLX: "netflix.com",
+  KO: "coca-cola.com", V: "visa.com", JPM: "jpmorganchase.com",
+  BRKB: "berkshirehathaway.com", "BRK-B": "berkshirehathaway.com",
+  SPY: "ssga.com", QQQ: "invesco.com", IVV: "blackrock.com",
+  VOO: "vanguard.com", VTI: "vanguard.com",
+};
+
+/** 심볼 → 로고 이미지 URL. Google Favicon 기반, 없으면 null (텍스트 아바타 폴백). */
+function logoUrl(symbol?: string): string | null {
+  if (!symbol) return null;
+  if (symbol.endsWith("-USD")) return null;
+  if (/^\d{6}$/.test(symbol)) {
+    const d = KR_DOMAINS[symbol];
+    return d ? gfavicon(d) : null;
+  }
+  const d = US_DOMAINS[symbol.toUpperCase()];
+  return d ? gfavicon(d) : null;
+}
 
 export function Avatar({
   name,
@@ -20,22 +62,44 @@ export function Avatar({
   className,
 }: {
   name: string;
-  /** 색 결정용 종목코드/티커(있으면 큐레이트 브랜드색 우선). 없으면 name 으로. */
   symbol?: string;
   size?: keyof typeof SIZE;
   className?: string;
 }) {
-  const { bg, fg } = brandLogo(symbol, name);
+  const [imgFailed, setImgFailed] = useState(false);
+  const url = logoUrl(symbol);
+  const { bg, fg, label } = brandLogoLabel(symbol, name);
+  const textClass = label.length === 1 ? "text-base font-bold" : "font-bold leading-none";
+
+  if (url && !imgFailed) {
+    return (
+      <span
+        className={cn(
+          "flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-secondary",
+          SIZE[size],
+          className,
+        )}
+      >
+        <img
+          src={url}
+          alt={name}
+          className="h-full w-full object-contain"
+          onError={() => setImgFailed(true)}
+        />
+      </span>
+    );
+  }
+
   return (
     <span
       className={cn(
-        "flex shrink-0 items-center justify-center rounded-full font-bold",
+        "flex shrink-0 items-center justify-center rounded-full",
         SIZE[size],
         className,
       )}
       style={{ backgroundColor: bg, color: fg }}
     >
-      {name.slice(0, 1)}
+      <span className={textClass}>{label}</span>
     </span>
   );
 }

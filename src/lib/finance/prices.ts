@@ -8,6 +8,11 @@
 
 import type { PriceMap } from "./valuation";
 import { getFxToKrw } from "./fx";
+import { financeSource } from "./source";
+import { kisFetch, type KisQuoteResponse } from "./kis/client";
+import { normalizeDomesticPrice, normalizeOverseasPrice } from "./kis/normalize";
+import { tossFetch, type TossPricesResponse } from "./toss/client";
+import { normalizeTossPrices } from "./toss/normalize";
 
 export interface PriceResult {
   prices: PriceMap;
@@ -39,8 +44,8 @@ async function fetchChart(y: string): Promise<{
     `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(y)}?interval=1d&range=1d`,
     {
       headers: { "User-Agent": "Mozilla/5.0" },
-      // 60초 캐시 — 매 요청마다 외부 호출하지 않도록
-      next: { revalidate: 60 },
+      // 10초 캐시 — 장중 자동갱신(15초)이 새 값을 받도록(매 요청 외부호출은 방지).
+      next: { revalidate: 10 },
     },
   );
   if (!res.ok) return null;
@@ -78,6 +83,98 @@ async function fetchOne(symbol: string): Promise<{
   return null;
 }
 
+/** KIS 시세 대상 심볼인가 — 국내 6자리 또는 미국 보통주/ETF 티커(지수·환율·코인 제외). */
+function isKisEligible(symbol: string): boolean {
+  if (/^\d{6}$/.test(symbol)) return true;
+  return /^[A-Za-z]{1,5}$/.test(symbol);
+}
+
+const KIS_US_EXCHANGES = ["NAS", "NYS", "AMS"];
+
+/** KIS 현재가 1종목. 국내=inquire-price, 미국=price(EXCD 후보 순회). 실패 시 null. */
+async function fetchOneKis(symbol: string): Promise<{
+  price: number;
+  prevClose: number | null;
+  currency: string;
+  instrumentType: string;
+} | null> {
+  if (/^\d{6}$/.test(symbol)) {
+    const res = await kisFetch<KisQuoteResponse>(
+      "/uapi/domestic-stock/v1/quotations/inquire-price",
+      { trId: "FHKST01010100", params: { FID_COND_MRKT_DIV_CODE: "J", FID_INPUT_ISCD: symbol }, revalidate: 10 },
+    );
+    return normalizeDomesticPrice(res.output);
+  }
+  // 미국: 거래소(EXCD)를 모르므로 NAS→NYS→AMS 순으로 시도(잘못된 거래소는 last=0 → 다음).
+  for (const excd of KIS_US_EXCHANGES) {
+    const res = await kisFetch<KisQuoteResponse>(
+      "/uapi/overseas-price/v1/quotations/price",
+      { trId: "HHDFS00000300", params: { AUTH: "", EXCD: excd, SYMB: symbol }, revalidate: 10 },
+    );
+    const hit = normalizeOverseasPrice(res.output);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/** 소스·심볼별 현재가 fetcher 선택. KIS 모드라도 시세전용(지수·환율·코인)은 야후. KIS 실패 시 야후 폴백. */
+async function fetchOneRouted(symbol: string) {
+  if (financeSource() === "kis" && isKisEligible(symbol)) {
+    try {
+      const hit = await fetchOneKis(symbol);
+      if (hit) return hit;
+    } catch {
+      // KIS 실패 → 야후 폴백
+    }
+  }
+  return fetchOne(symbol);
+}
+
+/**
+ * 토스 모드 현재가 — `/api/v1/prices` 배치(여러 종목 1콜). 전일종가는 토스 미제공(빈값).
+ * 시세전용(지수·환율·코인)·토스 실패분은 야후 per-symbol 폴백.
+ */
+async function getPricesToss(symbols: string[]): Promise<PriceResult> {
+  const eligible = symbols.filter(isKisEligible);
+  const rest = symbols.filter((s) => !isKisEligible(s));
+  const prices: PriceMap = {};
+  const previousCloses: PriceMap = {};
+  const currencies: Record<string, string> = {};
+  const instrumentTypes: Record<string, string> = {};
+  let anyOk = false;
+
+  if (eligible.length > 0) {
+    try {
+      const res = await tossFetch<TossPricesResponse>("/api/v1/prices", {
+        params: { symbols: eligible.join(",") },
+      });
+      for (const [sym, q] of Object.entries(normalizeTossPrices(res))) {
+        prices[sym] = q.price;
+        currencies[sym] = q.currency;
+        instrumentTypes[sym] = "EQUITY";
+        anyOk = true;
+      }
+    } catch {
+      rest.push(...eligible); // 토스 실패 → 야후 폴백
+    }
+  }
+
+  if (rest.length > 0) {
+    const results = await Promise.allSettled(rest.map(fetchOne));
+    results.forEach((r, i) => {
+      if (r.status === "fulfilled" && r.value != null) {
+        prices[rest[i]] = r.value.price;
+        if (r.value.prevClose != null) previousCloses[rest[i]] = r.value.prevClose;
+        currencies[rest[i]] = r.value.currency;
+        instrumentTypes[rest[i]] = r.value.instrumentType;
+        anyOk = true;
+      }
+    });
+  }
+
+  return { prices, previousCloses, currencies, instrumentTypes, available: anyOk };
+}
+
 /**
  * 종목코드 배열의 현재가·전일종가 조회. 일부만 실패하면 그 종목만 빠지고 available:true.
  * 전부 실패(피드 장애/네트워크)면 available:false.
@@ -92,7 +189,9 @@ export async function getPrices(symbols: string[]): Promise<PriceResult> {
       available: true,
     };
 
-  const results = await Promise.allSettled(symbols.map(fetchOne));
+  if (financeSource() === "toss") return getPricesToss(symbols);
+
+  const results = await Promise.allSettled(symbols.map(fetchOneRouted));
   const prices: PriceMap = {};
   const previousCloses: PriceMap = {};
   const currencies: Record<string, string> = {};

@@ -7,6 +7,7 @@ import { BackButton } from "@/components/BackButton";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
 import { AccountManager } from "@/components/accounts/AccountManager";
 import { AccountRow } from "@/components/accounts/AccountRow";
+import { DeleteAccountButton } from "@/components/accounts/DeleteAccountButton";
 import { FeeRankCard } from "@/components/accounts/FeeRankCard";
 import { type AccountType } from "@/lib/config/tax";
 import {
@@ -132,6 +133,7 @@ export default async function AccountsPage() {
               holdingsCount={g?.holdings.length ?? 0}
               accountValue={g?.value}
               currency={displayCcy}
+              deleteButton={accountList.length > 1 ? <DeleteAccountButton accountId={a.id} name={a.name} /> : undefined}
             />
           );
         })}
