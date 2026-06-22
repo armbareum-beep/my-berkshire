@@ -214,6 +214,7 @@ export async function foundCompany(input: FoundInput): Promise<ActionResult> {
           date: eventDate,
           currency: ccy,
           fx_rate: fx,
+          source: "snapshot" as const, // 온보딩 현재보유 스냅샷 — 실제 매매로 교체될 임시 기록
         },
         {
           account_id: accountId,
@@ -225,6 +226,7 @@ export async function foundCompany(input: FoundInput): Promise<ActionResult> {
           date: eventDate,
           currency: ccy,
           fx_rate: fx,
+          source: "snapshot" as const, // 온보딩 현재보유 스냅샷 — 실제 매매로 교체될 임시 기록
         },
       ];
     });

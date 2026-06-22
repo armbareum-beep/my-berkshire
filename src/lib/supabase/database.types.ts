@@ -14,6 +14,122 @@ export type Database = {
   }
   public: {
     Tables: {
+      krx_index_stats_cache: {
+        Row: {
+          symbol: string
+          per: number | null
+          pbr: number | null
+          eps: number | null
+          dividend_yield: number | null
+          listed_count: number | null
+          synced_at: string
+        }
+        Insert: {
+          symbol: string
+          per?: number | null
+          pbr?: number | null
+          eps?: number | null
+          dividend_yield?: number | null
+          listed_count?: number | null
+          synced_at?: string
+        }
+        Update: {
+          symbol?: string
+          per?: number | null
+          pbr?: number | null
+          eps?: number | null
+          dividend_yield?: number | null
+          listed_count?: number | null
+          synced_at?: string
+        }
+        Relationships: []
+      }
+      kis_security_master: {
+        Row: {
+          symbol: string
+          name_ko: string
+          name_en: string | null
+          exchange: string | null
+          market: string
+          asset_type: string | null
+          source_date: string | null
+          fetched_at: string
+        }
+        Insert: {
+          symbol: string
+          name_ko: string
+          name_en?: string | null
+          exchange?: string | null
+          market: string
+          asset_type?: string | null
+          source_date?: string | null
+          fetched_at?: string
+        }
+        Update: {
+          symbol?: string
+          name_ko?: string
+          name_en?: string | null
+          exchange?: string | null
+          market?: string
+          asset_type?: string | null
+          source_date?: string | null
+          fetched_at?: string
+        }
+        Relationships: []
+      }
+      user_perf_snapshots: {
+        Row: {
+          id: string
+          user_id: string
+          holding_id: string
+          xirr: number | null
+          cumulative_return: number | null
+          days: number
+          portfolio_krw: number | null
+          mode: Database["public"]["Enums"]["holding_mode"]
+          investment_krw: number | null
+          alpha: number | null
+          benchmark_symbol: string | null
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          holding_id: string
+          xirr?: number | null
+          cumulative_return?: number | null
+          days: number
+          portfolio_krw?: number | null
+          mode?: Database["public"]["Enums"]["holding_mode"]
+          investment_krw?: number | null
+          alpha?: number | null
+          benchmark_symbol?: string | null
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          holding_id?: string
+          xirr?: number | null
+          cumulative_return?: number | null
+          days?: number
+          portfolio_krw?: number | null
+          mode?: Database["public"]["Enums"]["holding_mode"]
+          investment_krw?: number | null
+          alpha?: number | null
+          benchmark_symbol?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_perf_snapshots_holding_id_fkey"
+            columns: ["holding_id"]
+            isOneToOne: true
+            referencedRelation: "holdings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       etf_ter_cache: {
         Row: {
           fetched_at: string
@@ -232,8 +348,10 @@ export type Database = {
         Row: {
           active_plan: Json | null
           category_targets: Json
+          completed_years: number[]
           created_at: string
           founded_at: string
+          founding_declared: boolean
           id: string
           initial_capital: number
           initial_valuation: number
@@ -246,8 +364,10 @@ export type Database = {
         Insert: {
           active_plan?: Json | null
           category_targets?: Json
+          completed_years?: number[]
           created_at?: string
           founded_at: string
+          founding_declared?: boolean
           id?: string
           initial_capital?: number
           initial_valuation?: number
@@ -260,8 +380,10 @@ export type Database = {
         Update: {
           active_plan?: Json | null
           category_targets?: Json
+          completed_years?: number[]
           created_at?: string
           founded_at?: string
+          founding_declared?: boolean
           id?: string
           initial_capital?: number
           initial_valuation?: number
