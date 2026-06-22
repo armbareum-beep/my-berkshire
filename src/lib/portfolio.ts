@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { cache } from "react";
 import type { Database } from "./supabase/database.types";
 import {
   computeReturn,
@@ -39,7 +40,9 @@ type EventRow = Database["public"]["Tables"]["events"]["Row"];
  *  · 상쇄 마커(reverses_event_id) 제외
  *  · 상쇄당한 원본 제외
  */
-export function activeEventRows(rows: EventRow[]): EventRow[] {
+export function activeEventRows<
+  T extends Pick<EventRow, "id" | "deleted_at" | "reverses_event_id">,
+>(rows: T[]): T[] {
   const cancelled = new Set(
     rows
       .filter((r) => r.reverses_event_id && !r.deleted_at)
@@ -54,15 +57,19 @@ export function activeEventRows(rows: EventRow[]): EventRow[] {
  * 활성 holding 의 이벤트를 모아 수익률·포지션을 계산한 스냅샷.
  * 시세는 목업(STEP 6에서 교체). 비즈니스 로직은 finance/ 모듈을 호출만 한다.
  */
-export async function getPortfolio(
+export const getPortfolio = cache(async function getPortfolio(
   supabase: SupabaseClient<Database>,
 ): Promise<Portfolio | null> {
   const holding = await getActiveHolding(supabase);
   if (!holding) return null;
 
+  // 사용 컬럼만 명시(전송량↓). activeEventRows(id·deleted_at·reverses_event_id) +
+  // 매핑(type·symbol·quantity·price_or_amount·fee_and_tax·date·currency·fx_rate·to_currency·to_amount).
   const { data: rows } = await supabase
     .from("events")
-    .select("*, accounts!inner(holding_id)")
+    .select(
+      "id, account_id, type, symbol, quantity, price_or_amount, fee_and_tax, date, currency, fx_rate, to_currency, to_amount, deleted_at, reverses_event_id, accounts!inner(holding_id)",
+    )
     .eq("accounts.holding_id", holding.id)
     .order("date", { ascending: true }) as unknown as { data: Database["public"]["Tables"]["events"]["Row"][] | null };
 
@@ -119,4 +126,4 @@ export async function getPortfolio(
     eventCount: events.length,
     daysSinceLastEvent,
   };
-}
+});

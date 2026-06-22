@@ -522,9 +522,12 @@ export async function getLatestFundamentalSet(
     };
     const ytdYear = latestAnnual.year + 1;
     for (const fiscalPeriod of ["Q3", "H1", "Q1"] as const) {
-      const current = await fetchDartPeriod(corp, ytdYear, fiscalPeriod, fsDiv);
+      // current·prior 는 composeTtm 에 둘 다 필요 → 병렬 조회(직렬 2왕복 → 1라운드).
+      const [current, prior] = await Promise.all([
+        fetchDartPeriod(corp, ytdYear, fiscalPeriod, fsDiv),
+        fetchDartPeriod(corp, ytdYear - 1, fiscalPeriod, fsDiv),
+      ]);
       if (!current) continue;
-      const prior = await fetchDartPeriod(corp, ytdYear - 1, fiscalPeriod, fsDiv);
       const ttm = composeTtm(annual, current, prior);
       if (ttm) return { ttm, latestAnnual, fallbackReason: null };
     }
@@ -717,9 +720,12 @@ export async function getFundamentalsSeries(
     // 결측 연도 페칭
     const fetched = await Promise.all(
       missingYears.map(async (y) => {
-        const got = await fetchAllAccounts(corp, y, fsDiv!);
+        // 전체계정·발행주식수는 서로 독립 → 병렬(연도당 직렬 2왕복 → 1라운드).
+        const [got, shares] = await Promise.all([
+          fetchAllAccounts(corp, y, fsDiv!),
+          fetchShares(corp, y),
+        ]);
         if (!got) return null;
-        const shares = await fetchShares(corp, y);
         const fund = extractFundamentals(got, y, fsDiv!, shares);
 
         if (fund && supabase) {

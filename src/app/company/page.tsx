@@ -1,14 +1,12 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { loadAccountGroups } from "@/lib/accounts";
-import { getKrwPrices } from "@/lib/finance/prices";
 import { getActiveHolding } from "@/lib/holdings";
-import { loadSecurityNames } from "@/lib/securities";
 import { BackButton } from "@/components/BackButton";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
-import { HoldingStructureTree } from "@/components/structure/HoldingStructureTree";
+import { CompanyStructures } from "@/components/company/CompanyStructures";
 import { Check, Plus } from "lucide-react";
 import { renameActiveCompany, switchCompany } from "./actions";
 import { DeleteCompanyButton } from "@/components/company/DeleteCompanyButton";
@@ -38,49 +36,8 @@ export default async function CompanyPage() {
 
   const allCompanies = companiesResult.data ?? [];
 
-  // 모든 회사의 종목을 한 번에 모아 공용 시세·이름 맵을 만든다.
-  const companyIds = allCompanies.map((company) => company.id);
-  const { data: accountRefs } = companyIds.length
-    ? await supabase
-        .from("accounts")
-        .select("id, holding_id")
-        .in("holding_id", companyIds)
-    : { data: [] };
-  const accountIds = (accountRefs ?? []).map((account) => account.id);
-  const { data: eventRefs } = accountIds.length
-    ? await supabase
-        .from("events")
-        .select("symbol")
-        .in("account_id", accountIds)
-    : { data: [] };
-  const symbols = [
-    ...new Set(
-      (eventRefs ?? [])
-        .map((event) => event.symbol)
-        .filter((symbol): symbol is string => !!symbol),
-    ),
-  ];
-  const [{ prices, usdKrw }, names] = await Promise.all([
-    getKrwPrices(symbols),
-    loadSecurityNames(supabase, symbols),
-  ]);
-
   const displayCcy =
     cookieStore.get("display_ccy")?.value === "USD" ? "USD" : "KRW";
-  const useUsd = displayCcy === "USD" && !!usdKrw;
-  const factor = useUsd ? 1 / (usdKrw as number) : 1;
-
-  const structures = await Promise.all(
-    allCompanies.map(async (company) => ({
-      holding: company,
-      groups: await loadAccountGroups(supabase, {
-        holdingId: company.id,
-        prices,
-        names,
-        factor,
-      }),
-    })),
-  );
 
   const modeLabel = holding.mode === "challenge" ? "챌린지" : "장부";
 
@@ -170,15 +127,24 @@ export default async function CompanyPage() {
           운영 중인 모든 투자회사의 계좌와 자회사를 함께 봅니다.
         </p>
       </div>
-      {structures.map((structure) => (
-        <HoldingStructureTree
-          key={structure.holding.id}
-          holding={structure.holding}
-          groups={structure.groups}
-          currency={displayCcy}
-          active={structure.holding.id === holding.id}
+      <Suspense
+        fallback={
+          <div className="space-y-3">
+            {allCompanies.map((c) => (
+              <div
+                key={c.id}
+                className="h-28 animate-pulse rounded-2xl bg-card shadow-card"
+              />
+            ))}
+          </div>
+        }
+      >
+        <CompanyStructures
+          companies={allCompanies}
+          activeId={holding.id}
+          displayCcy={displayCcy}
         />
-      ))}
+      </Suspense>
 
       <BottomTabBar />
     </main>

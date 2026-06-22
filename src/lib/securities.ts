@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { cache } from "react";
 import type { Database } from "./supabase/database.types";
 import { findCatalogItem } from "./finance/catalog";
 
@@ -94,8 +95,17 @@ export async function loadSecurityNames(
   supabase: SupabaseClient<Database>,
   symbols: string[],
 ): Promise<Record<string, string>> {
+  // 정렬·중복제거된 문자열 키로 정규화 → 동일 심볼집합은 요청 내 1회만 쿼리(배열 참조 차이 무관).
+  const key = [...new Set(symbols.filter(Boolean))].sort().join(",");
+  return loadSecurityNamesCached(supabase, key);
+}
+
+const loadSecurityNamesCached = cache(async function loadSecurityNamesCached(
+  supabase: SupabaseClient<Database>,
+  key: string,
+): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
-  const uniq = [...new Set(symbols.filter(Boolean))];
+  const uniq = key ? key.split(",") : [];
   if (uniq.length === 0) return out;
 
   const { data } = await supabase
@@ -112,7 +122,7 @@ export async function loadSecurityNames(
     }
   }
   return out;
-}
+});
 
 /**
  * 종목코드 → 메타(이름·국가·유형·통화) 맵. 자산배분 화면용.
@@ -122,8 +132,16 @@ export async function loadSecurityMeta(
   supabase: SupabaseClient<Database>,
   symbols: string[],
 ): Promise<Record<string, SecurityRecord>> {
+  const key = [...new Set(symbols.filter(Boolean))].sort().join(",");
+  return loadSecurityMetaCached(supabase, key);
+}
+
+const loadSecurityMetaCached = cache(async function loadSecurityMetaCached(
+  supabase: SupabaseClient<Database>,
+  key: string,
+): Promise<Record<string, SecurityRecord>> {
   const out: Record<string, SecurityRecord> = {};
-  const uniq = [...new Set(symbols.filter(Boolean))];
+  const uniq = key ? key.split(",") : [];
   if (uniq.length === 0) return out;
 
   const { data } = await supabase
@@ -143,7 +161,7 @@ export async function loadSecurityMeta(
     };
   }
   return out;
-}
+});
 
 /**
  * 섹터 미적재 종목의 산업 태그를 공시 API(DART/EDGAR)로 조회해 securities.sector 에 저장.
