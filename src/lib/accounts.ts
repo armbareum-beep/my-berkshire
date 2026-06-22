@@ -56,9 +56,12 @@ export async function loadAccountGroups(
   if (accounts.length === 0) return [];
 
   const accountIds = accounts.map((a) => a.id);
+  // 사용 컬럼만 명시(전송량↓). 필터/매핑/activeEventRows 가 쓰는 컬럼만.
   const { data: eventRows } = await supabase
     .from("events")
-    .select("*")
+    .select(
+      "id, account_id, type, symbol, quantity, price_or_amount, fee_and_tax, date, deleted_at, reverses_event_id",
+    )
     .in("account_id", accountIds);
 
   const nameOf = (s: string) => names[s] ?? findCatalogItem(s)?.name ?? s;
