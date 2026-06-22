@@ -33,6 +33,8 @@ interface Ctx {
     id: string;
     mode: "ledger" | "challenge" | "live";
     initialValuation: number;
+    foundedAt: string;
+    foundingDeclared: boolean;
   };
   /** 이 holding 의 모든 계좌. */
   accounts: AccountInfo[];
@@ -78,6 +80,9 @@ async function loadCtx(): Promise<Ctx | { error: string }> {
       id: holding.id,
       mode: holding.mode,
       initialValuation: Number(holding.initial_valuation),
+      foundedAt: holding.founded_at,
+      foundingDeclared:
+        (holding as { founding_declared?: boolean }).founding_declared ?? false,
     },
     accounts,
     mainAccountId: accounts[0].id,
@@ -145,6 +150,30 @@ export interface RecordInput {
   currency?: string;
   /** 환전(EXCHANGE) 받는 통화. type==="EXCHANGE" 일 때 필수. */
   toCurrency?: string;
+}
+
+/**
+ * 장부 모드에서 거래일이 설립일보다 이르면 설립일을 그 날짜로 당긴다(뒤로만).
+ * 설립 확정(founding_declared) 상태였다면 자동 해제(더 과거 거래 발견).
+ * 반환: 설립 확정이 해제됐으면 안내 note, 아니면 null.
+ */
+async function backdateFoundingIfEarlier(
+  ctx: Ctx,
+  date: string,
+): Promise<string | null> {
+  if (ctx.holding.mode !== "ledger") return null;
+  if (!(date < ctx.holding.foundedAt)) return null;
+  const unsealed = ctx.holding.foundingDeclared;
+  await ctx.supabase
+    .from("holdings")
+    .update({
+      founded_at: date,
+      ...(unsealed ? { founding_declared: false } : {}),
+    })
+    .eq("id", ctx.holding.id);
+  return unsealed
+    ? "더 과거 거래가 추가돼 설립 확정이 해제됐어요(설립일 갱신)."
+    : null;
 }
 
 /** 5종 이벤트 기록 — 모드 규칙·검증·수수료 추정. 계좌 단위로 검증. */
@@ -389,14 +418,18 @@ export async function recordEvent(input: RecordInput): Promise<Result> {
     ]);
   }
 
+  const backdateNote = await backdateFoundingIfEarlier(ctx, date);
+
   revalidatePath("/dashboard");
   revalidatePath("/activity");
-  return autoDepositKrw > 0
-    ? {
-        ok: true,
-        note: `₩${Math.round(autoDepositKrw).toLocaleString()} 증자(투입 원금 반영, 기존 현금 유지)`,
-      }
-    : { ok: true };
+  revalidatePath("/import");
+  const notes = [
+    autoDepositKrw > 0
+      ? `₩${Math.round(autoDepositKrw).toLocaleString()} 증자(투입 원금 반영, 기존 현금 유지)`
+      : null,
+    backdateNote,
+  ].filter(Boolean) as string[];
+  return notes.length ? { ok: true, note: notes.join(" · ") } : { ok: true };
 }
 
 export interface BuyItemInput {
@@ -575,15 +608,90 @@ export async function recordBuys(input: {
     })),
   );
 
+  const backdateNote = await backdateFoundingIfEarlier(ctx, date);
+
   revalidatePath("/dashboard");
   revalidatePath("/activity");
-  return {
-    ok: true,
-    note:
-      depositKrwTotal > 0
-        ? `₩${Math.round(depositKrwTotal).toLocaleString()} 증자됨 · 회사 연혁에 기록됨`
-        : "회사 연혁에 기록됨",
-  };
+  revalidatePath("/import");
+  const base =
+    depositKrwTotal > 0
+      ? `₩${Math.round(depositKrwTotal).toLocaleString()} 증자됨 · 회사 연혁에 기록됨`
+      : "회사 연혁에 기록됨";
+  return { ok: true, note: backdateNote ? `${base} · ${backdateNote}` : base };
+}
+
+/**
+ * 매수·매도 기록 수정(장부 전용) — 수량·단가(네이티브)·날짜.
+ * 통화·환율은 원본 유지(과거 환율 보존), ₩단가·수수료는 재계산.
+ * 매수에 짝지어 생성된 증자(DEPOSIT)는 건드리지 않음(삭제와 동일한 동작).
+ */
+export async function updateTradeEvent(input: {
+  id: string;
+  quantity: number;
+  priceNative: number;
+  date: string;
+}): Promise<Result> {
+  const ctx = await loadCtx();
+  if ("error" in ctx) return { ok: false, error: ctx.error };
+  const { supabase, holding, rows } = ctx;
+
+  if (holding.mode !== "ledger")
+    return { ok: false, error: "장부 모드에서만 수정할 수 있습니다." };
+
+  const ev = rows.find((r) => r.id === input.id);
+  if (!ev) return { ok: false, error: "거래를 찾을 수 없습니다." };
+  if (ev.deleted_at) return { ok: false, error: "삭제된 거래입니다." };
+  if (ev.type !== "BUY" && ev.type !== "SELL")
+    return { ok: false, error: "매수·매도만 수정할 수 있습니다." };
+
+  const today = todayKST();
+  if (input.date > today)
+    return { ok: false, error: "미래 날짜는 기록할 수 없습니다." };
+  if (!(input.quantity > 0)) return { ok: false, error: "수량을 입력하세요." };
+  if (!(input.priceNative > 0)) return { ok: false, error: "가격을 입력하세요." };
+
+  const account = ctx.accounts.find((a) => a.id === ev.account_id);
+  if (!account) return { ok: false, error: "계좌를 찾을 수 없습니다." };
+
+  const fx = ev.fx_rate == null || Number(ev.fx_rate) <= 0 ? 1 : Number(ev.fx_rate);
+  const priceKrw = input.priceNative * fx;
+  const gross = input.quantity * priceKrw;
+
+  // 매도는 (이 거래 제외) 보유 수량을 초과할 수 없음
+  if (ev.type === "SELL") {
+    const others = activeEventRows(
+      rows.filter((r) => r.account_id === ev.account_id && r.id !== ev.id),
+    ).map(mapRow);
+    const held = netQuantities(others)[ev.symbol as string] ?? 0;
+    if (input.quantity > held)
+      return {
+        ok: false,
+        error: `이 계좌의 보유 수량(${held}주)보다 많이 매도할 수 없습니다.`,
+      };
+  }
+
+  const feeAndTax = estimateFeeAndTax(
+    ev.type,
+    gross,
+    account.commissionRate,
+    account.accountType,
+  );
+
+  const { error } = await supabase
+    .from("events")
+    .update({
+      quantity: input.quantity,
+      price_or_amount: priceKrw,
+      fee_and_tax: feeAndTax,
+      date: input.date,
+    })
+    .eq("id", ev.id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/dashboard");
+  revalidatePath("/activity");
+  revalidatePath("/import");
+  return { ok: true };
 }
 
 /** 이벤트 소프트 삭제 — 장부 자유, 챌린지/라이브는 당일만. */
@@ -609,6 +717,7 @@ export async function deleteEvent(id: string): Promise<Result> {
 
   revalidatePath("/dashboard");
   revalidatePath("/activity");
+  revalidatePath("/import");
   return { ok: true };
 }
 
