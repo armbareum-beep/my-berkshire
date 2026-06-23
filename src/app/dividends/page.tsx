@@ -37,6 +37,21 @@ export default async function DividendsPage({
 }: {
   searchParams: Promise<{ year?: string }>;
 }) {
+  const { year: yearParam } = await searchParams;
+  return (
+    <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
+      <BottomTabBar />
+      <BackButton />
+      <DividendsContent yearParam={yearParam} />
+    </main>
+  );
+}
+
+/**
+ * 배당 본문 — 페이지 크롬 없이 내용만.
+ * 전체 페이지(`/dividends`)와 바텀시트(`@sheet/(.)dividends`)가 공유.
+ */
+export async function DividendsContent({ yearParam }: { yearParam?: string }) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -52,12 +67,9 @@ export default async function DividendsPage({
   const today = todayKST();
   const displayCcy =
     cookieStore.get("display_ccy")?.value === "USD" ? "USD" : "KRW";
-  const { year: yearParam } = await searchParams;
 
   return (
-    <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
-      <BottomTabBar />
-      <BackButton />
+    <>
       <h1 className="text-2xl font-extrabold tracking-tight">배당</h1>
       {/* 배당 피드(야후, 보유 종목별)가 무거워 본문은 스트리밍 — 제목은 즉시 보인다. */}
       <Suspense fallback={<DividendsSkeleton />}>
@@ -68,7 +80,7 @@ export default async function DividendsPage({
           displayCcy={displayCcy}
         />
       </Suspense>
-    </main>
+    </>
   );
 }
 

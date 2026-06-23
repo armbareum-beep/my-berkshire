@@ -25,6 +25,20 @@ import { todayKST } from "@/lib/date";
  *  · 스타일 = 우열 없는 거울(아키타입 + 프로파일).
  */
 export default async function StylePage() {
+  return (
+    <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
+      <BottomTabBar />
+      <BackButton />
+      <StyleContent />
+    </main>
+  );
+}
+
+/**
+ * 운용 스타일·규율 점수 본문 — 페이지 크롬 없이 내용만.
+ * 전체 페이지(`/style`)와 바텀시트(`@sheet/(.)style`)가 공유.
+ */
+export async function StyleContent() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -74,13 +88,11 @@ export default async function StylePage() {
   }
 
   return (
-    <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
-      <BottomTabBar />
-      <BackButton />
+    <>
       <h1 className="text-2xl font-extrabold tracking-tight">
         운용 스타일 · 규율 점수
       </h1>
       <StyleDetail style={style} previousStyle={previousStyle} />
-    </main>
+    </>
   );
 }

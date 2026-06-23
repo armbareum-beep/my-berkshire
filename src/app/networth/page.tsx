@@ -33,8 +33,30 @@ export default async function NetWorthPage({
   searchParams: Promise<{ add?: string }>;
 }) {
   const { add } = await searchParams;
-  const autoOpenDebt = add === "debt"; // + 허브 "대출" 진입 시 등록 폼 자동 열기
-  const autoOpenAsset = add === "asset"; // "직접 추가(실물·대체자산)" 진입 시
+  return (
+    <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
+      <BottomTabBar />
+      <BackButton />
+      <NetWorthContent
+        autoOpenDebt={add === "debt"}
+        autoOpenAsset={add === "asset"}
+      />
+    </main>
+  );
+}
+
+/**
+ * 순자산 본문 — 페이지 크롬 없이 내용만.
+ * 전체 페이지(`/networth`)와 바텀시트(`@sheet/(.)networth`)가 공유.
+ * autoOpen* 은 + 허브 진입(?add=debt|asset)에서만 폼을 자동으로 연다(시트에서는 기본 false).
+ */
+export async function NetWorthContent({
+  autoOpenDebt = false,
+  autoOpenAsset = false,
+}: {
+  autoOpenDebt?: boolean;
+  autoOpenAsset?: boolean;
+}) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -87,9 +109,7 @@ export default async function NetWorthPage({
   );
 
   return (
-    <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
-      <BottomTabBar />
-      <BackButton />
+    <>
       <h1 className="text-2xl font-extrabold tracking-tight">순자산</h1>
 
       {/* 순자산 요약 — 자산 − 부채 + 레버리지 리스크(재무상태표 바닥줄) */}
@@ -159,7 +179,7 @@ export default async function NetWorthPage({
         입력한 평가액 기준이며, 투자 수익률(XIRR)에는 포함되지 않아요(종목 실력과 분리).
         외화는 현재 환율 기준. 벤치마크·기간 선택은 곧 추가됩니다.
       </p>
-    </main>
+    </>
   );
 }
 

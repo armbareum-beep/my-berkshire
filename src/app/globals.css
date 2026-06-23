@@ -6,6 +6,16 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* 바텀시트(드롭시트) 진입/퇴장 — CSS 구동(클라이언트 하이드레이션과 무관하게 항상 보이고 올라옴) */
+@keyframes sheet-in {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+@keyframes sheet-out {
+  from { transform: translateY(0); }
+  to { transform: translateY(100%); }
+}
+
 /*
  * 디자인 토큰 — /docs/design-strategy-v1.md 가 단일 기준.
  * 토스/뱅크샐러드식 모던: 옅은 쿨그레이 배경 + 순백 카드 + soft shadow.
@@ -175,14 +185,16 @@ html {
   }
 }
 /* 페이지 진입 — 라우트 전환 시 살짝 떠오르며 페이드(template.tsx). */
+/* 페이지 진입 — opacity 만 애니메이트(transform 금지).
+   transform 을 쓰면 .animate-page-in 이 컨테이닝 블록이 되어 그 안의 position:fixed
+   (하단 탭바 등)가 뷰포트가 아닌 래퍼 기준으로 잡혀 '스크롤해야 보이는' 버그가 난다.
+   페이드업의 '업' 모션은 카드 단위 .stagger(rise-in)가 담당. */
 @keyframes page-in {
   from {
     opacity: 0;
-    transform: translateY(8px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 /* 리스트 항목 순차 등장 — 부모에 .stagger, 자식이 자동 지연 페이드업. */

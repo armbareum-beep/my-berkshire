@@ -33,11 +33,11 @@ import { DisclosureFeed } from "@/components/disclosures/DisclosureFeed";
  * 한국 주식만 지분가중 합산. 나머지 보유는 사유와 함께 노출(숨김 없음).
  * 계산은 ₩(펀더멘털이 ₩), 표시통화 토글(KRW/USD)은 표시 단계에서만 환율 변환(비율은 통화 무관).
  */
-export default async function LookThroughPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ basis?: string }>;
-}) {
+/**
+ * 투시 펀더멘털 본문 — 페이지 크롬 없이 내용만.
+ * 전체 페이지(`/lookthrough`)와 바텀시트(`@sheet/(.)lookthrough`)가 공유.
+ */
+export async function LookThroughContent({ basis }: { basis: "ttm" | "fy" }) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -51,9 +51,6 @@ export default async function LookThroughPage({
 
   if (!portfolio) redirect("/onboarding");
 
-  const query = await searchParams;
-  const basis = query.basis === "fy" ? "fy" : "ttm";
-
   const today = todayKST();
   // 계산은 항상 ₩(펀더멘털이 ₩). 표시통화는 토글에 따라 변환.
   const data = computeDashboard(portfolio, "KRW");
@@ -65,10 +62,7 @@ export default async function LookThroughPage({
   const cur: Currency = useUsd ? "USD" : "KRW";
 
   return (
-    <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
-      <BottomTabBar />
-      <BackButton />
-
+    <>
       {/* 회사 = 사업부들의 연결 */}
       <div>
         <p className="text-xs font-semibold text-muted-foreground">
@@ -93,6 +87,23 @@ export default async function LookThroughPage({
           basis={basis}
         />
       </Suspense>
+    </>
+  );
+}
+
+export default async function LookThroughPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ basis?: string }>;
+}) {
+  const query = await searchParams;
+  const basis = query.basis === "fy" ? "fy" : "ttm";
+
+  return (
+    <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
+      <BottomTabBar />
+      <BackButton />
+      <LookThroughContent basis={basis} />
     </main>
   );
 }

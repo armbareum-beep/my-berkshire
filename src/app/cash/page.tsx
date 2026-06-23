@@ -29,6 +29,20 @@ export default async function CashPage({
   searchParams: Promise<{ tab?: string }>;
 }) {
   const { tab } = await searchParams;
+  return (
+    <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
+      <BottomTabBar />
+      <BackButton />
+      <CashContent tab={tab} />
+    </main>
+  );
+}
+
+/**
+ * 현금·외화 본문 — 페이지 크롬 없이 내용만.
+ * 전체 페이지(`/cash`)와 바텀시트(`@sheet/(.)cash`)가 공유.
+ */
+export async function CashContent({ tab }: { tab?: string }) {
   const isFx = tab === "fx";
 
   const supabase = await createClient();
@@ -76,9 +90,7 @@ export default async function CashPage({
   }));
 
   return (
-    <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
-      <BottomTabBar />
-      <BackButton />
+    <>
       <h1 className="text-2xl font-extrabold tracking-tight">현금 · 외화</h1>
 
       {/* 탭: 내 외화 / 환율 */}
@@ -215,6 +227,6 @@ export default async function CashPage({
           </div>
         </>
       )}
-    </main>
+    </>
   );
 }

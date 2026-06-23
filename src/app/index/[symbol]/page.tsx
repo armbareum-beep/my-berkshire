@@ -51,6 +51,20 @@ export default async function IndexDetailPage({
   params: Promise<{ symbol: string }>;
 }) {
   const { symbol } = await params;
+  return (
+    <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
+      <BottomTabBar />
+      <BackButton />
+      <IndexDetailContent symbol={symbol} />
+    </main>
+  );
+}
+
+/**
+ * 지수 상세 본문 — 페이지 크롬(BackButton·BottomTabBar) 없이 내용만.
+ * 전체 페이지(`/index/[symbol]`)와 바텀시트(`@sheet/(.)index/[symbol]`)가 공유.
+ */
+export async function IndexDetailContent({ symbol }: { symbol: string }) {
   const decoded = decodeURIComponent(symbol);
 
   const preset = PRESET_QUOTES.find(
@@ -82,10 +96,7 @@ export default async function IndexDetailPage({
   }));
 
   return (
-    <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
-      <BottomTabBar />
-      <BackButton />
-
+    <>
       <div className="flex items-center gap-2">
         {flag && <span className="text-2xl">{flag}</span>}
         <div>
@@ -171,7 +182,7 @@ export default async function IndexDetailPage({
       )}
 
       <EtfLinks indexSymbol={decoded} indexName={preset.name} />
-    </main>
+    </>
   );
 }
 

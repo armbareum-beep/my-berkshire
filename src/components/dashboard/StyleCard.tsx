@@ -16,6 +16,7 @@ export function StyleCard({ style }: { style: StyleResult }) {
   return (
     <Link
       href="/style"
+      scroll={false}
       className="block rounded-2xl bg-card p-5 shadow-card transition active:scale-[0.99]"
     >
       <div className="flex items-center justify-between">

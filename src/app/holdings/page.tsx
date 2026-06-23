@@ -14,6 +14,20 @@ import { HoldingsBrowser } from "@/components/holdings/HoldingsBrowser";
  * 계좌 관리(이름·유형·수수료 수정)는 /accounts.
  */
 export default async function HoldingsPage() {
+  return (
+    <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
+      <BackButton />
+      <HoldingsContent />
+      <BottomTabBar />
+    </main>
+  );
+}
+
+/**
+ * 보유 종목 본문 — 페이지 크롬 없이 내용만.
+ * 전체 페이지(`/holdings`)와 바텀시트(`@sheet/(.)holdings`)가 공유.
+ */
+export async function HoldingsContent() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -40,8 +54,7 @@ export default async function HoldingsPage() {
   });
 
   return (
-    <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
-      <BackButton />
+    <>
       <div>
         <h1 className="text-2xl font-extrabold tracking-tight">보유 종목</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -72,8 +85,6 @@ export default async function HoldingsPage() {
       >
         계좌 관리 · 수수료 ›
       </Link>
-
-      <BottomTabBar />
-    </main>
+    </>
   );
 }

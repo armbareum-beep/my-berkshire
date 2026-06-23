@@ -120,6 +120,7 @@ export default async function SearchPage() {
                           instrumentTypes[sym] === "ETF" ? "&assetType=ETF" : ""
                         }`
                       }
+                      scroll={false}
                       className="flex items-center gap-3 rounded-xl bg-card p-3 shadow-card transition active:scale-[0.99]"
                     >
                       {inner}

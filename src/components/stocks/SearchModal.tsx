@@ -157,7 +157,9 @@ export function SearchModal({
                       : `/stocks/${item.symbol}?name=${encodeURIComponent(item.name)}${
                           item.assetType ? `&assetType=${encodeURIComponent(item.assetType)}` : ""
                         }`;
-                    router.push(href);
+                    router.push(href, { scroll: false });
+                    // 검색 모달을 닫아야 인터셉트된 상세 시트가 가려지지 않는다(US2).
+                    onClose();
                   }}
                   className="flex min-w-0 flex-1 items-center gap-3 text-left"
                 >

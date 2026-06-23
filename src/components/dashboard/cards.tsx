@@ -37,14 +37,18 @@ const EVENT_LABEL: Record<string, string> = {
 /** 카드 하단 액션 행(푸터) — 데이터 카드 안에 관련 액션을 붙일 때. */
 export function CardAction({
   href,
+  scroll = true,
   children,
 }: {
   href: string;
+  /** false 면 내비 시 배경 스크롤 보존(바텀시트 진입용). */
+  scroll?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <Link
       href={href}
+      scroll={scroll}
       className="flex items-center justify-between text-sm font-medium transition active:opacity-70"
     >
       <span>{children}</span>
@@ -58,16 +62,19 @@ export function CardShell({
   title,
   href,
   footer,
+  scroll = true,
   children,
 }: {
   title?: string;
   href?: string;
   /** 하단 액션 행(있으면 whole-card 링크 대신 제목·푸터가 각각 링크 — 링크 중첩 방지). */
   footer?: React.ReactNode;
+  /** false 면 내비 시 배경 스크롤 보존(바텀시트 진입용). */
+  scroll?: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <SectionCard title={title} href={href} footer={footer}>
+    <SectionCard title={title} href={href} footer={footer} scroll={scroll}>
       {children}
     </SectionCard>
   );
@@ -121,6 +128,7 @@ export function HeroValuationCard({
         </div>
         <Link
           href="/networth"
+          scroll={false}
           className="text-muted-foreground"
           aria-label="순자산 상세"
         >
@@ -380,7 +388,7 @@ export function CashCard({
   ).sort((a, b) => (a[0] === "KRW" ? -1 : b[0] === "KRW" ? 1 : 0));
   const hasForeign = rows.some(([c]) => c !== "KRW");
   return (
-    <CardShell title="현금 비중" href="/cash" footer={footer}>
+    <CardShell title="현금 비중" href="/cash" scroll={false} footer={footer}>
       <div className="flex items-baseline justify-between">
         <span className="text-2xl font-bold tabular-nums">
           {cashWeight !== null ? pct(cashWeight) : "—"}
