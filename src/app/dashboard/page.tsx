@@ -275,9 +275,16 @@ async function DashboardContent({
   return (
     <CurrencyProvider initial={displayCcy}>
     <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
-      <header className="flex items-center justify-between">
-        <div>
-          <Link href="/company" className="text-sm font-medium text-muted-foreground">
+      <header className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-col">
+          {/* 브랜드 워드마크 — 잉크 타이포(색면 없음). 회사명은 그 아래 하위 정보. */}
+          <span className="text-2xl font-extrabold tracking-tight text-foreground">
+            ENUF
+          </span>
+          <Link
+            href="/company"
+            className="truncate text-sm font-medium text-muted-foreground"
+          >
             {holding.name} ›
           </Link>
           <p className="text-xs text-muted-foreground">
@@ -285,7 +292,7 @@ async function DashboardContent({
             {holding.mode === "challenge" ? "챌린지" : "장부"}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <Link
             href="/search"
             aria-label="종목 검색"
