@@ -93,26 +93,30 @@ export function AccountGroups({
                     className="flex items-center gap-3 rounded-xl py-2 transition active:scale-[0.99]"
                   >
                     <SymbolAvatar name={h.name} symbol={h.symbol} />
-                    <span className="flex flex-col">
-                      <span className="font-medium">{h.name}</span>
+                    <span className="flex min-w-0 flex-col">
+                      <span className="truncate font-medium">{h.name}</span>
                       <span className="text-sm text-muted-foreground">
                         {h.quantity.toLocaleString()}
                         {qtyUnit(h.symbol)}
                       </span>
                     </span>
-                    <span className="ml-auto flex flex-col items-end">
-                      <span className="font-semibold tabular-nums">
-                        {money(h.value, currency)}
-                      </span>
-                      {h.changeRate !== null && (
-                        <span
-                          className="text-sm font-medium tabular-nums"
-                          style={{ color: changeColor(h.changeRate) }}
-                        >
-                          {signedMoneyShort(h.gain ?? 0, currency)} (
-                          {pct(Math.abs(h.changeRate))})
+                    <span className="ml-auto flex items-center gap-2">
+                      <span className="flex flex-col items-end">
+                        <span className="font-semibold tabular-nums">
+                          {money(h.value, currency)}
                         </span>
-                      )}
+                        {h.changeRate !== null && (
+                          <span
+                            className="text-sm font-medium tabular-nums"
+                            style={{ color: changeColor(h.changeRate) }}
+                          >
+                            {signedMoneyShort(h.gain ?? 0, currency)} (
+                            {pct(Math.abs(h.changeRate))})
+                          </span>
+                        )}
+                      </span>
+                      {/* 상세 진입 표식 — 작고 연하게(선주의 배경으로). 계좌 summary › 보다 약한 위계 */}
+                      <span className="text-sm text-muted-foreground/50">›</span>
                     </span>
                   </Link>
                 </li>
