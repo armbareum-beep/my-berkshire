@@ -17,6 +17,7 @@ export function SectionCard({
   footer,
   padding = "lg",
   className,
+  scroll = true,
   children,
 }: {
   title?: string;
@@ -26,6 +27,8 @@ export function SectionCard({
   footer?: React.ReactNode;
   padding?: "lg" | "sm";
   className?: string;
+  /** false 면 내비 시 스크롤 위치 보존(바텀시트 진입 카드용 — 배경 스크롤 유지). */
+  scroll?: boolean;
   children: React.ReactNode;
 }) {
   const surface = cn(
@@ -50,6 +53,7 @@ export function SectionCard({
           (href && !action ? (
             <Link
               href={href}
+              scroll={scroll}
               className="mb-3 flex items-center justify-between gap-2 transition active:opacity-70"
             >
               <p className="text-sm font-semibold">{title}</p>
@@ -72,7 +76,7 @@ export function SectionCard({
   );
   // href 가 있고 우상단 action 이 없으면 카드 전체 링크.
   return href && !action ? (
-    <Link href={href} className={cn(surface, "block transition active:scale-[0.99]")}>
+    <Link href={href} scroll={scroll} className={cn(surface, "block transition active:scale-[0.99]")}>
       {inner}
     </Link>
   ) : (

@@ -50,14 +50,37 @@ const EVENT_LABEL: Record<string, string> = {
   WITHDRAWAL: "인출",
 };
 
+type StockSearchParams = { [k: string]: string | string[] | undefined };
+
 export default async function StockDetailPage({
   params,
   searchParams,
 }: {
   params: Promise<{ symbol: string }>;
-  searchParams: Promise<{ [k: string]: string | string[] | undefined }>;
+  searchParams: Promise<StockSearchParams>;
 }) {
   const { symbol } = await params;
+  const sp = await searchParams;
+  return (
+    <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
+      <BottomTabBar />
+      <BackButton />
+      <StockDetailContent symbol={symbol} sp={sp} />
+    </main>
+  );
+}
+
+/**
+ * 종목 상세 본문 — 페이지 크롬(BackButton·BottomTabBar) 없이 내용만.
+ * 전체 페이지(`/stocks/[symbol]`)와 바텀시트(`@sheet/(.)stocks/[symbol]`)가 공유.
+ */
+export async function StockDetailContent({
+  symbol,
+  sp,
+}: {
+  symbol: string;
+  sp: StockSearchParams;
+}) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -68,7 +91,6 @@ export default async function StockDetailPage({
   if (!portfolio) redirect("/onboarding");
 
   // searchParams 는 name 폴백·상세 탭·fy(기준 연도)에 쓴다.
-  const sp = await searchParams;
   const nameParam = typeof sp.name === "string" ? sp.name : null;
   // 재무신호 카드에서 진입하면 재무제표 섹션을 펼친 채로(#financials 로 스크롤).
   const openFinancials = sp.view === "financials";
@@ -450,10 +472,7 @@ export default async function StockDetailPage({
   };
 
   return (
-    <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
-      <BottomTabBar />
-      <BackButton />
-
+    <>
       <div className="flex items-center gap-3">
         <SymbolAvatar name={name} symbol={symbol} />
         <div className="min-w-0">
@@ -1151,7 +1170,7 @@ export default async function StockDetailPage({
         )}
       </section>
       )}
-    </main>
+    </>
   );
 }
 

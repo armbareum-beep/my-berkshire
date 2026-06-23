@@ -10,8 +10,10 @@ export const metadata: Metadata = {
 
 export default function RootLayout({
   children,
+  sheet,
 }: Readonly<{
   children: React.ReactNode;
+  sheet: React.ReactNode;
 }>) {
   // 폰트는 Pretendard 단일(globals.css의 --font-sans / CDN import). next/font Geist 미사용.
   return (
@@ -21,6 +23,8 @@ export default function RootLayout({
         <div className="mx-auto min-h-dvh w-full max-w-[480px] bg-background">
           {children}
         </div>
+        {/* 상세 바텀시트(드롭시트) 슬롯 — fixed 오버레이로 컬럼 위에 뜬다. 비활성 시 default→null */}
+        {sheet}
         <MarketAutoRefresh />
         <Toaster position="top-center" />
       </body>

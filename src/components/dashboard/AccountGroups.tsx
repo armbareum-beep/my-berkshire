@@ -89,6 +89,7 @@ export function AccountGroups({
                 <li key={h.symbol}>
                   <Link
                     href={`/stocks/${h.symbol}`}
+                    scroll={false}
                     className="flex items-center gap-3 rounded-xl py-2 transition active:scale-[0.99]"
                   >
                     <SymbolAvatar name={h.name} symbol={h.symbol} />

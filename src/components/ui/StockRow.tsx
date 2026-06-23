@@ -70,6 +70,7 @@ export function StockRow({
   return href ? (
     <Link
       href={href}
+      scroll={false}
       className={cn("block rounded-xl py-2 transition active:scale-[0.99]", className)}
     >
       {inner}

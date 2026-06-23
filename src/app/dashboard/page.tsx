@@ -579,6 +579,7 @@ async function HoldingsStreamed({
       <CardShell
         title="보유 계좌"
         href="/holdings"
+        scroll={false}
         footer={<CardAction href="/accounts">계좌 관리</CardAction>}
       >
         <CurrencyView
@@ -610,7 +611,7 @@ async function HoldingsStreamed({
                 cashWeight={dataKRW.cashWeight}
                 currency="KRW"
                 pools={pools}
-                footer={<CardAction href="/dividends">배당 — 언제 얼마 받나</CardAction>}
+                footer={<CardAction href="/dividends" scroll={false}>배당 — 언제 얼마 받나</CardAction>}
               />
             }
             usd={
@@ -619,7 +620,7 @@ async function HoldingsStreamed({
                 cashWeight={dataKRW.cashWeight}
                 currency="USD"
                 pools={pools}
-                footer={<CardAction href="/dividends">배당 — 언제 얼마 받나</CardAction>}
+                footer={<CardAction href="/dividends" scroll={false}>배당 — 언제 얼마 받나</CardAction>}
               />
             }
           />
@@ -651,7 +652,7 @@ async function ReportLinkStreamed({
 
   return (
     <section className="rounded-2xl bg-card p-5 shadow-card">
-      <Link href="/report" className="block transition active:opacity-70">
+      <Link href="/report" scroll={false} className="block transition active:opacity-70">
       <div className="flex items-center justify-between gap-2">
         <div>
           <p className="flex items-center gap-1.5 text-sm font-semibold">
@@ -786,6 +787,7 @@ async function DisclosureCountStreamed({
   return (
     <Link
       href="/disclosures"
+      scroll={false}
       className="flex items-center justify-between rounded-xl bg-card px-4 py-3 text-sm font-semibold shadow-card transition active:scale-[0.99]"
     >
       <span>내 사업부 소식</span>
@@ -956,6 +958,7 @@ function LookThroughFallbackLink() {
   return (
     <Link
       href="/lookthrough"
+      scroll={false}
       className="block rounded-2xl bg-card p-5 shadow-card transition active:scale-[0.99]"
     >
       <div className="flex items-center justify-between">
