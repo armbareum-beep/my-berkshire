@@ -78,3 +78,23 @@ export function manualAssetGain(a: ManualAsset): number | null {
   if (a.acquiredPrice == null || a.acquiredPrice <= 0) return null;
   return a.currentValue - a.acquiredPrice;
 }
+
+/**
+ * 취득가가 있는 수기자산의 합산 취득원가·평가손익(₩).
+ * 취득가 없는 자산은 수익률 스코프에서 제외(원가 모르면 수익률 계산 불가).
+ * "부동산 사업부 수익"을 총자산 누적수익률에 정직하게 합산하는 데 쓰인다(평가는 수기 추정).
+ */
+export function manualAssetsCostBasis(items: ManualAsset[]): {
+  cost: number;
+  gain: number;
+} {
+  let cost = 0;
+  let gain = 0;
+  for (const a of items) {
+    if (a.acquiredPrice != null && a.acquiredPrice > 0) {
+      cost += a.acquiredPrice;
+      gain += a.currentValue - a.acquiredPrice;
+    }
+  }
+  return { cost, gain };
+}

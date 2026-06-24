@@ -4,13 +4,19 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getPortfolio } from "@/lib/portfolio";
 import { computeDashboard } from "@/lib/dashboard";
-import { companyCashPools } from "@/lib/finance/valuation";
+import {
+  companyCashPools,
+  totalDeposits,
+  totalWithdrawals,
+} from "@/lib/finance/valuation";
 import { loadPortfolioValueSeries } from "@/lib/portfolioValueSeries";
 import { loadAccountGroups } from "@/lib/accounts";
 import { loadLiabilities } from "@/lib/liabilities";
 import { totalLiabilities, annualInterest } from "@/lib/finance/liabilities";
 import { loadManualAssets } from "@/lib/realAssets";
-import { totalManualAssets } from "@/lib/finance/realAssets";
+import { totalManualAssets, manualAssetsCostBasis } from "@/lib/finance/realAssets";
+import { computeBusinessReturns } from "@/lib/finance/businessReturns";
+import { BusinessReturnsCard } from "@/components/networth/BusinessReturnsCard";
 import { todayKST } from "@/lib/date";
 import { BackButton } from "@/components/BackButton";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
@@ -75,6 +81,18 @@ export async function NetWorthContent({
   const useUsd = displayCcy === "USD" && !!portfolio.usdKrw;
   const factor = useUsd ? 1 / (portfolio.usdKrw as number) : 1;
 
+  // 주식 사업부 누적(₩, 표시 환산은 컴포넌트 factor). 부동산 합산은 NetWorthSummaryStreamed에서.
+  const initialValuationKrw = Number(portfolio.holding.initial_valuation);
+  const depositsKrw = totalDeposits(portfolio.events);
+  const stockInvestedKrw = initialValuationKrw + depositsKrw;
+  const stockGainKrw =
+    portfolio.result.currentValuation !== null
+      ? portfolio.result.currentValuation +
+        totalWithdrawals(portfolio.events) -
+        depositsKrw -
+        initialValuationKrw
+      : null;
+
   const today = todayKST();
   const symbols = [
     ...new Set(
@@ -116,6 +134,8 @@ export async function NetWorthContent({
       <Suspense fallback={<SummarySkeleton />}>
         <NetWorthSummaryStreamed
           investmentKrw={portfolio.result.currentValuation}
+          stockInvestedKrw={stockInvestedKrw}
+          stockGainKrw={stockGainKrw}
           manualAssetsPromise={manualAssetsPromise}
           liabilitiesPromise={liabilitiesPromise}
           factor={factor}
@@ -190,6 +210,8 @@ type ValueSeriesResult = Awaited<ReturnType<typeof loadPortfolioValueSeries>>;
 
 async function NetWorthSummaryStreamed({
   investmentKrw,
+  stockInvestedKrw,
+  stockGainKrw,
   manualAssetsPromise,
   liabilitiesPromise,
   factor,
@@ -197,6 +219,8 @@ async function NetWorthSummaryStreamed({
   priceAvailable,
 }: {
   investmentKrw: number | null;
+  stockInvestedKrw: number;
+  stockGainKrw: number | null;
   manualAssetsPromise: Promise<ManualAssetsResult>;
   liabilitiesPromise: Promise<LiabilitiesResult>;
   factor: number;
@@ -210,15 +234,31 @@ async function NetWorthSummaryStreamed({
   const manualTotalKrw = totalManualAssets(manualAssets);
   const assetsKrw = investmentKrw !== null ? investmentKrw + manualTotalKrw : null;
 
+  // 사업부별 누적수익률(주식 + 부동산) — 히어로 총 누적수익률의 분해.
+  const reBasis = manualAssetsCostBasis(manualAssets);
+  const businessReturns = computeBusinessReturns({
+    stockInvested: stockInvestedKrw,
+    stockGain: stockGainKrw,
+    manualCost: reBasis.cost,
+    manualGain: reBasis.gain,
+  });
+
   return (
-    <NetWorthSummary
-      assetsKrw={assetsKrw}
-      debtKrw={totalLiabilities(liabilities)}
-      annualInterestKrw={annualInterest(liabilities)}
-      factor={factor}
-      currency={currency}
-      priceAvailable={priceAvailable}
-    />
+    <>
+      <NetWorthSummary
+        assetsKrw={assetsKrw}
+        debtKrw={totalLiabilities(liabilities)}
+        annualInterestKrw={annualInterest(liabilities)}
+        factor={factor}
+        currency={currency}
+        priceAvailable={priceAvailable}
+      />
+      <BusinessReturnsCard
+        result={businessReturns}
+        factor={factor}
+        currency={currency}
+      />
+    </>
   );
 }
 

@@ -14,7 +14,7 @@ import { getNextAction } from "@/lib/nextAction";
 import { loadLiabilities } from "@/lib/liabilities";
 import { totalLiabilities, leverageLevel } from "@/lib/finance/liabilities";
 import { loadManualAssets } from "@/lib/realAssets";
-import { totalManualAssets } from "@/lib/finance/realAssets";
+import { totalManualAssets, manualAssetsCostBasis } from "@/lib/finance/realAssets";
 import { companyCashPools } from "@/lib/finance/valuation";
 import { loadAccountGroups, type AccountGroup } from "@/lib/accounts";
 import { loadWatchlist } from "@/lib/watchlist";
@@ -195,8 +195,8 @@ async function DashboardContent({
           benchmarkUSDPromise={benchmarkUSDPromise}
           profitKRW={dataKRW.profit}
           profitUSD={dataUSD.profit}
-          investedKRW={dataKRW.invested}
-          investedUSD={dataUSD.invested}
+          investedKRW={dataKRW.investedGross}
+          investedUSD={dataUSD.investedGross}
           welcome={isWelcome}
         />
       </Suspense>
@@ -507,6 +507,18 @@ async function HeroValuationStreamed({
   const stocksKrw =
     result.currentValuation !== null ? result.currentValuation - cashKrw : 0;
   const manualKrw = totalManualAssets(manualAssets);
+
+  // 총자산 누적수익률(₩ 기준, 비율은 통화무관) — 투자 손익(시세) + 부동산 등 수기자산 평가손익(추정).
+  // 취득가 있는 수기자산만 합산(원가 모르면 수익률 스코프 밖). 시세 실패 시 null(가짜 숫자 금지).
+  const re = manualAssetsCostBasis(manualAssets);
+  const stockGain = dataKRW.profit; // 투자 누적손익 ₩(시세 실패 시 null)
+  const totalCostBasis = dataKRW.investedGross + re.cost;
+  const cumulativeReturnTotal =
+    totalCostBasis > 0 &&
+    !(stockGain === null && dataKRW.investedGross > 0)
+      ? ((stockGain ?? 0) + re.gain) / totalCostBasis
+      : null;
+
   const netWorthPartsKrw: { label: string; value: number }[] =
     result.currentValuation !== null
       ? [
@@ -530,6 +542,8 @@ async function HeroValuationStreamed({
           currency="KRW"
           parts={netWorthPartsKrw}
           sinceLastSeen={sinceLastSeenKrw}
+          compoundingStreak={dataKRW.compoundingStreak}
+          cumulativeReturn={cumulativeReturnTotal}
         />
       }
       usd={
@@ -546,6 +560,8 @@ async function HeroValuationStreamed({
                 }
               : null
           }
+          compoundingStreak={dataUSD.compoundingStreak}
+          cumulativeReturn={cumulativeReturnTotal}
         />
       }
     />

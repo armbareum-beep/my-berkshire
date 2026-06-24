@@ -11,6 +11,10 @@ import {
 import { daysSince } from "./finance/xirr";
 import { findCatalogItem } from "./finance/catalog";
 import { journeyMilestones } from "./finance/milestones";
+import {
+  computeCompoundingStreak,
+  type CompoundingStreak,
+} from "./finance/compoundingStreak";
 import { todayKST } from "./date";
 import type { Currency } from "./format";
 
@@ -47,6 +51,8 @@ export interface DashboardData {
   valuation: number | null; // 현재 총 자산
   /** 투입 원금 = 설립자본 + 증자 − 인출(내가 그간 넣은 순 자금). */
   invested: number;
+  /** 투자 누적수익률 분모 = 설립자본 + 증자(인출 차감 전 총 투입). 총자산 수익률 합산용. */
+  investedGross: number;
   dailyChange: number | null; // 어제(전일 종가) 대비 평가액 변동(금액)
   profit: number | null; // 누적 수익(금액) = 실현 + 미실현
   realized: number | null; // 실현 손익(매매차익 + 배당 − 비용)
@@ -58,6 +64,8 @@ export interface DashboardData {
   allocation: AllocationSlice[];
   recent: ActivityFeedItem[];
   timeline: TimelineItem[];
+  /** 복리 무중단 — 소비성 인출 없이 복리를 지켜온 연속 기간(통화 무관). */
+  compoundingStreak: CompoundingStreak;
 }
 
 export function computeDashboard(
@@ -80,6 +88,11 @@ export function computeDashboard(
     names[symbol] ?? findCatalogItem(symbol)?.name ?? symbol;
 
   const initialValuation = Number(holding.initial_valuation);
+  const compoundingStreak = computeCompoundingStreak(
+    events,
+    { foundedAt: holding.founded_at, initialValuation },
+    today,
+  );
   const cash = initialValuation + cashBalance(events);
   const deposits = totalDeposits(events);
   const withdrawals = totalWithdrawals(events);
@@ -199,6 +212,7 @@ export function computeDashboard(
     priceAvailable,
     valuation: cvN(valuation),
     invested: cv(initialValuation + deposits - withdrawals),
+    investedGross: cv(initialValuation + deposits),
     dailyChange: cvN(dailyChange),
     profit: cvN(profit),
     realized: cvN(realized),
@@ -216,5 +230,6 @@ export function computeDashboard(
     })),
     recent: recent.map((r) => ({ ...r, priceOrAmount: cv(r.priceOrAmount) })),
     timeline,
+    compoundingStreak, // 날짜·기간 — 통화 무관
   };
 }
