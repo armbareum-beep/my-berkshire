@@ -28,7 +28,6 @@ import { MarketSection } from "@/components/benchmark/MarketSection";
 import { FrictionCard } from "@/components/dashboard/cards";
 import { businessCandidates } from "@/lib/finance/businessContribution";
 import { BusinessContribution } from "@/components/returns/BusinessContribution";
-import { upsertPerfSnapshot } from "@/lib/perf/snapshot";
 
 /**
  * 수익률 (통합) — 기간 수익률 + 누적손익(실현/미실현) + vs시장 차트.
@@ -82,29 +81,6 @@ export default async function ReturnsPage() {
     ),
   ]);
   const series = valueSeries.closes;
-
-  // 알파 계산 (누적수익률 기반, 90일 제한 없음) — 스냅샷 저장용
-  const defaultBenchmarkEntry = indexData.find((d) => d.index.label === defaultIndexLabel);
-  const benchmarkCumulative = defaultBenchmarkEntry?.s
-    ? indexSummaryFromSeries(defaultBenchmarkEntry.s, seed, events, today).benchmarkCumulative
-    : null;
-  const alpha =
-    result.cumulativeReturn != null && benchmarkCumulative != null
-      ? result.cumulativeReturn - benchmarkCumulative
-      : null;
-
-  // 스냅샷 저장 (non-blocking, 결과 불필요)
-  upsertPerfSnapshot(
-    supabase,
-    holding.id,
-    user.id,
-    result,
-    result.currentValuation,
-    holding.mode,
-    holding.initial_capital != null ? Number(holding.initial_capital) : null,
-    alpha,
-    defaultBenchmarkEntry?.index.symbol ?? null,
-  ).catch(() => {});
 
   // ── 1) 기간 수익률 ──
   const periods: PeriodView[] =

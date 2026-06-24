@@ -25,9 +25,8 @@ export interface FoundingAccount {
 }
 
 export interface FoundInput {
-  mode: "challenge" | "ledger";
   name: string;
-  foundedAt: string; // ledger: 선택, challenge: 오늘 고정(클라이언트에서 강제)
+  foundedAt: string; // 장부 — 사용자가 선택한 설립일
   stocks: FoundingStock[];
   cash: number;
   /** 첫 계좌 이름(자회사를 담는 그릇). 기본 "기본 계좌". */
@@ -59,10 +58,9 @@ export async function foundCompany(input: FoundInput): Promise<ActionResult> {
 
   if (!input.name.trim()) return { ok: false, error: "회사명을 입력하세요." };
 
-  // challenge 는 소급 불가 → 설립일 오늘 고정
-  const foundedAt = input.mode === "challenge" ? todayKST() : input.foundedAt;
+  // 장부 — 사용자가 선택한 설립일.
+  const foundedAt = input.foundedAt;
 
-  // 챌린지는 평단을 사용자가 못 정한다 → 설립 보유종목도 현재 시세로 강제(조작 차단).
   // 장부는 사용자가 입력한 실제 매입 평단을 그대로 쓴다.
   // 외국 종목(USD 등)은 현재 환율로 ₩ 환산해 장부 기록(기능통화=KRW).
   let stocks = input.stocks;
@@ -71,10 +69,7 @@ export async function foundCompany(input: FoundInput): Promise<ActionResult> {
   const stockTypes: Record<string, string> = {};
   if (input.stocks.length) {
     const symbols = input.stocks.map((s) => s.symbol);
-    const { prices, currencies, instrumentTypes, available } =
-      await getPrices(symbols);
-    if (input.mode === "challenge" && !available)
-      return { ok: false, error: "시세를 불러올 수 없어 설립할 수 없습니다." };
+    const { currencies, instrumentTypes } = await getPrices(symbols);
     const fx = await getFxToKrw(Object.values(currencies));
     const converted: FoundingStock[] = [];
     for (const s of input.stocks) {
@@ -88,14 +83,8 @@ export async function foundCompany(input: FoundInput): Promise<ActionResult> {
         };
       stockCurrencies[s.symbol] = ccy;
       stockTypes[s.symbol] = instrumentTypes[s.symbol] ?? "EQUITY";
-      // challenge: 현재 시세(네이티브) 강제. ledger: 사용자 입력 평단(네이티브).
-      let nativePrice = s.avgPrice;
-      if (input.mode === "challenge") {
-        const mp = prices[s.symbol];
-        if (mp == null)
-          return { ok: false, error: `${s.name} 시세를 불러올 수 없습니다.` };
-        nativePrice = mp;
-      }
+      // 장부: 사용자 입력 평단(네이티브)을 그대로 사용.
+      const nativePrice = s.avgPrice;
       let priceKrw = nativePrice;
       let rateUsed = 1;
       if (ccy !== "KRW") {
@@ -109,7 +98,7 @@ export async function foundCompany(input: FoundInput): Promise<ActionResult> {
       converted.push({
         ...s,
         avgPrice: priceKrw,
-        buyDate: input.mode === "ledger" ? s.buyDate : undefined,
+        buyDate: s.buyDate,
       });
     }
     stocks = converted;
@@ -133,7 +122,7 @@ export async function foundCompany(input: FoundInput): Promise<ActionResult> {
     .from("holdings")
     .insert({
       name: input.name.trim(),
-      mode: input.mode,
+      mode: "ledger",
       founded_at: companyFoundedAt,
       initial_capital: initialValuation,
       initial_valuation: initialValuation,
@@ -199,8 +188,7 @@ export async function foundCompany(input: FoundInput): Promise<ActionResult> {
     const rows = stocks.flatMap((x) => {
       const ccy = stockCurrencies[x.symbol] ?? "KRW";
       const fx = stockFx[x.symbol] ?? 1;
-      const eventDate =
-        input.mode === "ledger" && x.buyDate ? x.buyDate : foundedAt;
+      const eventDate = x.buyDate ?? foundedAt;
       const cost = x.quantity * x.avgPrice; // ₩ 매입원가
       const accountId = accountIds[x.accountIndex ?? 0] ?? accountIds[0];
       return [

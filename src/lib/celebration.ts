@@ -79,7 +79,7 @@ export function computeCelebrations(opts: CelebrationOpts): HomeSignal[] {
         key: `anniv:${anniv.years}`, // 연 1회, 다음 해는 새 key 라 자연 만료
         icon: "🏛️",
         text: `${opts.holdingName} 설립 ${anniv.years}주년 — 한 해를 버텨냈습니다`,
-        href: "/activity",
+        href: "/timeline",
         tone: "good",
         at: anniv.date,
       });

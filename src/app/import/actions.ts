@@ -266,5 +266,6 @@ export async function reconstructPosition(
   revalidatePath("/import");
   revalidatePath("/dashboard");
   revalidatePath("/activity");
+  revalidatePath("/timeline");
   return { ok: true, note };
 }

@@ -1,0 +1,236 @@
+import Link from "next/link";
+import { Suspense } from "react";
+import { ReceiptText } from "lucide-react";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { getPortfolio } from "@/lib/portfolio";
+import { computeDashboard } from "@/lib/dashboard";
+import { computeStyle } from "@/lib/style";
+import { companyTier } from "@/lib/finance/companyTier";
+import { parsePlan, planProgress } from "@/lib/plan";
+import { loadLiabilities } from "@/lib/liabilities";
+import { totalLiabilities } from "@/lib/finance/liabilities";
+import { loadSecurityMeta } from "@/lib/securities";
+import { loadDismissed } from "@/lib/finance/homeSignal";
+import {
+  quartersBetween,
+  reviewedQuarters,
+  reportStreak,
+} from "@/lib/finance/quarterClose";
+import { annualReportEligibility } from "@/lib/finance/annualReport";
+import { computeLookThrough } from "@/lib/finance/lookThrough";
+import { getOrComputeSnapshot } from "@/lib/calculationSnapshots";
+import type { AllocationSlice } from "@/lib/dashboard";
+import { todayKST } from "@/lib/date";
+import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
+import { StyleCard } from "@/components/dashboard/StyleCard";
+import { LookThroughCard } from "@/components/dashboard/LookThroughCard";
+import { TimelineCard } from "@/components/dashboard/cards";
+import { CompanyTierCard } from "@/components/growth/CompanyTierCard";
+
+/**
+ * 성장 허브 — 경쟁이 아니라 *내 지주회사가 자라는* 싱글플레이.
+ * 정직한 신호(납입 규모·규율·시간·서사)만. 시세 결과는 축하하지 않는다(헌법 II).
+ * 카드 대부분은 홈/연혁에서 쓰던 엔진 결과를 재배치한 뷰.
+ */
+export default async function GrowthPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const portfolio = await getPortfolio(supabase);
+  if (!portfolio) redirect("/onboarding");
+
+  const { holding } = portfolio;
+  const today = todayKST();
+  const data = computeDashboard(portfolio, "KRW");
+
+  const [liabilities, secMeta, dismissed] = await Promise.all([
+    loadLiabilities(supabase, holding.id),
+    loadSecurityMeta(
+      supabase,
+      data.allocation.map((a) => a.symbol),
+    ),
+    loadDismissed(supabase, holding.id),
+  ]);
+
+  // 규율 점수 입력: 부채(레버리지) + 자본배분 계획 준수율
+  const plan = parsePlan(holding.active_plan);
+  const planProg = plan ? planProgress(plan, portfolio.events) : null;
+  const planRatio =
+    planProg && planProg.total > 0 ? planProg.doneCount / planProg.total : null;
+
+  const style = computeStyle(
+    portfolio,
+    data,
+    totalLiabilities(liabilities),
+    planRatio,
+    secMeta,
+  );
+
+  // 기업 등급 — 납입 원금(invested) 기준(평가액 아님).
+  const tier = companyTier(data.invested);
+
+  // 분기 결산 스트릭 + 연차보고서 발행 여부
+  const reportStreakN = reportStreak(
+    quartersBetween(holding.founded_at, today).map((q) => q.label),
+    reviewedQuarters(dismissed),
+  );
+  const annual = annualReportEligibility(holding.founded_at, today);
+
+  return (
+    <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
+      <BottomTabBar />
+      <div>
+        <h1 className="text-2xl font-extrabold tracking-tight">내 회사</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          내 지주회사가 자라는 기록 · 규율과 시간으로
+        </p>
+      </div>
+
+      {/* 기업 등급(헤드라인) */}
+      <CompanyTierCard tier={tier} invested={data.invested} />
+
+      {/* 내 사업부 실적(현재 투시 펀더멘털) — DART N+1 으로 무거워 스트리밍 */}
+      <Suspense fallback={<GrowthCardSkeleton />}>
+        <BusinessSnapshotStreamed
+          supabase={supabase}
+          enabled={data.priceAvailable && data.allocation.length > 0}
+          allocation={data.allocation}
+          invested={data.invested}
+          holdingId={holding.id}
+          portfolioRevision={holding.portfolio_revision}
+          asOfDate={today}
+          year={Number(today.slice(0, 4))}
+        />
+      </Suspense>
+
+      {/* 규율 점수 */}
+      <StyleCard style={style} />
+
+      {/* 분기/연차 리포트 + 결산 스트릭 */}
+      <section className="rounded-2xl bg-card p-5 shadow-card">
+        <Link
+          href="/report"
+          scroll={false}
+          className="block transition active:opacity-70"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <p className="flex items-center gap-1.5 text-sm font-semibold">
+                <ReceiptText size={15} className="text-muted-foreground" /> 분기 경영 리포트
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                이번 분기 수익률·활동·배당 한눈에
+              </p>
+            </div>
+            <span className="flex shrink-0 items-center gap-2">
+              {reportStreakN > 0 && (
+                <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-bold text-accent-foreground">
+                  🔥 {reportStreakN}
+                </span>
+              )}
+              <span className="text-muted-foreground">›</span>
+            </span>
+          </div>
+        </Link>
+        <Link
+          href="/annual-report"
+          className="mt-4 flex items-center justify-between border-t border-border pt-4 text-sm font-semibold transition active:opacity-70"
+        >
+          <span>ENUF Annual Report</span>
+          <span className="text-xs text-muted-foreground">
+            {annual.eligible
+              ? `${today.slice(0, 4)} 발행됨 ›`
+              : `D-${annual.remainingDays} · 준비 중 ›`}
+          </span>
+        </Link>
+      </section>
+
+      {/* 마일스톤 타임라인(설립·첫 매수·첫 해외 인수·첫 배당·납입 자본 돌파) */}
+      {data.timeline.length > 0 && <TimelineCard timeline={data.timeline} />}
+    </main>
+  );
+}
+
+/**
+ * 내 사업부 실적 — 현재 투시 펀더멘털(연결 순이익·PER/PBR/ROE). DART N+1 으로 무거워 스트리밍.
+ * 홈에서 이전. /lookthrough 의 `lookthrough-current` 스냅샷과 동일 캐시 키로 공유.
+ * ₩ 기준(내 회사 허브는 단일 통화).
+ */
+async function BusinessSnapshotStreamed({
+  supabase,
+  enabled,
+  allocation,
+  invested,
+  holdingId,
+  portfolioRevision,
+  asOfDate,
+  year,
+}: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  enabled: boolean;
+  allocation: AllocationSlice[];
+  invested: number;
+  holdingId: string;
+  portfolioRevision: number;
+  asOfDate: string;
+  year: number;
+}) {
+  const lt = enabled
+    ? (
+        await getOrComputeSnapshot({
+          supabase,
+          holdingId,
+          kind: "lookthrough-current",
+          portfolioRevision,
+          asOfDate,
+          ttlMs: 5 * 60 * 1000,
+          compute: () =>
+            computeLookThrough(supabase, { allocation, year, invested }),
+        })
+      ).data
+    : null;
+
+  if (lt && lt.coverage.includedCount > 0) {
+    return (
+      <LookThroughCard
+        netIncome={lt.netIncome}
+        per={lt.per}
+        pbr={lt.pbr}
+        roe={lt.roe}
+        factor={1}
+        currency="KRW"
+      />
+    );
+  }
+  // 반영할 공시가 없을 때 — /lookthrough 정적 링크.
+  return (
+    <Link
+      href="/lookthrough"
+      className="block rounded-2xl bg-card p-5 shadow-card transition active:scale-[0.99]"
+    >
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold">🏭 내 사업부 실적</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            보유 회사들의 투시 펀더멘털 — 지분만큼 내 몫
+          </p>
+        </div>
+        <span className="text-muted-foreground">›</span>
+      </div>
+    </Link>
+  );
+}
+
+function GrowthCardSkeleton() {
+  return (
+    <div className="rounded-2xl bg-card p-5 shadow-card" aria-busy="true">
+      <div className="h-4 w-28 animate-pulse rounded bg-secondary" />
+      <div className="mt-3 h-7 w-36 animate-pulse rounded bg-secondary" />
+      <div className="mt-3 h-3 w-24 animate-pulse rounded bg-secondary" />
+    </div>
+  );
+}

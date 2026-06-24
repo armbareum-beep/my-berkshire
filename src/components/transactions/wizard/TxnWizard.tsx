@@ -135,11 +135,21 @@ export function TxnWizard({
   const isCryptoPick = !!picked && isCrypto(picked.symbol);
   const qtyUnit = isCryptoPick ? "개" : "주";
 
+  // 종목 거래(매도·배당)의 단가·금액은 종목 네이티브 통화로 입력 → 서버가 그 통화로 해석해 ₩ 환산.
+  // (₩로 라벨만 붙이고 USD 종목 값을 받으면 서버가 환율을 또 곱해 ~1500× 부풀려진다.)
+  const stockCcy = picked && !/^\d{6}$/.test(picked.symbol) ? "USD" : "KRW";
+  const stockFx = stockCcy === "KRW" ? 1 : (fxRates.USD ?? 1);
+  const stockMeta = currencyMeta(stockCcy);
+
   const effectivePrice =
     isSell && mode !== "ledger" ? (marketPrice ?? 0) : Number(price);
   const qtyN = Number(qty);
   const amountN = Number(amount);
-  const gross = cfg.needsQty ? effectivePrice * qtyN : amountN;
+  // 챌린지/라이브 매도가(marketPrice)는 이미 ₩, 장부 입력가는 네이티브(×환율). 배당액은 네이티브.
+  const ledgerFx = mode === "ledger" ? stockFx : 1;
+  const gross = cfg.needsQty
+    ? effectivePrice * ledgerFx * qtyN
+    : amountN * stockFx; // ₩ 기준 — 수수료 추정·리뷰 표기에 사용
   const estFee = hasFee
     ? estimateFeeAndTax(cfg.key, gross, commissionRate, accountType)
     : 0;
@@ -355,14 +365,23 @@ export function TxnWizard({
     const ps = priceStepsFor(picked?.symbol ?? "");
     return shell(
       "얼마에 팔았나요?",
-      picked ? `${picked.name} · 단가(원)` : undefined,
+      picked
+        ? `${picked.name} · 단가(${stockCcy === "KRW" ? "원" : "달러"})`
+        : undefined,
       <AmountBody
         value={price}
         onChange={setPrice}
-        prefix="₩"
+        prefix={stockMeta.symbol}
         decimal
         quickAddSteps={ps.steps}
         quickAddLabel={ps.label}
+        hint={
+          stockCcy !== "KRW" && Number(price) > 0 ? (
+            <span className="tabular-nums text-muted-foreground">
+              ≈ ₩{Math.round(Number(price) * stockFx).toLocaleString()}
+            </span>
+          ) : undefined
+        }
       />,
       nextBtn("다음", Number(price) > 0, () => go(1)),
     );
@@ -394,7 +413,10 @@ export function TxnWizard({
   }
 
   if (stepId === "amount") {
-    const m = currencyMeta(isExchange || isCash ? cashCcy : "KRW");
+    // 배당은 종목 네이티브 통화, 증자·인출·환전은 선택 통화(cashCcy).
+    const m = currencyMeta(
+      isExchange || isCash ? cashCcy : cfg.key === "DIVIDEND" ? stockCcy : "KRW",
+    );
     const stepsCfg = isCash ? amountStepsFor(cashCcy) : { steps: WON_STEPS, label: wonStepLabel };
     const hint = exchangePreview ? (
       <span className="tabular-nums">
@@ -419,6 +441,10 @@ export function TxnWizard({
     ) : cfg.key === "WITHDRAWAL" ? (
       <span className="text-muted-foreground tabular-nums">
         보유 {nativeMoney(pools[cashCcy] ?? 0, cashCcy)}
+      </span>
+    ) : cfg.key === "DIVIDEND" && stockCcy !== "KRW" && amountN > 0 ? (
+      <span className="tabular-nums text-muted-foreground">
+        ≈ ₩{Math.round(amountN * stockFx).toLocaleString()}
       </span>
     ) : undefined;
     return shell(
@@ -471,16 +497,19 @@ export function TxnWizard({
   // ── 리뷰 ──
   const lines: { k: string; v: string; accent?: boolean }[] = [];
   if (isSell) {
-    lines.push({ k: "단가", v: won(effectivePrice) });
+    lines.push({
+      k: "단가",
+      v: mode === "ledger" ? nativeMoney(effectivePrice, stockCcy) : won(effectivePrice),
+    });
     lines.push({ k: "수량", v: `${qtyN.toLocaleString()}${qtyUnit}` });
     if (mode === "ledger") lines.push({ k: "거래일", v: date });
     lines.push({ k: "수수료·세금 (자동)", v: won(shownFee) });
     lines.push({ k: "매도 금액", v: won(gross), accent: true });
   } else if (cfg.key === "DIVIDEND") {
-    lines.push({ k: "배당액", v: won(amountN) });
+    lines.push({ k: "배당액", v: nativeMoney(amountN, stockCcy) });
     lines.push({ k: "세금 (자동)", v: won(shownFee) });
     if (mode === "ledger") lines.push({ k: "거래일", v: date });
-    lines.push({ k: "실수령", v: won(amountN - shownFee), accent: true });
+    lines.push({ k: "실수령", v: won(amountN * stockFx - shownFee), accent: true });
   } else if (isCash) {
     lines.push({ k: "통화", v: currencyMeta(cashCcy).label });
     lines.push({ k: cfg.label + " 금액", v: nativeMoney(amountN, cashCcy) });

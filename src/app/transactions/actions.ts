@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -237,6 +238,7 @@ export async function recordEvent(input: RecordInput): Promise<Result> {
 
     revalidatePath("/dashboard");
     revalidatePath("/activity");
+    revalidatePath("/timeline");
     // 적용 환율 표기: 외화를 ₩ 기준으로(1 외화 = ₩X). 둘 다 외화면 교차환율.
     const foreign = fromCcy !== "KRW" ? fromCcy : toCcy;
     const rate =
@@ -362,6 +364,8 @@ export async function recordEvent(input: RecordInput): Promise<Result> {
   //  · "deposit"(새 돈으로): 매수액 전체를 새로 증자 → 기존 현금은 그대로 유지(버퍼·현금비중 안정).
   //    적립식(월급) 모델: 이번 매수는 새 자금으로, 투입 원금만 증가.
   let autoDepositKrw = 0;
+  // 매수를 자금한 증자의 id(있으면) → 매수 삭제 시 짝 증자도 함께 정리(유령 현금 방지).
+  let fundingDepositId: string | null = null;
   if (input.type === "BUY") {
     const pools = cashPoolsOf(ctx);
     const have = pools[currency] ?? 0; // 네이티브
@@ -383,7 +387,9 @@ export async function recordEvent(input: RecordInput): Promise<Result> {
           : Math.ceil(costNative * 100) / 100;
       const depositKrw = depositNative * fxRate;
       autoDepositKrw = depositKrw;
+      fundingDepositId = randomUUID(); // 매수가 들고 있을 짝 증자 id
       const { error: dErr } = await supabase.from("events").insert({
+        id: fundingDepositId,
         account_id: accountId,
         type: "DEPOSIT",
         symbol: null,
@@ -408,6 +414,7 @@ export async function recordEvent(input: RecordInput): Promise<Result> {
     date,
     currency,
     fx_rate: fxRate,
+    funding_deposit_id: fundingDepositId,
   });
   if (error) return { ok: false, error: error.message };
 
@@ -422,6 +429,7 @@ export async function recordEvent(input: RecordInput): Promise<Result> {
 
   revalidatePath("/dashboard");
   revalidatePath("/activity");
+  revalidatePath("/timeline");
   revalidatePath("/import");
   const notes = [
     autoDepositKrw > 0
@@ -501,6 +509,8 @@ export async function recordBuys(input: {
     priceKrw: number;
     fee: number;
     costNative: number;
+    /** 이 매수를 자금한 증자의 id(새 돈으로일 때만). 매수 삭제 시 짝 증자도 정리. */
+    fundingDepositId?: string;
   }
   const prepared: Prepared[] = [];
   for (const item of items) {
@@ -565,7 +575,9 @@ export async function recordBuys(input: {
           : Math.ceil(p.costNative * 100) / 100;
       const depositKrw = depositNative * p.fxRate;
       depositKrwTotal += depositKrw;
+      p.fundingDepositId = randomUUID(); // 짝 매수가 들고 있을 증자 id
       rows.push({
+        id: p.fundingDepositId,
         account_id: accountId,
         type: "DEPOSIT",
         symbol: null,
@@ -591,6 +603,7 @@ export async function recordBuys(input: {
       date,
       currency: p.ccy,
       fx_rate: p.fxRate,
+      funding_deposit_id: p.fundingDepositId ?? null,
     });
   }
 
@@ -612,6 +625,7 @@ export async function recordBuys(input: {
 
   revalidatePath("/dashboard");
   revalidatePath("/activity");
+  revalidatePath("/timeline");
   revalidatePath("/import");
   const base =
     depositKrwTotal > 0
@@ -690,6 +704,7 @@ export async function updateTradeEvent(input: {
 
   revalidatePath("/dashboard");
   revalidatePath("/activity");
+  revalidatePath("/timeline");
   revalidatePath("/import");
   return { ok: true };
 }
@@ -709,14 +724,22 @@ export async function deleteEvent(id: string): Promise<Result> {
       error: "지난 거래는 삭제할 수 없습니다. 오늘 날짜 상쇄(취소)만 가능합니다.",
     };
 
+  // 매수에 짝지어 만든 증자(새 돈으로)도 함께 삭제 → 삭제가 현금을 만들지 않게(유령 현금 방지).
+  // 삭제는 새 돈을 만들면 안 된다; 새 현금은 매도·배당으로만 생긴다.
+  const deletedAt = new Date().toISOString();
+  const idsToDelete = [id];
+  if (ev.type === "BUY" && ev.funding_deposit_id)
+    idsToDelete.push(ev.funding_deposit_id);
+
   const { error } = await supabase
     .from("events")
-    .update({ deleted_at: new Date().toISOString() })
-    .eq("id", id);
+    .update({ deleted_at: deletedAt })
+    .in("id", idsToDelete);
   if (error) return { ok: false, error: error.message };
 
   revalidatePath("/dashboard");
   revalidatePath("/activity");
+  revalidatePath("/timeline");
   revalidatePath("/import");
   return { ok: true };
 }
@@ -753,5 +776,6 @@ export async function reverseEvent(id: string): Promise<Result> {
 
   revalidatePath("/dashboard");
   revalidatePath("/activity");
+  revalidatePath("/timeline");
   return { ok: true };
 }

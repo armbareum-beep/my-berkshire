@@ -253,6 +253,7 @@ export type Database = {
           date: string
           deleted_at: string | null
           fee_and_tax: number
+          funding_deposit_id: string | null
           fx_rate: number
           id: string
           price_or_amount: number
@@ -272,6 +273,7 @@ export type Database = {
           date: string
           deleted_at?: string | null
           fee_and_tax?: number
+          funding_deposit_id?: string | null
           fx_rate?: number
           id?: string
           price_or_amount: number
@@ -291,6 +293,7 @@ export type Database = {
           date?: string
           deleted_at?: string | null
           fee_and_tax?: number
+          funding_deposit_id?: string | null
           fx_rate?: number
           id?: string
           price_or_amount?: number
@@ -314,6 +317,13 @@ export type Database = {
           {
             foreignKeyName: "events_reverses_event_id_fkey"
             columns: ["reverses_event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "events_funding_deposit_id_fkey"
+            columns: ["funding_deposit_id"]
             isOneToOne: false
             referencedRelation: "events"
             referencedColumns: ["id"]
