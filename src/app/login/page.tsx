@@ -5,14 +5,23 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
+type Mode = "login" | "signup";
+
+/**
+ * 이메일+비밀번호 로그인/회원가입.
+ * 인증 메일 없이 즉시 입장하려면 Supabase의 "Confirm email"을 꺼야 한다.
+ * (Authentication → Providers → Email → Confirm email OFF)
+ * 카카오 로그인은 비즈앱 전환 후 별도로 다시 붙인다.
+ */
 export default function LoginPage() {
+  const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
-  const [sent, setSent] = useState(false);
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
-  // 다른 탭(매직링크)에서 로그인되면 이 탭도 감지해 자동 이동.
-  // 매직링크는 새 탭에서 열리므로, 원래 탭이 죽은 화면으로 남지 않게 한다.
+  // 로그인되면(이 탭/다른 탭 모두) 자동으로 홈으로.
   useEffect(() => {
     const supabase = createClient();
     const {
@@ -20,47 +29,44 @@ export default function LoginPage() {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) window.location.href = "/";
     });
-    // 쿠키 기반 세션은 이벤트가 안 올 수 있어 폴링 폴백을 둔다.
-    const poll = setInterval(async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (session) window.location.href = "/";
-    }, 2500);
-    return () => {
-      subscription.unsubscribe();
-      clearInterval(poll);
-    };
+    return () => subscription.unsubscribe();
   }, []);
 
-  async function signInWithKakao() {
-    setError(null);
-    const supabase = createClient();
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "kakao",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-        // 이메일(account_email)은 카카오 비즈앱 검수가 필요해 KOE205 유발.
-        // 닉네임·프로필만 요청(검수 없이 동작). 이메일 필요 시 비즈앱 전환 후 확장.
-        scopes: "profile_nickname profile_image",
-      },
-    });
-    if (error) setError(error.message);
-  }
-
-  async function sendLink(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setNotice(null);
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
-    });
+
+    if (mode === "signup") {
+      const { data, error } = await supabase.auth.signUp({ email, password });
+      setLoading(false);
+      if (error) {
+        setError(error.message);
+        return;
+      }
+      // Confirm email 이 꺼져 있으면 session 이 바로 발급된다.
+      if (data.session) {
+        window.location.href = "/";
+        return;
+      }
+      // 켜져 있으면 세션이 없다 → 메일 확인 안내.
+      setNotice("가입 완료. 이메일 확인이 필요한 설정이면 메일함을 확인하세요. 아니면 바로 로그인하세요.");
+      setMode("login");
+      return;
+    }
+
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
-    if (error) setError(error.message);
-    else setSent(true);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    window.location.href = "/";
   }
+
+  const isSignup = mode === "signup";
 
   return (
     <main className="flex min-h-dvh flex-col justify-center gap-8 p-6">
@@ -69,56 +75,60 @@ export default function LoginPage() {
         <h1 className="mt-1 text-3xl font-extrabold tracking-tight">ENUF</h1>
       </div>
 
-      {sent ? (
-        <div className="rounded-2xl bg-card p-6 shadow-card">
-          <p className="text-lg font-bold">메일함을 확인하세요</p>
-          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-            {email} 으로 로그인 링크를 보냈습니다. 링크를 누르면 바로 입장합니다.
-          </p>
-        </div>
-      ) : (
-        <form onSubmit={sendLink} className="rounded-2xl bg-card p-6 shadow-card">
-          <label className="text-sm font-medium" htmlFor="email">
-            이메일로 시작하기
-          </label>
-          <Input
-            id="email"
-            type="email"
-            inputMode="email"
-            autoComplete="email"
-            required
-            placeholder="you@example.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="mt-3 h-12"
-          />
-          {error && <p className="mt-2 text-sm text-rise">{error}</p>}
-          <Button
-            type="submit"
-            disabled={loading || !email}
-            className="mt-4 h-12 w-full bg-primary text-base font-semibold text-primary-foreground"
-          >
-            {loading ? "보내는 중…" : "로그인 링크 받기"}
-          </Button>
-          <p className="mt-3 text-center text-xs text-muted-foreground">
-            비밀번호 없이, 메일 링크로 입장합니다.
-          </p>
+      <form onSubmit={submit} className="rounded-2xl bg-card p-6 shadow-card">
+        <label className="text-sm font-medium" htmlFor="email">
+          이메일
+        </label>
+        <Input
+          id="email"
+          type="email"
+          inputMode="email"
+          autoComplete="email"
+          required
+          placeholder="you@example.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="mt-2 h-12"
+        />
 
-          <div className="my-5 flex items-center gap-3 text-xs text-muted-foreground">
-            <span className="h-px flex-1 bg-border" />
-            또는
-            <span className="h-px flex-1 bg-border" />
-          </div>
+        <label className="mt-4 block text-sm font-medium" htmlFor="password">
+          비밀번호
+        </label>
+        <Input
+          id="password"
+          type="password"
+          autoComplete={isSignup ? "new-password" : "current-password"}
+          required
+          minLength={6}
+          placeholder="6자 이상"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className="mt-2 h-12"
+        />
 
-          <Button
-            type="button"
-            onClick={signInWithKakao}
-            className="h-12 w-full bg-[#FEE500] text-base font-semibold text-[#191600] hover:bg-[#FDD800]"
-          >
-            카카오로 시작하기
-          </Button>
-        </form>
-      )}
+        {error && <p className="mt-3 text-sm text-rise">{error}</p>}
+        {notice && <p className="mt-3 text-sm text-muted-foreground">{notice}</p>}
+
+        <Button
+          type="submit"
+          disabled={loading || !email || password.length < 6}
+          className="mt-5 h-12 w-full bg-primary text-base font-semibold text-primary-foreground"
+        >
+          {loading ? "처리 중…" : isSignup ? "회원가입" : "로그인"}
+        </Button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setMode(isSignup ? "login" : "signup");
+            setError(null);
+            setNotice(null);
+          }}
+          className="mt-4 w-full text-center text-sm text-muted-foreground underline-offset-4 hover:underline"
+        >
+          {isSignup ? "이미 계정이 있어요 — 로그인" : "처음이신가요? 회원가입"}
+        </button>
+      </form>
     </main>
   );
 }
