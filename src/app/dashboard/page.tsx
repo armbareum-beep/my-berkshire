@@ -13,8 +13,13 @@ import { parsePlan, planProgress } from "@/lib/plan";
 import { getNextAction } from "@/lib/nextAction";
 import { loadLiabilities } from "@/lib/liabilities";
 import { totalLiabilities, leverageLevel } from "@/lib/finance/liabilities";
-import { loadManualAssets } from "@/lib/realAssets";
-import { totalManualAssets, manualAssetsCostBasis } from "@/lib/finance/realAssets";
+import { loadManualAssets, loadManualAssetIncome } from "@/lib/realAssets";
+import {
+  totalManualAssets,
+  computeRealEstateDivision,
+  computeDivisions,
+} from "@/lib/finance/realAssets";
+import { DivisionCard } from "@/components/networth/DivisionCard";
 import { companyCashPools } from "@/lib/finance/valuation";
 import { loadAccountGroups, type AccountGroup } from "@/lib/accounts";
 import { loadWatchlist } from "@/lib/watchlist";
@@ -58,6 +63,8 @@ import {
 const CARD_ORDER = [
   "performance",
   "holdings",
+  "divisions",
+  "cash",
   "recent",
 ] as const;
 
@@ -157,6 +164,7 @@ async function DashboardContent({
   );
   const liabilitiesPromise = loadLiabilities(supabase, holding.id);
   const manualAssetsPromise = loadManualAssets(supabase, holding.id);
+  const manualAssetIncomePromise = loadManualAssetIncome(supabase, holding.id);
   const accountGroupsKRWPromise = loadAccountGroups(supabase, {
     holdingId: holding.id,
     prices: portfolio.prices,
@@ -221,14 +229,44 @@ async function DashboardContent({
         <Suspense key="holdings" fallback={<DashboardStackSkeleton />}>
           <HoldingsStreamed
             dataKRW={dataKRW}
-            dataUSD={dataUSD}
             factorUSD={factorUSD}
-            pools={pools}
             secMetaPromise={secMetaPromise}
             accountGroupsKRWPromise={accountGroupsKRWPromise}
           />
         </Suspense>
       ),
+    divisions: (
+      <Suspense key="divisions" fallback={null}>
+        <DivisionsStreamed
+          manualAssetsPromise={manualAssetsPromise}
+          manualAssetIncomePromise={manualAssetIncomePromise}
+          factorUSD={factorUSD}
+        />
+      </Suspense>
+    ),
+    cash: dataKRW.priceAvailable ? (
+      <CurrencyView
+        key="cash"
+        krw={
+          <CashCard
+            cash={dataKRW.cash}
+            cashWeight={dataKRW.cashWeight}
+            currency="KRW"
+            pools={pools}
+            footer={<CardAction href="/dividends" scroll={false}>배당 — 언제 얼마 받나</CardAction>}
+          />
+        }
+        usd={
+          <CashCard
+            cash={dataUSD.cash}
+            cashWeight={dataKRW.cashWeight}
+            currency="USD"
+            pools={pools}
+            footer={<CardAction href="/dividends" scroll={false}>배당 — 언제 얼마 받나</CardAction>}
+          />
+        }
+      />
+    ) : null,
     recent: <RecentActivityCard key="recent" recent={data.recent} />,
   };
 
@@ -350,6 +388,7 @@ async function DashboardContent({
               factorUSD={factorUSD}
               liabilitiesPromise={liabilitiesPromise}
               manualAssetsPromise={manualAssetsPromise}
+              manualAssetIncomePromise={manualAssetIncomePromise}
               sinceLastSeenKrw={sinceLastSeenKrw}
             />
           </Suspense>
@@ -481,6 +520,7 @@ async function HeroValuationStreamed({
   factorUSD,
   liabilitiesPromise,
   manualAssetsPromise,
+  manualAssetIncomePromise,
   sinceLastSeenKrw,
 }: {
   result: PortfolioSnapshot["result"];
@@ -489,12 +529,16 @@ async function HeroValuationStreamed({
   factorUSD: number;
   liabilitiesPromise: Promise<Awaited<ReturnType<typeof loadLiabilities>>>;
   manualAssetsPromise: Promise<Awaited<ReturnType<typeof loadManualAssets>>>;
+  manualAssetIncomePromise: Promise<
+    Awaited<ReturnType<typeof loadManualAssetIncome>>
+  >;
   /** 지난 접속 이후 손익(₩) + 수익률. null이면 어제 대비로 폴백. */
   sinceLastSeenKrw: { earned: number; pct: number | null } | null;
 }) {
-  const [liabilities, manualAssets] = await Promise.all([
+  const [liabilities, manualAssets, manualIncome] = await Promise.all([
     liabilitiesPromise,
     manualAssetsPromise,
+    manualAssetIncomePromise,
   ]);
   const debtKrw = totalLiabilities(liabilities);
   const totalAssetsKrw =
@@ -508,9 +552,9 @@ async function HeroValuationStreamed({
     result.currentValuation !== null ? result.currentValuation - cashKrw : 0;
   const manualKrw = totalManualAssets(manualAssets);
 
-  // 총자산 누적수익률(₩ 기준, 비율은 통화무관) — 투자 손익(시세) + 부동산 등 수기자산 평가손익(추정).
+  // 총자산 누적수익률(₩ 기준, 비율은 통화무관) — 투자 손익(시세) + 부동산 사업부(실현 임대·매도 + 미실현 평가차익, 추정).
   // 취득가 있는 수기자산만 합산(원가 모르면 수익률 스코프 밖). 시세 실패 시 null(가짜 숫자 금지).
-  const re = manualAssetsCostBasis(manualAssets);
+  const re = computeRealEstateDivision(manualAssets, manualIncome);
   const stockGain = dataKRW.profit; // 투자 누적손익 ₩(시세 실패 시 null)
   const totalCostBasis = dataKRW.investedGross + re.cost;
   const cumulativeReturnTotal =
@@ -568,18 +612,61 @@ async function HeroValuationStreamed({
   );
 }
 
+/** 수기 사업부(부동산·대체·사업) — 자산 있는 사업부만 카드로, 각 카드에 자산 나열. 주식 유무와 무관하게 표시. */
+async function DivisionsStreamed({
+  manualAssetsPromise,
+  manualAssetIncomePromise,
+  factorUSD,
+}: {
+  manualAssetsPromise: Promise<Awaited<ReturnType<typeof loadManualAssets>>>;
+  manualAssetIncomePromise: Promise<
+    Awaited<ReturnType<typeof loadManualAssetIncome>>
+  >;
+  factorUSD: number;
+}) {
+  const [manualAssets, manualIncome] = await Promise.all([
+    manualAssetsPromise,
+    manualAssetIncomePromise,
+  ]);
+  const divisions = computeDivisions(manualAssets, manualIncome);
+  if (divisions.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-4">
+      {divisions.map((d) => (
+        <CurrencyView
+          key={d.key}
+          krw={
+            <DivisionCard
+              division={d}
+              factor={1}
+              currency="KRW"
+              href="/real-estate"
+              showTotalReturn
+            />
+          }
+          usd={
+            <DivisionCard
+              division={d}
+              factor={factorUSD}
+              currency="USD"
+              href="/real-estate"
+              showTotalReturn
+            />
+          }
+        />
+      ))}
+    </div>
+  );
+}
+
 async function HoldingsStreamed({
   dataKRW,
-  dataUSD,
   factorUSD,
-  pools,
   secMetaPromise,
   accountGroupsKRWPromise,
 }: {
   dataKRW: DashboardData;
-  dataUSD: DashboardData;
   factorUSD: number;
-  pools: Record<string, number>;
   secMetaPromise: Promise<Awaited<ReturnType<typeof loadSecurityMeta>>>;
   accountGroupsKRWPromise: Promise<Awaited<ReturnType<typeof loadAccountGroups>>>;
 }) {
@@ -630,33 +717,12 @@ async function HoldingsStreamed({
         />
       </CardShell>
 
+      {/* 보유계좌 → 주식 자산구성. 사업부·현금은 별도 하단 섹션(주식→사업부→현금 순). */}
       {dataKRW.priceAvailable && (
-        <>
-          <CurrencyView
-            krw={
-              <CashCard
-                cash={dataKRW.cash}
-                cashWeight={dataKRW.cashWeight}
-                currency="KRW"
-                pools={pools}
-                footer={<CardAction href="/dividends" scroll={false}>배당 — 언제 얼마 받나</CardAction>}
-              />
-            }
-            usd={
-              <CashCard
-                cash={dataUSD.cash}
-                cashWeight={dataKRW.cashWeight}
-                currency="USD"
-                pools={pools}
-                footer={<CardAction href="/dividends" scroll={false}>배당 — 언제 얼마 받나</CardAction>}
-              />
-            }
-          />
-          <AllocationCard
-            groups={allocationGroups}
-            footer={<CardAction href="/rebalance">목표비중 · 리밸런싱</CardAction>}
-          />
-        </>
+        <AllocationCard
+          groups={allocationGroups}
+          footer={<CardAction href="/rebalance">목표비중 · 리밸런싱</CardAction>}
+        />
       )}
     </div>
   );
