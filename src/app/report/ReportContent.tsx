@@ -13,6 +13,7 @@ import {
   reviewedQuarters,
   reportStreak,
 } from "@/lib/finance/quarterClose";
+import { computeCompoundingStreak } from "@/lib/finance/compoundingStreak";
 import { loadDismissed } from "@/lib/finance/homeSignal";
 import { dismissHomeSignal } from "@/app/dashboard/signalActions";
 import { getDisclosuresForSymbols } from "@/lib/finance/dart";
@@ -92,6 +93,16 @@ export async function ReportContent() {
     today,
   );
 
+  // 복리 무중단 — 소비성 인출 없이 복리를 지켜온 기간(events·설립자본 파생).
+  const compounding = computeCompoundingStreak(
+    portfolio.events,
+    {
+      foundedAt: portfolio.holding.founded_at,
+      initialValuation: Number(portfolio.holding.initial_valuation),
+    },
+    today,
+  );
+
   // 순자산 + 규율 점수(분기말 현재 스냅샷)
   const debtKrw = totalLiabilities(liabilities);
   const manualKrw = totalManualAssets(manualAssets);
@@ -128,6 +139,7 @@ export async function ReportContent() {
         gradeLabel={style.grade?.label ?? null}
         disclosures={disclosures}
         streak={streak}
+        compounding={compounding}
         factor={factor}
         currency={useUsd ? "USD" : "KRW"}
       />

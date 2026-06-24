@@ -53,11 +53,10 @@ export function PeriodReturns({ periods }: { periods: PeriodView[] }) {
         {headline != null ? signedPct(headline) : "—"}
       </p>
 
+      {/* 비율은 하나만 — 헤드라인(연환산 XIRR/누적)과 의미가 다른 CAGR을 같이 띄우면
+          사용자가 둘을 혼동해서 제거(FR-009). 적립이 많을수록 CAGR이 부풀려져 오해를 부름. */}
       <dl className="mt-4 space-y-1.5 border-t border-border pt-3 text-sm">
         <Row k="누적 수익률" v={p.cumulative != null ? signedPct(p.cumulative) : "—"} />
-        {annualized && (
-          <Row k="CAGR" v={p.cagr != null ? signedPct(p.cagr) : "—"} />
-        )}
         <Row k="기간" v={`${p.days.toLocaleString()}일`} />
       </dl>
     </section>

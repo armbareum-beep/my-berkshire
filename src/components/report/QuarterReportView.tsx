@@ -6,6 +6,7 @@ import {
   type Currency,
 } from "@/lib/format";
 import type { QuarterReport } from "@/lib/finance/quarterClose";
+import type { CompoundingStreak } from "@/lib/finance/compoundingStreak";
 import type { Disclosure, HintTone } from "@/lib/finance/dart";
 import { CountUp } from "@/components/ui/CountUp";
 import { EmojiIcon } from "@/components/ui/EmojiIcon";
@@ -28,6 +29,7 @@ export function QuarterReportView({
   gradeLabel,
   disclosures,
   streak,
+  compounding,
   factor,
   currency,
 }: {
@@ -39,6 +41,8 @@ export function QuarterReportView({
   disclosures: Disclosure[];
   /** 결산 스트릭(연속 결산 분기 수). 0이면 배지 숨김. */
   streak: number;
+  /** 복리 무중단 상세(시작일·투입/끊김 이력). 빈 장부면 섹션 숨김. */
+  compounding?: CompoundingStreak;
   factor: number;
   currency: Currency;
 }) {
@@ -98,6 +102,32 @@ export function QuarterReportView({
           <Cell k="마찰비용(수수료·세금)" v={money(cv(a.fees), currency)} />
         </dl>
       </section>
+
+      {/* 복리 무중단 — 소비성 인출 없이 복리를 지켜온 기록(멍거 제1원칙). */}
+      {compounding && !compounding.isEmpty && (
+        <section className="rounded-2xl bg-card p-5 shadow-card">
+          <p className="mb-3 text-sm font-semibold">복리 무중단</p>
+          <dl className="grid grid-cols-2 gap-y-3 text-sm">
+            <Cell
+              k="무중단 기간"
+              v={
+                compounding.unit === "month"
+                  ? `${compounding.months}개월`
+                  : `${compounding.days}일`
+              }
+            />
+            <Cell k="시작일" v={compounding.startDate ?? "—"} />
+            <Cell k="추가 투입(증자)" v={`${compounding.deposits.length}회`} />
+            <Cell k="중단(소비성 인출)" v={`${compounding.breaks.length}회`} />
+          </dl>
+          {compounding.breaks.length > 0 && (
+            <p className="mt-3 text-xs text-muted-foreground">
+              최근 중단: {compounding.breaks[compounding.breaks.length - 1].date}{" "}
+              · 자본을 빼서 쓰면 복리가 처음부터 다시 시작돼요.
+            </p>
+          )}
+        </section>
+      )}
 
       {/* 종목 성적(분기초 대비) */}
       {report.stocks.some((s) => s.changePct != null) && (
