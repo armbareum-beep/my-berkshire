@@ -38,7 +38,12 @@ export default function LoginPage() {
     const supabase = createClient();
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "kakao",
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+        // 이메일(account_email)은 카카오 비즈앱 검수가 필요해 KOE205 유발.
+        // 닉네임·프로필만 요청(검수 없이 동작). 이메일 필요 시 비즈앱 전환 후 확장.
+        scopes: "profile_nickname profile_image",
+      },
     });
     if (error) setError(error.message);
   }
