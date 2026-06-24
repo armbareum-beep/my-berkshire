@@ -18,7 +18,9 @@ import {
   totalManualAssets,
   computeRealEstateDivision,
   computeDivisions,
+  realEstateFinancingCost,
 } from "@/lib/finance/realAssets";
+import { loadFinancingReconciliations } from "@/lib/financingReconciliation";
 import { DivisionCard } from "@/components/networth/DivisionCard";
 import { companyCashPools } from "@/lib/finance/valuation";
 import { loadAccountGroups, type AccountGroup } from "@/lib/accounts";
@@ -166,6 +168,10 @@ async function DashboardContent({
   const liabilitiesPromise = loadLiabilities(supabase, holding.id);
   const manualAssetsPromise = loadManualAssets(supabase, holding.id);
   const manualAssetIncomePromise = loadManualAssetIncome(supabase, holding.id);
+  const financingReconciliationsPromise = loadFinancingReconciliations(
+    supabase,
+    holding.id,
+  );
   const accountGroupsKRWPromise = loadAccountGroups(supabase, {
     holdingId: holding.id,
     prices: portfolio.prices,
@@ -241,6 +247,9 @@ async function DashboardContent({
         <DivisionsStreamed
           manualAssetsPromise={manualAssetsPromise}
           manualAssetIncomePromise={manualAssetIncomePromise}
+          liabilitiesPromise={liabilitiesPromise}
+          reconciliationsPromise={financingReconciliationsPromise}
+          today={today}
           factorUSD={factorUSD}
         />
       </Suspense>
@@ -390,6 +399,8 @@ async function DashboardContent({
               liabilitiesPromise={liabilitiesPromise}
               manualAssetsPromise={manualAssetsPromise}
               manualAssetIncomePromise={manualAssetIncomePromise}
+              reconciliationsPromise={financingReconciliationsPromise}
+              today={today}
               sinceLastSeenKrw={sinceLastSeenKrw}
             />
           </Suspense>
@@ -524,6 +535,8 @@ async function HeroValuationStreamed({
   liabilitiesPromise,
   manualAssetsPromise,
   manualAssetIncomePromise,
+  reconciliationsPromise,
+  today,
   sinceLastSeenKrw,
 }: {
   result: PortfolioSnapshot["result"];
@@ -535,14 +548,20 @@ async function HeroValuationStreamed({
   manualAssetIncomePromise: Promise<
     Awaited<ReturnType<typeof loadManualAssetIncome>>
   >;
+  reconciliationsPromise: Promise<
+    Awaited<ReturnType<typeof loadFinancingReconciliations>>
+  >;
+  today: string;
   /** 지난 접속 이후 손익(₩) + 수익률. null이면 어제 대비로 폴백. */
   sinceLastSeenKrw: { earned: number; pct: number | null } | null;
 }) {
-  const [liabilities, manualAssets, manualIncome] = await Promise.all([
-    liabilitiesPromise,
-    manualAssetsPromise,
-    manualAssetIncomePromise,
-  ]);
+  const [liabilities, manualAssets, manualIncome, reconciliations] =
+    await Promise.all([
+      liabilitiesPromise,
+      manualAssetsPromise,
+      manualAssetIncomePromise,
+      reconciliationsPromise,
+    ]);
   const debtKrw = totalLiabilities(liabilities);
   const totalAssetsKrw =
     result.currentValuation !== null
@@ -557,7 +576,13 @@ async function HeroValuationStreamed({
 
   // 총자산 누적수익률(₩ 기준, 비율은 통화무관) — 투자 손익(시세) + 부동산 사업부(실현 임대·매도 + 미실현 평가차익, 추정).
   // 취득가 있는 수기자산만 합산(원가 모르면 수익률 스코프 밖). 시세 실패 시 null(가짜 숫자 금지).
-  const re = computeRealEstateDivision(manualAssets, manualIncome);
+  const financing = realEstateFinancingCost({
+    liabilities,
+    reconciliations,
+    assets: manualAssets,
+    today,
+  });
+  const re = computeRealEstateDivision(manualAssets, manualIncome, financing);
   const stockGain = dataKRW.profit; // 투자 누적손익 ₩(시세 실패 시 null)
   const totalCostBasis = dataKRW.investedGross + re.cost;
   const cumulativeReturnTotal =
@@ -619,19 +644,36 @@ async function HeroValuationStreamed({
 async function DivisionsStreamed({
   manualAssetsPromise,
   manualAssetIncomePromise,
+  liabilitiesPromise,
+  reconciliationsPromise,
+  today,
   factorUSD,
 }: {
   manualAssetsPromise: Promise<Awaited<ReturnType<typeof loadManualAssets>>>;
   manualAssetIncomePromise: Promise<
     Awaited<ReturnType<typeof loadManualAssetIncome>>
   >;
+  liabilitiesPromise: Promise<Awaited<ReturnType<typeof loadLiabilities>>>;
+  reconciliationsPromise: Promise<
+    Awaited<ReturnType<typeof loadFinancingReconciliations>>
+  >;
+  today: string;
   factorUSD: number;
 }) {
-  const [manualAssets, manualIncome] = await Promise.all([
-    manualAssetsPromise,
-    manualAssetIncomePromise,
-  ]);
-  const divisions = computeDivisions(manualAssets, manualIncome);
+  const [manualAssets, manualIncome, liabilities, reconciliations] =
+    await Promise.all([
+      manualAssetsPromise,
+      manualAssetIncomePromise,
+      liabilitiesPromise,
+      reconciliationsPromise,
+    ]);
+  const financing = realEstateFinancingCost({
+    liabilities,
+    reconciliations,
+    assets: manualAssets,
+    today,
+  });
+  const divisions = computeDivisions(manualAssets, manualIncome, financing);
   if (divisions.length === 0) return null;
   return (
     <CurrencyView

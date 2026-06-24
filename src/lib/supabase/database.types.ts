@@ -435,6 +435,7 @@ export type Database = {
           id: string
           interest_rate: number
           kind: Database["public"]["Enums"]["liability_kind"]
+          manual_asset_id: string | null
           name: string
           principal: number
           started_at: string | null
@@ -447,6 +448,7 @@ export type Database = {
           id?: string
           interest_rate?: number
           kind?: Database["public"]["Enums"]["liability_kind"]
+          manual_asset_id?: string | null
           name: string
           principal?: number
           started_at?: string | null
@@ -459,6 +461,7 @@ export type Database = {
           id?: string
           interest_rate?: number
           kind?: Database["public"]["Enums"]["liability_kind"]
+          manual_asset_id?: string | null
           name?: string
           principal?: number
           started_at?: string | null
@@ -467,6 +470,57 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "liabilities_holding_id_fkey"
+            columns: ["holding_id"]
+            isOneToOne: false
+            referencedRelation: "holdings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "liabilities_manual_asset_id_fkey"
+            columns: ["manual_asset_id"]
+            isOneToOne: false
+            referencedRelation: "manual_assets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      financing_reconciliation: {
+        Row: {
+          amount: number
+          created_at: string
+          date: string
+          deleted_at: string | null
+          division: string
+          holding_id: string
+          id: string
+          kind: string
+          note: string | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          date: string
+          deleted_at?: string | null
+          division?: string
+          holding_id: string
+          id?: string
+          kind: string
+          note?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          date?: string
+          deleted_at?: string | null
+          division?: string
+          holding_id?: string
+          id?: string
+          kind?: string
+          note?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financing_reconciliation_holding_id_fkey"
             columns: ["holding_id"]
             isOneToOne: false
             referencedRelation: "holdings"

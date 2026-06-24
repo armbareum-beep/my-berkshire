@@ -6,6 +6,14 @@
  * 모든 금액 ₩(기능통화). 표시 통화 환산은 화면에서 factor 로.
  */
 
+import { mortgageLiabilities, type Liability } from "./liabilities";
+import {
+  divisionFinancingCost,
+  monthsBetween,
+  type DivisionFinancingCost,
+  type FinancingReconciliation,
+} from "./financing";
+
 export type ManualAssetKind =
   | "REAL_ESTATE"
   | "LAND"
@@ -184,15 +192,21 @@ export interface RealEstateDivision {
   ret: number | null;
   realizedRet: number | null;
   unrealizedRet: number | null;
+  /** 주입 시 금융비용 내역(이자 차감·자본 가산 반영됨). 표시용(추정 이자·가중평균율). */
+  financing?: DivisionFinancingCost;
 }
 
 /**
  * 부동산 사업부 합산 — 실현/미실현/종합. 취득가 없는 자산은 수익률에서 제외.
  * 임대·매도는 events와 무관(자체 원장).
+ *
+ * `financing` 주입 시(spec 012): 대출 이자를 실현에서 차감하고 자본 투입을 원가에 가산한다
+ *   → 이자 차감 후 net 수익률. 미주입 시 011 과 비트 동일(회귀 안전).
  */
 export function computeRealEstateDivision(
   assets: ManualAsset[],
   incomes: ManualAssetIncome[],
+  financing?: DivisionFinancingCost,
 ): RealEstateDivision {
   let cost = 0;
   let unrealized = 0;
@@ -204,6 +218,10 @@ export function computeRealEstateDivision(
     unrealized += unrealizedGain(a);
     realized += saleGain(a) + rentNet(a.id, incomes);
   }
+  if (financing) {
+    cost += financing.capitalAdded; // 자본 투입 → 분모
+    realized -= financing.totalInterest; // 대출 이자 → 실현 차감(분자)
+  }
   const gain = unrealized + realized;
   return {
     cost,
@@ -213,7 +231,80 @@ export function computeRealEstateDivision(
     ret: cost > 0 ? gain / cost : null,
     realizedRet: cost > 0 ? realized / cost : null,
     unrealizedRet: cost > 0 ? unrealized / cost : null,
+    financing,
   };
+}
+
+/**
+ * 부동산 사업부 금융비용 조립 — 호출부 단일 진입점(spec 012).
+ * 담보대출만 짝짓고, 누적 기점 폴백 = 부동산 자산 중 가장 이른 취득일(없으면 today).
+ * 추정 이자는 저장하지 않고 파생(divisionFinancingCost).
+ */
+export function realEstateFinancingCost(args: {
+  liabilities: Liability[];
+  reconciliations: FinancingReconciliation[];
+  assets: ManualAsset[];
+  today: string;
+}): DivisionFinancingCost {
+  const reAssets = args.assets.filter(
+    (a) => assetDivision(a.kind) === "REAL_ESTATE",
+  );
+  const reAcquired = reAssets
+    .map((a) => a.acquiredAt)
+    .filter((d): d is string => !!d)
+    .sort();
+  // 연결 물건 id → 취득일(연결 대출의 누적 기점).
+  const assetAcquiredById: Record<string, string> = {};
+  for (const a of reAssets) {
+    if (a.acquiredAt) assetAcquiredById[a.id] = a.acquiredAt;
+  }
+  return divisionFinancingCost({
+    liabilities: mortgageLiabilities(args.liabilities),
+    reconciliations: args.reconciliations,
+    accrualStartFallback: reAcquired[0] ?? args.today,
+    assetAcquiredById,
+    asOf: args.today,
+  });
+}
+
+/** 물건에 연결된 대출 한 건(원본 Liability + 월/누적 추정 이자 ₩). 카드에서 수정·삭제에 원본 사용. */
+export interface LinkedLoan {
+  liability: Liability;
+  /** 월 추정 이자 = 잔액 × 이율 / 12. */
+  monthly: number;
+  /** 누적 추정 이자 = 잔액 × 이율 × 경과개월/12 (기점=차입일·없으면 취득일). */
+  cumulative: number;
+}
+
+/**
+ * 물건별 연결 대출 목록(원본 + 월/누적 추정 이자) — 물건 카드 안에 통합 표시·수정·삭제(spec 012).
+ * 대출 정보를 별도 박스가 아니라 그 물건 카드에서 보여주고 편집하기 위함.
+ * 연결 안 된 대출은 어느 물건에도 안 잡힌다(사업부 공통). 수익률 분자는 별도(사업부 총액).
+ * 잔액·이율이 0이어도(이자 0) 목록엔 포함 — 카드에서 수정 가능해야 하므로.
+ */
+export function financingByAsset(
+  liabilities: Liability[],
+  assets: ManualAsset[],
+  today: string,
+): Record<string, LinkedLoan[]> {
+  const acquiredById: Record<string, string> = {};
+  for (const a of assets) {
+    if (assetDivision(a.kind) === "REAL_ESTATE" && a.acquiredAt) {
+      acquiredById[a.id] = a.acquiredAt;
+    }
+  }
+  const out: Record<string, LinkedLoan[]> = {};
+  for (const l of mortgageLiabilities(liabilities)) {
+    if (l.manualAssetId == null) continue;
+    const start = l.startedAt ?? acquiredById[l.manualAssetId] ?? today;
+    (out[l.manualAssetId] ??= []).push({
+      liability: l,
+      monthly: (l.principal * l.interestRate) / 12,
+      cumulative:
+        (l.principal * l.interestRate * monthsBetween(start, today)) / 12,
+    });
+  }
+  return out;
 }
 
 // ── 사업부(자산 클래스) 그룹 ───────────────────────────────────────
@@ -267,10 +358,12 @@ const DIVISION_ORDER: AssetDivision[] = [
 
 /**
  * 종류를 사업부로 묶어 사업부별 집계를 반환. 자산이 있는 사업부만(점진적 공개).
+ * `financing` 은 REAL_ESTATE 사업부에만 적용(spec 012). 미주입 시 011 과 동일.
  */
 export function computeDivisions(
   assets: ManualAsset[],
   incomes: ManualAssetIncome[],
+  financing?: DivisionFinancingCost,
 ): DivisionView[] {
   const byDiv = new Map<AssetDivision, ManualAsset[]>();
   for (const a of assets) {
@@ -289,7 +382,11 @@ export function computeDivisions(
       key,
       label: ASSET_DIVISION_LABEL[key],
       producesIncome: ASSET_DIVISION_PRODUCES_INCOME[key],
-      totals: computeRealEstateDivision(group, groupIncomes),
+      totals: computeRealEstateDivision(
+        group,
+        groupIncomes,
+        key === "REAL_ESTATE" ? financing : undefined,
+      ),
       assets: group,
     });
   }

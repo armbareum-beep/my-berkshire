@@ -14,7 +14,13 @@ import { loadAccountGroups } from "@/lib/accounts";
 import { loadLiabilities } from "@/lib/liabilities";
 import { totalLiabilities, annualInterest } from "@/lib/finance/liabilities";
 import { loadManualAssets, loadManualAssetIncome } from "@/lib/realAssets";
-import { totalManualAssets, computeDivisions } from "@/lib/finance/realAssets";
+import {
+  totalManualAssets,
+  computeDivisions,
+  realEstateFinancingCost,
+  assetDivision,
+} from "@/lib/finance/realAssets";
+import { loadFinancingReconciliations } from "@/lib/financingReconciliation";
 import { computeBusinessReturns } from "@/lib/finance/businessReturns";
 import { DivisionCard } from "@/components/networth/DivisionCard";
 import { BusinessReturnsCard } from "@/components/networth/BusinessReturnsCard";
@@ -119,6 +125,10 @@ export async function NetWorthContent({
     supabase,
     portfolio.holding.id,
   );
+  const financingReconciliationsPromise = loadFinancingReconciliations(
+    supabase,
+    portfolio.holding.id,
+  );
 
   // 통화별 현금 풀(외화 분해 표시용)
   const pools = companyCashPools(
@@ -139,6 +149,8 @@ export async function NetWorthContent({
           manualAssetsPromise={manualAssetsPromise}
           manualAssetIncomePromise={manualAssetIncomePromise}
           liabilitiesPromise={liabilitiesPromise}
+          reconciliationsPromise={financingReconciliationsPromise}
+          today={today}
           factor={factor}
           currency={data.currency}
           priceAvailable={data.priceAvailable}
@@ -170,6 +182,9 @@ export async function NetWorthContent({
         <NetWorthDivisionsStreamed
           manualAssetsPromise={manualAssetsPromise}
           manualAssetIncomePromise={manualAssetIncomePromise}
+          liabilitiesPromise={liabilitiesPromise}
+          reconciliationsPromise={financingReconciliationsPromise}
+          today={today}
           factor={factor}
           currency={data.currency}
         />
@@ -187,6 +202,7 @@ export async function NetWorthContent({
       <Suspense fallback={<CardSkeleton />}>
         <LiabilitiesStreamed
           liabilitiesPromise={liabilitiesPromise}
+          manualAssetsPromise={manualAssetsPromise}
           factor={factor}
           currency={data.currency}
           today={today}
@@ -207,6 +223,9 @@ type AccountGroupsResult = Awaited<ReturnType<typeof loadAccountGroups>>;
 type LiabilitiesResult = Awaited<ReturnType<typeof loadLiabilities>>;
 type ManualAssetsResult = Awaited<ReturnType<typeof loadManualAssets>>;
 type ManualAssetIncomeResult = Awaited<ReturnType<typeof loadManualAssetIncome>>;
+type FinancingReconciliationsResult = Awaited<
+  ReturnType<typeof loadFinancingReconciliations>
+>;
 type ValueSeriesResult = Awaited<ReturnType<typeof loadPortfolioValueSeries>>;
 
 async function NetWorthSummaryStreamed({
@@ -216,6 +235,8 @@ async function NetWorthSummaryStreamed({
   manualAssetsPromise,
   manualAssetIncomePromise,
   liabilitiesPromise,
+  reconciliationsPromise,
+  today,
   factor,
   currency,
   priceAvailable,
@@ -226,20 +247,30 @@ async function NetWorthSummaryStreamed({
   manualAssetsPromise: Promise<ManualAssetsResult>;
   manualAssetIncomePromise: Promise<ManualAssetIncomeResult>;
   liabilitiesPromise: Promise<LiabilitiesResult>;
+  reconciliationsPromise: Promise<FinancingReconciliationsResult>;
+  today: string;
   factor: number;
   currency: ReturnType<typeof computeDashboard>["currency"];
   priceAvailable: boolean;
 }) {
-  const [manualAssets, manualIncome, liabilities] = await Promise.all([
-    manualAssetsPromise,
-    manualAssetIncomePromise,
-    liabilitiesPromise,
-  ]);
+  const [manualAssets, manualIncome, liabilities, reconciliations] =
+    await Promise.all([
+      manualAssetsPromise,
+      manualAssetIncomePromise,
+      liabilitiesPromise,
+      reconciliationsPromise,
+    ]);
   const manualTotalKrw = totalManualAssets(manualAssets);
   const assetsKrw = investmentKrw !== null ? investmentKrw + manualTotalKrw : null;
 
+  const financing = realEstateFinancingCost({
+    liabilities,
+    reconciliations,
+    assets: manualAssets,
+    today,
+  });
   // 사업부별 누적수익률(주식 + 부동산/대체/사업) — 히어로 총 누적수익률의 분해.
-  const manualDivisions = computeDivisions(manualAssets, manualIncome).map((d) => ({
+  const manualDivisions = computeDivisions(manualAssets, manualIncome, financing).map((d) => ({
     key: d.key,
     label: d.label,
     cost: d.totals.cost,
@@ -273,19 +304,34 @@ async function NetWorthSummaryStreamed({
 async function NetWorthDivisionsStreamed({
   manualAssetsPromise,
   manualAssetIncomePromise,
+  liabilitiesPromise,
+  reconciliationsPromise,
+  today,
   factor,
   currency,
 }: {
   manualAssetsPromise: Promise<ManualAssetsResult>;
   manualAssetIncomePromise: Promise<ManualAssetIncomeResult>;
+  liabilitiesPromise: Promise<LiabilitiesResult>;
+  reconciliationsPromise: Promise<FinancingReconciliationsResult>;
+  today: string;
   factor: number;
   currency: ReturnType<typeof computeDashboard>["currency"];
 }) {
-  const [manualAssets, manualIncome] = await Promise.all([
-    manualAssetsPromise,
-    manualAssetIncomePromise,
-  ]);
-  const divisions = computeDivisions(manualAssets, manualIncome);
+  const [manualAssets, manualIncome, liabilities, reconciliations] =
+    await Promise.all([
+      manualAssetsPromise,
+      manualAssetIncomePromise,
+      liabilitiesPromise,
+      reconciliationsPromise,
+    ]);
+  const financing = realEstateFinancingCost({
+    liabilities,
+    reconciliations,
+    assets: manualAssets,
+    today,
+  });
+  const divisions = computeDivisions(manualAssets, manualIncome, financing);
   if (divisions.length === 0) {
     return (
       <Link
@@ -353,21 +399,31 @@ async function AccountGroupsStreamed({
 
 async function LiabilitiesStreamed({
   liabilitiesPromise,
+  manualAssetsPromise,
   factor,
   currency,
   today,
   autoOpen,
 }: {
   liabilitiesPromise: Promise<LiabilitiesResult>;
+  manualAssetsPromise: Promise<ManualAssetsResult>;
   factor: number;
   currency: ReturnType<typeof computeDashboard>["currency"];
   today: string;
   autoOpen: boolean;
 }) {
-  const liabilities = await liabilitiesPromise;
+  const [liabilities, manualAssets] = await Promise.all([
+    liabilitiesPromise,
+    manualAssetsPromise,
+  ]);
+  // 담보대출 연결 후보 = 부동산 사업부 자산(id·이름).
+  const realEstateAssets = manualAssets
+    .filter((a) => assetDivision(a.kind) === "REAL_ESTATE")
+    .map((a) => ({ id: a.id, name: a.name }));
   return (
     <LiabilitiesSection
       items={liabilities}
+      realEstateAssets={realEstateAssets}
       factor={factor}
       currency={currency}
       today={today}

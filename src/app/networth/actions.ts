@@ -23,6 +23,8 @@ export interface LiabilityInput {
   interestPct: number;
   /** 차입일(YYYY-MM-DD) 또는 빈 문자열. */
   startedAt?: string;
+  /** 연결 부동산 id 또는 null/빈 문자열(미연결). 담보대출만 의미 있음(spec 012). */
+  manualAssetId?: string | null;
 }
 
 /** 활성 holding id 조회(부채는 회사 레벨 재무상태표 항목). */
@@ -60,6 +62,9 @@ export async function addLiability(input: LiabilityInput): Promise<Result> {
     principal: input.principal,
     interest_rate: input.interestPct / 100, // % → 소수
     started_at: input.startedAt || null,
+    // 담보대출만 물건 연결, 그 외는 항상 null(잘못된 귀속 방지).
+    manual_asset_id:
+      input.kind === "MORTGAGE" ? input.manualAssetId || null : null,
   });
   if (error) return { ok: false, error: error.message };
 
@@ -90,6 +95,8 @@ export async function updateLiability(
       principal: input.principal,
       interest_rate: input.interestPct / 100,
       started_at: input.startedAt || null,
+      manual_asset_id:
+        input.kind === "MORTGAGE" ? input.manualAssetId || null : null,
     })
     .eq("id", id);
   if (error) return { ok: false, error: error.message };

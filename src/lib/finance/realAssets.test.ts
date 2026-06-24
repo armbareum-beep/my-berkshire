@@ -6,9 +6,24 @@ import {
   rentNet,
   computeRealEstateDivision,
   computeDivisions,
+  realEstateFinancingCost,
+  financingByAsset,
   type ManualAsset,
   type ManualAssetIncome,
 } from "./realAssets";
+import type { DivisionFinancingCost } from "./financing";
+import type { Liability } from "./liabilities";
+
+/** 테스트용 금융비용 — 함수는 totalInterest·capitalAdded 만 읽는다. */
+const fin = (over: Partial<DivisionFinancingCost> = {}): DivisionFinancingCost => ({
+  confirmedInterest: 0,
+  estimatedInterest: 0,
+  totalInterest: 0,
+  capitalAdded: 0,
+  weightedAvgRate: null,
+  monthlyEstimate: 0,
+  ...over,
+});
 
 const asset = (over: Partial<ManualAsset> = {}): ManualAsset => ({
   id: "a1",
@@ -107,6 +122,137 @@ describe("부동산 사업부 — 합산", () => {
     const d = computeRealEstateDivision([], []);
     expect(d.cost).toBe(0);
     expect(d.ret).toBeNull();
+  });
+});
+
+describe("부동산 사업부 — 금융비용(이자/자본) 반영 (spec 012)", () => {
+  it("financing 미주입 = 0 주입 → 동일(회귀 안전)", () => {
+    const a = [asset()];
+    const without = computeRealEstateDivision(a, []);
+    const withZero = computeRealEstateDivision(a, [], fin());
+    expect(withZero.cost).toBe(without.cost);
+    expect(withZero.realized).toBe(without.realized);
+    expect(withZero.gain).toBe(without.gain);
+    expect(withZero.ret).toBe(without.ret);
+  });
+
+  it("이자 차감 → 실현에서 빠지고 수익률 하락", () => {
+    // 12.5억 취득, 18억 평가 → 미실현 5.5억. 이자 1천만 차감.
+    const d = computeRealEstateDivision([asset()], [], fin({ totalInterest: 10_000_000 }));
+    expect(d.realized).toBe(-10_000_000);
+    expect(d.unrealized).toBe(550_000_000);
+    expect(d.gain).toBe(540_000_000);
+    expect(d.ret).toBeCloseTo(540_000_000 / 1_250_000_000, 6);
+  });
+
+  it("자본 투입 → 원가(분모)만 증가, 실현 불변", () => {
+    const d = computeRealEstateDivision([asset()], [], fin({ capitalAdded: 50_000_000 }));
+    expect(d.cost).toBe(1_300_000_000); // 12.5억 + 0.5억
+    expect(d.realized).toBe(0);
+    expect(d.gain).toBe(550_000_000);
+    expect(d.ret).toBeCloseTo(550_000_000 / 1_300_000_000, 6);
+  });
+
+  it("공실(임대 0 + 이자만) → 실현 음수", () => {
+    const d = computeRealEstateDivision([asset()], [], fin({ totalInterest: 5_000_000 }));
+    expect(d.realized).toBe(-5_000_000);
+  });
+
+  it("computeDivisions: financing 은 REAL_ESTATE 사업부에만 적용", () => {
+    const divs = computeDivisions(
+      [
+        asset({ id: "re", kind: "REAL_ESTATE" }),
+        asset({ id: "biz", kind: "UNLISTED", acquiredPrice: 5_000_000, currentValue: 5_000_000 }),
+      ],
+      [],
+      fin({ totalInterest: 1_000_000 }),
+    );
+    const re = divs.find((d) => d.key === "REAL_ESTATE")!;
+    const biz = divs.find((d) => d.key === "BUSINESS")!;
+    expect(re.totals.realized).toBe(-1_000_000); // 이자 차감
+    expect(biz.totals.realized).toBe(0); // 비상장엔 영향 없음
+  });
+});
+
+describe("realEstateFinancingCost — 조립 헬퍼", () => {
+  const mortgage = (over: Partial<Liability> = {}): Liability => ({
+    id: "m1",
+    name: "담보대출",
+    kind: "MORTGAGE",
+    principal: 100_000_000,
+    interestRate: 0.03,
+    startedAt: null,
+    manualAssetId: null,
+    ...over,
+  });
+
+  it("담보대출만 짝짓고, 폴백 기점 = 부동산 가장 이른 취득일", () => {
+    const f = realEstateFinancingCost({
+      liabilities: [mortgage({ startedAt: null }), mortgage({ id: "g", kind: "MARGIN" })],
+      reconciliations: [],
+      assets: [asset({ acquiredAt: "2025-01-01" })],
+      today: "2025-02-01",
+    });
+    // 담보 1건만(1억@3%) 1개월 → 25만. 마진은 부동산 짝짓기에서 제외.
+    expect(f.estimatedInterest).toBeCloseTo(250_000, 2);
+  });
+
+  it("담보대출 없으면 전부 0", () => {
+    const f = realEstateFinancingCost({
+      liabilities: [mortgage({ kind: "CREDIT" })],
+      reconciliations: [],
+      assets: [asset()],
+      today: "2025-02-01",
+    });
+    expect(f.totalInterest).toBe(0);
+  });
+});
+
+describe("financingByAsset — 물건별 월 추정 이자(연결 대출)", () => {
+  const mortgage = (over: Partial<Liability> = {}): Liability => ({
+    id: "m1",
+    name: "담보대출",
+    kind: "MORTGAGE",
+    principal: 100_000_000,
+    interestRate: 0.03,
+    startedAt: null,
+    manualAssetId: null,
+    ...over,
+  });
+
+  const reAsset = asset({ id: "re1", acquiredAt: "2025-01-01" });
+
+  it("연결된 담보대출만 그 물건에 이름·월/누적 이자로 귀속", () => {
+    const map = financingByAsset(
+      [
+        mortgage({ id: "m1", name: "신한 담보", manualAssetId: "re1" }), // 1억@3% → 월 25만
+        mortgage({ id: "m2", manualAssetId: null }), // 미연결 → 제외
+        mortgage({ id: "m3", kind: "MARGIN", manualAssetId: "re1" }), // 마진 → 제외
+      ],
+      [reAsset],
+      "2025-02-01",
+    );
+    expect(Object.keys(map)).toEqual(["re1"]);
+    expect(map["re1"]).toHaveLength(1);
+    expect(map["re1"][0].liability.name).toBe("신한 담보");
+    expect(map["re1"][0].liability.id).toBe("m1");
+    expect(map["re1"][0].monthly).toBeCloseTo(250_000, 2);
+    // 기점=물건 취득일(1/1)~2/1 = 1개월 → 누적 25만
+    expect(map["re1"][0].cumulative).toBeCloseTo(250_000, 2);
+  });
+
+  it("한 물건에 대출 여러 개면 목록으로", () => {
+    const map = financingByAsset(
+      [
+        mortgage({ id: "m1", manualAssetId: "re1", principal: 100_000_000, interestRate: 0.03 }),
+        mortgage({ id: "m2", manualAssetId: "re1", principal: 50_000_000, interestRate: 0.04 }),
+      ],
+      [reAsset],
+      "2025-02-01",
+    );
+    expect(map["re1"]).toHaveLength(2);
+    const total = map["re1"].reduce((s, l) => s + l.monthly, 0);
+    expect(total).toBeCloseTo((3_000_000 + 2_000_000) / 12, 2);
   });
 });
 

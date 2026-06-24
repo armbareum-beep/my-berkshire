@@ -41,6 +41,8 @@ export interface Liability {
   interestRate: number;
   /** 차입일(YYYY-MM-DD) 또는 null. */
   startedAt: string | null;
+  /** 연결된 수기자산(부동산) id 또는 null(미연결). 담보대출 물건 귀속용(spec 012). */
+  manualAssetId: string | null;
 }
 
 /** 총부채(₩) = Σ 잔액. */
@@ -48,9 +50,30 @@ export function totalLiabilities(items: Liability[]): number {
   return items.reduce((s, l) => s + l.principal, 0);
 }
 
-/** 연 이자 부담(₩) = Σ 잔액 × 연이율. */
+/**
+ * 연 이자 부담(₩) = Σ 잔액 × 연이율.
+ *
+ * 주의(spec 012): 이 값은 **실현 P&L 이 아니라 파생 추정의 발생기·표시용**이다.
+ * 월 추정 이자 = annualInterest(...) / 12. 실제 납부는 보정 체크포인트로 스냅한다
+ * (`src/lib/finance/financing.ts`). 변동금리·수수료 차이는 보정이 흡수한다.
+ */
 export function annualInterest(items: Liability[]): number {
   return items.reduce((s, l) => s + l.principal * l.interestRate, 0);
+}
+
+/** 담보대출만 — 부동산 사업부 임대료에서 차감할 대출(spec 012 짝짓기). */
+export function mortgageLiabilities(items: Liability[]): Liability[] {
+  return items.filter((l) => l.kind === "MORTGAGE");
+}
+
+/**
+ * 잔액 가중평균 이율 = Σ(잔액×이율) / Σ잔액. 총잔액 0 이면 null.
+ * 단일 대출이면 그 대출 이율과 같다. 이율 0 대출은 이자에 기여하지 않아 평균을 낮춘다.
+ */
+export function weightedAvgRate(items: Liability[]): number | null {
+  const total = totalLiabilities(items);
+  if (!(total > 0)) return null;
+  return annualInterest(items) / total;
 }
 
 /** 순자산 = 자산 − 부채. */
