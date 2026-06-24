@@ -122,21 +122,27 @@ export async function CashContent({ tab }: { tab?: string }) {
             {CURRENCIES.filter((c) => c.code !== "KRW").map((c) => {
               const rate = fx[c.code] ?? null;
               return (
-                <li key={c.code} className="flex items-center gap-3">
-                  <Flag code={c.code} />
-                  <span className="flex flex-col">
-                    <span className="text-sm font-medium">{c.name}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {c.code}
+                <li key={c.code}>
+                  <Link
+                    href={`/fx/${c.code}`}
+                    className="flex items-center gap-3 -mx-2 rounded-xl px-2 py-1 active:bg-secondary"
+                  >
+                    <Flag code={c.code} />
+                    <span className="flex flex-col">
+                      <span className="text-sm font-medium">{c.name}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {c.code}
+                      </span>
                     </span>
-                  </span>
-                  <span className="ml-auto text-sm font-bold tabular-nums">
-                    {rate != null
-                      ? `1 ${c.code} = ₩${rate.toLocaleString(undefined, {
-                          maximumFractionDigits: 2,
-                        })}`
-                      : "정보 없음"}
-                  </span>
+                    <span className="ml-auto text-sm font-bold tabular-nums">
+                      {rate != null
+                        ? `1 ${c.code} = ₩${rate.toLocaleString(undefined, {
+                            maximumFractionDigits: 2,
+                          })}`
+                        : "정보 없음"}
+                    </span>
+                    <span className="text-muted-foreground">›</span>
+                  </Link>
                 </li>
               );
             })}

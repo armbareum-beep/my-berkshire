@@ -5,7 +5,7 @@ import { getPortfolio } from "@/lib/portfolio";
 import { loadWatchlist } from "@/lib/watchlist";
 import { loadSecurityNames } from "@/lib/securities";
 import { getPrices } from "@/lib/finance/prices";
-import { PRESET_QUOTES, isQuoteOnly } from "@/lib/finance/quotes";
+import { PRESET_QUOTES, isQuoteOnly, fxCodeFromSymbol } from "@/lib/finance/quotes";
 import { SymbolAvatar } from "@/components/onboarding/SymbolPicker";
 import { BackButton } from "@/components/BackButton";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
@@ -102,29 +102,31 @@ export default async function SearchPage() {
                 </>
               );
               const presetMeta = PRESET_QUOTES.find((p) => p.symbol === sym);
-              const indexHref = presetMeta?.isIndex
-                ? `/index/${encodeURIComponent(sym)}`
-                : null;
-              // 지수는 /index/[sym], 환율 등 quoteOnly는 시세 전용, 종목은 /stocks/[sym].
+              const fxCode = fxCodeFromSymbol(sym);
+              // 환율→/fx/[code], 지수→/index/[sym], 그 외 quoteOnly(금·코인)→시세 전용, 종목→/stocks/[sym].
+              const href = fxCode
+                ? `/fx/${fxCode}`
+                : presetMeta?.isIndex
+                  ? `/index/${encodeURIComponent(sym)}`
+                  : quoteOnly
+                    ? null
+                    : `/stocks/${encodeURIComponent(sym)}?name=${encodeURIComponent(nm)}${
+                        instrumentTypes[sym] === "ETF" ? "&assetType=ETF" : ""
+                      }`;
               return (
                 <li key={sym}>
-                  {quoteOnly && !indexHref ? (
-                    <div className="flex items-center gap-3 rounded-xl bg-card p-3 shadow-card">
-                      {inner}
-                    </div>
-                  ) : (
+                  {href ? (
                     <Link
-                      href={
-                        indexHref ??
-                        `/stocks/${encodeURIComponent(sym)}?name=${encodeURIComponent(nm)}${
-                          instrumentTypes[sym] === "ETF" ? "&assetType=ETF" : ""
-                        }`
-                      }
+                      href={href}
                       scroll={false}
                       className="flex items-center gap-3 rounded-xl bg-card p-3 shadow-card transition active:scale-[0.99]"
                     >
                       {inner}
                     </Link>
+                  ) : (
+                    <div className="flex items-center gap-3 rounded-xl bg-card p-3 shadow-card">
+                      {inner}
+                    </div>
                   )}
                 </li>
               );

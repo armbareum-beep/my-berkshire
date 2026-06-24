@@ -5,7 +5,6 @@
  */
 
 import { getYahooCrumb } from "./yahooCrumb";
-import { fetchWeightedRoe } from "./etfStats";
 import { createClient } from "@/lib/supabase/server";
 
 /** 지수 → 추종 ETF 프록시 맵 (PE/PBR/섹터 데이터 소스). */
@@ -21,12 +20,15 @@ const INDEX_ETF_PROXY: Record<string, string> = {
 
 export interface IndexSummary {
   trailingPE: number | null;
-  forwardPE: number | null;
   pbr: number | null;
   roe: number | null;  // 소수(0.34=34%), 상위 10개 보유 종목 비중 가중평균
   dividendYield: number | null;
   holdings: Array<{ symbol: string; name: string; weight: number }>;
   sectors: Array<{ name: string; weight: number }>;
+  /** 한국 지수(^KS11·^KQ11) 여부 — PER/PBR/배당이 KRX 캐시 전용 출처. */
+  isKoreaIndex: boolean;
+  /** 한국 지수의 KRX 캐시 행 존재 여부. false면 "데이터 준비 중"(미동기화). */
+  krxAvailable: boolean;
 }
 
 export interface ShillerCape {
@@ -54,7 +56,6 @@ function yieldToRatio(v: unknown): number | null {
  *  v7는 Yahoo가 2026년 차단. 크럼의 '/'를 URL 인코딩하면 거부되므로 문자열 직접 조합. */
 async function fetchQuoteSummary(symbol: string): Promise<{
   trailingPE: number | null;
-  forwardPE: number | null;
   priceToBook: number | null;
   dividendYield: number | null;
   holdings: Array<{ symbol: string; name: string; weight: number }>;
@@ -106,7 +107,6 @@ async function fetchQuoteSummary(symbol: string): Promise<{
     const eq = result.topHoldings?.equityHoldings ?? {};
     return {
       trailingPE: numOrNull(sd?.trailingPE),
-      forwardPE: numOrNull(sd?.forwardPE),
       // summaryDetail.priceToBook은 ETF엔 없음 → topHoldings.equityHoldings(역수 변환) 폴백
       priceToBook: numOrNull(sd?.priceToBook) ?? yieldToRatio(eq.priceToBook),
       dividendYield: numOrNull(sd?.trailingAnnualDividendYield),
@@ -118,12 +118,14 @@ async function fetchQuoteSummary(symbol: string): Promise<{
   }
 }
 
+/** PER/PBR/배당이 KRX 캐시 전용 출처인 한국 지수. */
+const KRX_INDEX_SYMBOLS = ["^KS11", "^KQ11"];
+
 /** KRX 캐시에서 한국 지수 PER·PBR 읽기. Yahoo에서 제공하지 않는 ^KS11·^KQ11 전용. */
 export async function getKrxIndexStats(
   symbol: string,
 ): Promise<{ per: number | null; pbr: number | null; dividendYield: number | null } | null> {
-  const KRX_SYMBOLS = ["^KS11", "^KQ11"];
-  if (!KRX_SYMBOLS.includes(symbol)) return null;
+  if (!KRX_INDEX_SYMBOLS.includes(symbol)) return null;
   try {
     const supabase = await createClient();
     const { data } = await supabase
@@ -151,16 +153,30 @@ export async function getIndexSummary(symbol: string): Promise<IndexSummary | nu
     getKrxIndexStats(symbol),
   ]);
 
-  if (!indexData && !proxyData && !krxData) return null;
+  const isKoreaIndex = KRX_INDEX_SYMBOLS.includes(symbol);
+
+  // 한국 지수는 KRX 캐시가 비어도(미동기화) "데이터 준비 중"을 셀별로 보여주기 위해
+  // 요약 객체를 유지한다. 그 외 지수는 출처가 전혀 없으면 null.
+  if (!indexData && !proxyData && !krxData && !isKoreaIndex) return null;
 
   const holdings = proxyData?.holdings ?? indexData?.holdings ?? [];
-  const roe = await fetchWeightedRoe(holdings);
 
   // PER·PBR 우선순위: KRX 캐시(한국 지수) > ETF 프록시 > 지수 직접
+  const trailingPE = krxData?.per ?? proxyData?.trailingPE ?? indexData?.trailingPE ?? null;
+  const pbr = krxData?.pbr ?? proxyData?.priceToBook ?? indexData?.priceToBook ?? null;
+
+  // ROE = PBR / PER (회계 항등식: E/B = (P/PER)/(P/PBR)). 지수 단위 한 쌍으로 일관 산출 —
+  // 구성종목 가중(상위10) 불필요. 한국·미국·ETF 모두 동일.
+  const roe = pbr != null && trailingPE != null && trailingPE > 0 ? pbr / trailingPE : null;
+
+  // KRX 행이 있어도 값이 전부 null(미발표·싱크 미완)이면 "준비 중"으로 취급.
+  const krxHasValue =
+    krxData != null &&
+    (krxData.per != null || krxData.pbr != null || krxData.dividendYield != null);
+
   return {
-    trailingPE: krxData?.per ?? proxyData?.trailingPE ?? indexData?.trailingPE ?? null,
-    forwardPE: proxyData?.forwardPE ?? indexData?.forwardPE ?? null,
-    pbr: krxData?.pbr ?? proxyData?.priceToBook ?? indexData?.priceToBook ?? null,
+    trailingPE,
+    pbr,
     roe,
     dividendYield:
       krxData?.dividendYield ??
@@ -169,6 +185,8 @@ export async function getIndexSummary(symbol: string): Promise<IndexSummary | nu
       null,
     holdings,
     sectors: proxyData?.sectors ?? indexData?.sectors ?? [],
+    isKoreaIndex,
+    krxAvailable: krxHasValue,
   };
 }
 

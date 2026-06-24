@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { SymbolAvatar } from "@/components/onboarding/SymbolPicker";
+import { EVENT_ICON, IconChip } from "@/components/transactions/eventIcons";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { StockRow } from "@/components/ui/StockRow";
 import { CountUp } from "@/components/ui/CountUp";
@@ -434,8 +435,18 @@ export function CashCard({
     pools ? Object.entries(pools).filter(([, v]) => Math.abs(v) > 0.005) : []
   ).sort((a, b) => (a[0] === "KRW" ? -1 : b[0] === "KRW" ? 1 : 0));
   const hasForeign = rows.some(([c]) => c !== "KRW");
+  // 외화 행을 환율 상세(/fx) 링크로 만들면 카드 전체 링크와 anchor 가 중첩된다.
+  // footer 가 있으면 SectionCard 가 제목행만 링크(중첩 방지)하므로, 외화가 있는데
+  // 호출자가 footer 를 안 줬으면 "환율 전체 보기" 푸터로 제목행 링크 모드를 보장한다.
+  const footerToUse =
+    footer ??
+    (hasForeign ? (
+      <CardAction href="/cash?tab=fx" scroll={false}>
+        환율 전체 보기
+      </CardAction>
+    ) : undefined);
   return (
-    <CardShell title="현금 비중" href="/cash" scroll={false} footer={footer}>
+    <CardShell title="현금 비중" href="/cash" scroll={false} footer={footerToUse}>
       <div className="flex items-baseline justify-between">
         <span className="text-2xl font-bold tabular-nums">
           {cashWeight !== null ? pct(cashWeight) : "—"}
@@ -445,16 +456,35 @@ export function CashCard({
         </span>
       </div>
       {hasForeign && (
-        <ul className="mt-4 flex flex-col gap-3 border-t border-border pt-4">
-          {rows.map(([c, v]) => (
-            <li key={c} className="flex items-center gap-3">
-              <Flag code={c} />
-              <span className="text-sm font-medium">{currencyMeta(c).name}</span>
-              <span className="ml-auto font-bold tabular-nums">
-                {nativeMoney(v, c)}
-              </span>
-            </li>
-          ))}
+        <ul className="mt-4 flex flex-col gap-1 border-t border-border pt-3">
+          {rows.map(([c, v]) => {
+            const inner = (
+              <>
+                <Flag code={c} />
+                <span className="text-sm font-medium">{currencyMeta(c).name}</span>
+                <span className="ml-auto font-bold tabular-nums">
+                  {nativeMoney(v, c)}
+                </span>
+              </>
+            );
+            // ₩는 상세 없음. 외화는 탭하면 환율 상세(/fx/[code])로.
+            return c === "KRW" ? (
+              <li key={c} className="flex items-center gap-3 px-1 py-1.5">
+                {inner}
+              </li>
+            ) : (
+              <li key={c}>
+                <Link
+                  href={`/fx/${c}`}
+                  scroll={false}
+                  className="-mx-1 flex items-center gap-3 rounded-lg px-1 py-1.5 transition active:bg-secondary"
+                >
+                  {inner}
+                  <span className="text-muted-foreground">›</span>
+                </Link>
+              </li>
+            );
+          })}
         </ul>
       )}
     </CardShell>
@@ -607,8 +637,12 @@ export function RecentActivityCard({ recent }: { recent: ActivityFeedItem[] }) {
       <ul className="flex flex-col gap-2">
         {recent.map((e, i) => (
           <li key={i} className="flex items-center gap-3 text-sm">
-            {/* 종목 이벤트는 종목 아바타, 현금 이벤트(증자·인출)는 행동명 이니셜 — 공용 Avatar 통일 */}
-            <SymbolAvatar name={e.name ?? EVENT_LABEL[e.type]} symbol={e.symbol ?? undefined} />
+            {/* 종목 이벤트는 종목 아바타, 현금 이벤트(증자·인출·환전)는 거래화면과 같은 유형 아이콘 칩 */}
+            {e.symbol ? (
+              <SymbolAvatar name={e.name ?? EVENT_LABEL[e.type]} symbol={e.symbol} />
+            ) : (
+              <IconChip icon={EVENT_ICON[e.type]} size="md" type={e.type} />
+            )}
             <span className="flex flex-col">
               <span className="font-medium">
                 {EVENT_LABEL[e.type]}

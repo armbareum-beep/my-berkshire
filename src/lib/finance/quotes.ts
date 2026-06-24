@@ -60,3 +60,9 @@ export function isQuoteOnly(symbol: string, instrumentType?: string): boolean {
   if (instrumentType === "INDEX" || instrumentType === "CURRENCY") return true;
   return symbol.startsWith("^") || symbol.includes("=");
 }
+
+/** `{CCY}KRW=X` 환율 심볼 → 통화코드(예: "USDKRW=X" → "USD"). 환율 아니면 null. */
+export function fxCodeFromSymbol(symbol: string): string | null {
+  const m = /^([A-Za-z]{3})KRW=X$/.exec(symbol.trim());
+  return m ? m[1].toUpperCase() : null;
+}
