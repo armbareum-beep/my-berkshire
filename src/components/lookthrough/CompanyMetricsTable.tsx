@@ -6,7 +6,7 @@ import { moneyShort, pct, type Currency } from "@/lib/format";
 import type { LookThroughLeg } from "@/lib/finance/lookThrough";
 
 /**
- * 내 사업부 — 내가 소유한 사업체(한국·미국 주식)를 한 표에서 비교.
+ * 내 지분 실적 — 내가 소유한 사업체(한국·미국 주식)를 한 표에서 비교.
  * 기여(내 몫 순이익·비중) + 밸류에이션(PER/PBR/ROE/순이익률)을 합쳐 한 화면에.
  * 가로 슬라이드 없이 480px 폭에 맞도록 table-fixed 로 열 너비 고정 — 한눈에 비교.
  * 엑셀 조건부 서식식 틴트: 각 지표 열에서 우수한 칸일수록 토스블루 배경이 진해짐

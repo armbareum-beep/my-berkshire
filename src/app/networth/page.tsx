@@ -293,7 +293,7 @@ async function NetWorthDivisionsStreamed({
         className="flex items-center justify-between rounded-2xl bg-card p-5 shadow-card transition active:scale-[0.99]"
       >
         <span className="flex flex-col">
-          <span className="font-bold">내 사업부 (부동산·대체·사업)</span>
+          <span className="font-bold">실물 사업부 (부동산·미술 등)</span>
           <span className="text-xs text-muted-foreground">
             부동산·미술품·비상장 등 추가
           </span>

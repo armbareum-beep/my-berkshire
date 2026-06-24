@@ -10,7 +10,7 @@ interface Rot {
 }
 
 /**
- * 홈 "내 사업부 실적" 카드 — 투시 연결 순이익(내 몫) + 밸류에이션 지표 로테이션(PRD §8-2).
+ * 홈 "내 지분 실적" 카드 — 투시 연결 순이익(내 몫) + 밸류에이션 지표 로테이션(PRD §8-2).
  * ROE·PER·PBR 중 값 있는 것만 ~3.5초 자동 전환(단정 금지·중립 표기). 탭하면 /lookthrough 상세.
  */
 export function LookThroughCard({
@@ -54,7 +54,7 @@ export function LookThroughCard({
     >
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-semibold">🏭 내 사업부 실적</p>
+          <p className="text-sm font-semibold">🏭 내 지분 실적</p>
           <p className="text-xs text-muted-foreground">
             내 회사들이 버는 힘 · 지분 몫 이익
           </p>

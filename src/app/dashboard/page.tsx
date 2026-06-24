@@ -59,7 +59,8 @@ import {
 //
 // 상단 렌즈(버핏式): 순자산(Hero) = 규모(전 재산) → performance = 성과(가격).
 // 그 아래는 자산 깊이(계좌·현금·구성) → 최근활동.
-// style(규율)·report(리포트)·lookthrough(본질/사업부 실적)는 "내 회사"(/growth)로 이전 — 홈은 계기판/자산만.
+// style(규율)·report(리포트)·lookthrough(본질/사업부 실적)는 "마이 버크셔"(/growth)로 이전 — 홈은 계기판/자산만.
+// 주식 사업부 그룹 + 실물 사업부(divisions, 자체 통합 카드). 주식→자산구성→실물 사업부→현금 순.
 const CARD_ORDER = [
   "performance",
   "holdings",
@@ -400,7 +401,7 @@ async function DashboardContent({
             />
           )}
 
-          {/* 순자산(전 재산) → 아래는 회사가 직접 운용하는 종목 부문. 부동산 등 다른 자산은 순자산 상세에. */}
+          {/* 순자산(전 재산) → 주식 사업부(직접 운용 종목). 실물 사업부 통합 카드는 자산구성 밑(CARD_ORDER). */}
           <div className="mt-2 px-1">
             <h2 className="text-base font-extrabold tracking-tight">주식 사업부</h2>
             <p className="text-xs text-muted-foreground">
@@ -413,6 +414,8 @@ async function DashboardContent({
         <>
           <PriceUnavailableCard missing={result.missingSymbols} />
           {cardMap.recent}
+          {/* 시세 실패와 무관하게 실물 사업부(수기 평가)는 노출. */}
+          {cardMap.divisions}
         </>
       )}
 
@@ -612,7 +615,7 @@ async function HeroValuationStreamed({
   );
 }
 
-/** 수기 사업부(부동산·대체·사업) — 자산 있는 사업부만 카드로, 각 카드에 자산 나열. 주식 유무와 무관하게 표시. */
+/** 실물 사업부 — 부동산·대체·사업을 한 카드로 통합. 자산 있을 때만. 주식 유무와 무관하게 표시. */
 async function DivisionsStreamed({
   manualAssetsPromise,
   manualAssetIncomePromise,
@@ -631,31 +634,58 @@ async function DivisionsStreamed({
   const divisions = computeDivisions(manualAssets, manualIncome);
   if (divisions.length === 0) return null;
   return (
-    <div className="flex flex-col gap-4">
-      {divisions.map((d) => (
-        <CurrencyView
-          key={d.key}
-          krw={
-            <DivisionCard
-              division={d}
-              factor={1}
-              currency="KRW"
-              href="/real-estate"
-              showTotalReturn
-            />
-          }
-          usd={
-            <DivisionCard
-              division={d}
-              factor={factorUSD}
-              currency="USD"
-              href="/real-estate"
-              showTotalReturn
-            />
-          }
+    <CurrencyView
+      krw={<RealDivisionsCard divisions={divisions} factor={1} currency="KRW" />}
+      usd={
+        <RealDivisionsCard
+          divisions={divisions}
+          factor={factorUSD}
+          currency="USD"
         />
-      ))}
-    </div>
+      }
+    />
+  );
+}
+
+/**
+ * 실물 사업부 통합 카드 — 부동산·대체·사업 사업부를 한 장에 묶고, 카드 전체가 /real-estate 로.
+ * 각 사업부는 bare 로 카드 틀 없이 행처럼 쌓임(개별 링크 제거 → 통합).
+ */
+function RealDivisionsCard({
+  divisions,
+  factor,
+  currency,
+}: {
+  divisions: ReturnType<typeof computeDivisions>;
+  factor: number;
+  currency: "KRW" | "USD";
+}) {
+  return (
+    <Link
+      href="/real-estate"
+      className="block rounded-2xl bg-card p-5 shadow-card transition active:scale-[0.99]"
+    >
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold">실물 사업부</p>
+        <span className="text-muted-foreground">›</span>
+      </div>
+      <p className="mt-0.5 text-xs text-muted-foreground">
+        부동산·미술·비상장 등 직접 평가하는 자산
+      </p>
+      <div className="mt-2 flex flex-col divide-y divide-border">
+        {divisions.map((d) => (
+          <div key={d.key} className="py-3 first:pt-1 last:pb-0">
+            <DivisionCard
+              division={d}
+              factor={factor}
+              currency={currency}
+              bare
+              showTotalReturn
+            />
+          </div>
+        ))}
+      </div>
+    </Link>
   );
 }
 
@@ -801,7 +831,7 @@ async function DisclosureCountStreamed({
       scroll={false}
       className="flex items-center justify-between rounded-xl bg-card px-4 py-3 text-sm font-semibold shadow-card transition active:scale-[0.99]"
     >
-      <span>내 사업부 소식</span>
+      <span>내 지분 소식</span>
       <span className="rounded-full bg-primary px-2.5 py-1 text-xs text-primary-foreground">
         {unread}
       </span>

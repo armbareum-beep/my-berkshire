@@ -21,12 +21,15 @@ export function DivisionCard({
   currency,
   href,
   showTotalReturn = false,
+  bare = false,
 }: {
   division: DivisionView;
   factor: number;
   currency: Currency;
   href?: string;
   showTotalReturn?: boolean;
+  /** 카드 틀/링크 없이 내용만 — 상위 카드(예: 통합 "실물 사업부")가 감쌀 때. */
+  bare?: boolean;
 }) {
   const { label, totals, assets } = division;
   const cv = (n: number) => n * factor;
@@ -81,6 +84,9 @@ export function DivisionCard({
     </>
   );
 
+  if (bare) {
+    return <>{inner}</>;
+  }
   if (href) {
     return (
       <Link

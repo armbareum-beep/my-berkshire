@@ -16,7 +16,7 @@ function shiftDate(date: string, days: number) {
 }
 
 /**
- * 내 사업부 공시 본문 — 페이지 크롬 없이 내용만.
+ * 내 지분 공시 본문 — 페이지 크롬 없이 내용만.
  * 전체 페이지(`/disclosures`)와 바텀시트(`@sheet/(.)disclosures`)가 공유.
  * @param filter 우선순위 필터(시트는 기본 "important", 전체 페이지는 ?filter 쿼리)
  */
@@ -54,7 +54,7 @@ export async function DisclosuresContent({
   return (
     <>
       <div>
-        <h1 className="text-2xl font-extrabold tracking-tight">내 사업부 공시</h1>
+        <h1 className="text-2xl font-extrabold tracking-tight">내 지분 공시</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           최근 180일 · 중요한 변화부터 확인합니다.
         </p>
