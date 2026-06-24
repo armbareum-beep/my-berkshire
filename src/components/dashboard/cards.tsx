@@ -21,6 +21,7 @@ import type {
   ActivityFeedItem,
   TimelineItem,
 } from "@/lib/dashboard";
+import type { CompoundingStreak } from "@/lib/finance/compoundingStreak";
 import type { AllocationGroup } from "@/lib/allocation";
 import type { ReturnResult } from "@/lib/finance/returns";
 import type { BenchmarkResult } from "@/lib/finance/benchmark";
@@ -107,6 +108,8 @@ export function HeroValuationCard({
   currency = "KRW",
   parts,
   sinceLastSeen,
+  compoundingStreak,
+  cumulativeReturn,
 }: {
   netWorth: number;
   dailyChange: number | null;
@@ -115,6 +118,10 @@ export function HeroValuationCard({
   parts?: { label: string; value: number }[];
   /** 지난 접속 이후 벌어들인 손익(표시통화) + 수익률. null이면 어제 대비로 폴백. */
   sinceLastSeen?: { earned: number; pct: number | null } | null;
+  /** 복리 무중단 기간(통화 무관). 빈 장부면 미표시. */
+  compoundingStreak?: CompoundingStreak;
+  /** 총자산 누적수익률(투자 + 부동산 등 취득가 있는 수기자산, 비율 통화무관). null이면 미표시. */
+  cumulativeReturn?: number | null;
 }) {
   // 구성 항목 — 금액 0은 제외(예: 부동산·빚 없으면 안 보임).
   const shownParts = (parts ?? []).filter((p) => Math.abs(p.value) > 0.005);
@@ -124,10 +131,6 @@ export function HeroValuationCard({
   const totalAssets = assetParts.reduce((s, p) => s + p.value, 0);
   const partShade = (i: number) =>
     i === 0 ? "bg-primary" : i === 1 ? "bg-primary/45" : "bg-primary/20";
-  // 어제 대비 % = 일일변동 ÷ 어제 총자산(현재−변동). 일일변동은 보유 종목 시세 변동분.
-  const prevAssets = dailyChange !== null ? totalAssets - dailyChange : null;
-  const dailyRate =
-    prevAssets !== null && prevAssets > 0 ? dailyChange! / prevAssets : null;
   return (
     <section className="rounded-2xl bg-card p-6 shadow-card">
       {/* 숫자 자체는 안 누른다(레일 어포던스 규칙). 옆 › 로만 자산 상세 진입. */}
@@ -155,25 +158,42 @@ export function HeroValuationCard({
         />
         <CurrencyToggle current={currency} variant="icon" />
       </div>
-      {/* 지난 접속 이후 벌어들인 손익(정직: 증자·매수 제외). 없으면 어제 대비로 폴백. */}
+      {/* 총자산 누적수익률 — 순자산 숫자 바로 밑, 가장 큰 보조지표. 투자(시세) + 부동산 등 수기자산(추정) 합산. */}
+      {cumulativeReturn != null && (
+        <p
+          className="mt-2 text-xl font-bold tabular-nums"
+          style={{ color: changeColor(cumulativeReturn) }}
+        >
+          총자산 누적수익률 {signedPct(cumulativeReturn)}
+        </p>
+      )}
+      {/* 지난 접속 이후 벌어들인 손익(₩만 — 누적수익률 아래 보조 줄, 작게). 없으면 어제 대비로 폴백. */}
       {sinceLastSeen ? (
         <p
-          className="mt-2 text-base font-semibold tabular-nums"
+          className="mt-0.5 text-sm font-medium tabular-nums"
           style={{ color: changeColor(sinceLastSeen.earned) }}
         >
           지난 접속 이후 {signedMoney(sinceLastSeen.earned, currency)}
-          {sinceLastSeen.pct !== null && ` (${signedPct(sinceLastSeen.pct, 2)})`}
         </p>
       ) : (
         dailyChange !== null && (
           <p
-            className="mt-2 text-base font-semibold tabular-nums"
+            className="mt-0.5 text-sm font-medium tabular-nums"
             style={{ color: changeColor(dailyChange) }}
           >
             어제보다 {signedMoney(dailyChange, currency)}
-            {dailyRate !== null && ` (${signedPct(dailyRate, 2)})`}
           </p>
         )
+      )}
+      {/* 복리 무중단 — 자본을 빼서 소비하지 않고 복리를 지켜온 기간(멍거 제1원칙). 행동·시간만, 시세 무관. */}
+      {compoundingStreak && !compoundingStreak.isEmpty && (
+        <p className="mt-2 text-sm font-medium text-muted-foreground tabular-nums">
+          복리 무중단{" "}
+          {compoundingStreak.unit === "month"
+            ? `${compoundingStreak.months}개월`
+            : `${compoundingStreak.days}일`}
+          {compoundingStreak.bonusRecentDeposit && " 🔥"}
+        </p>
       )}
       {/* 자산 구성 — "주식은 내 재산의 일부"를 눈으로. 스택 바(브랜드색 농도) + 점 범례. */}
       {assetParts.length > 0 && totalAssets > 0 && (
@@ -278,26 +298,22 @@ export function PerformanceCard({
   result: ReturnResult;
   benchmark: BenchmarkResult;
   profit: number | null;
-  /** 투입 원금(설립자본 + 증자 − 인출). */
+  /** 투입 원금(설립자본 + 증자, 인출 차감 전 — 누적수익률 분모와 일치). */
   invested?: number;
   currency?: Currency;
   welcome: boolean;
 }) {
+  // 주식 사업부는 무조건 XIRR(연복리). 설립 90일(≈3개월) 전엔 누적으로 대체하지 않고
+  // "정확한 수익률은 3개월 후" 안내만. 짧은 기간 연환산은 숫자가 크게 튀어 정직하지 않음.
   const isXirr = result.status === "xirr" && result.xirr !== null;
-  const mine = isXirr ? result.xirr! : (result.cumulativeReturn ?? 0);
+  const priceFailed = result.status === "price_unavailable";
+  const daysLeft = Math.max(0, 90 - result.days);
 
-  // vs 시장 — 같은 지표(XIRR 우선)로 비교 가능할 때만.
-  const useXirr =
-    result.status === "xirr" &&
-    result.xirr !== null &&
-    benchmark.benchmarkXirr !== null;
-  const market = useXirr
-    ? benchmark.benchmarkXirr
-    : result.cumulativeReturn !== null
-      ? benchmark.benchmarkCumulative
-      : null;
-  const canCompare = benchmark.status === "ok" && market !== null;
-  const diff = canCompare ? mine - market! : null;
+  // vs 시장 — XIRR 기준으로만 비교(설립 90일 후).
+  const canCompare =
+    isXirr && benchmark.status === "ok" && benchmark.benchmarkXirr !== null;
+  const market = canCompare ? benchmark.benchmarkXirr : null;
+  const diff = canCompare ? result.xirr! - market! : null;
 
   return (
     <Link
@@ -309,30 +325,36 @@ export function PerformanceCard({
     >
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-semibold">
-            {isXirr ? "연복리 수익률 (XIRR)" : "누적 수익률"}
-          </p>
+          <p className="text-sm font-semibold">연복리 수익률 (XIRR)</p>
           <p className="text-xs text-muted-foreground">
             내 매매 성적표 · 산 가격 대비
           </p>
         </div>
         <span className="text-muted-foreground">›</span>
       </div>
-      <p
-        className="mt-1 text-3xl font-extrabold tabular-nums"
-        style={{ color: changeColor(mine) }}
-      >
-        {signedPct(mine)}
-      </p>
-      {profit !== null && (
-        <p className="mt-1 text-sm font-medium tabular-nums text-muted-foreground">
-          누적손익 {signedMoney(profit, currency)}
-          {invested != null && ` · 투입원금 ${money(invested, currency)}`}
+      {isXirr ? (
+        <p
+          className="mt-1 text-3xl font-extrabold tabular-nums"
+          style={{ color: changeColor(result.xirr!) }}
+        >
+          {signedPct(result.xirr!)}
+        </p>
+      ) : (
+        <p className="mt-1 text-2xl font-bold text-muted-foreground">
+          {priceFailed ? "시세 갱신 필요" : "3개월 후 공개"}
         </p>
       )}
-      {profit === null && invested != null && (
-        <p className="mt-1 text-sm tabular-nums text-muted-foreground">
+      {/* 투입원금(넣은 돈) → 누적손익(불어난 결과) 순. 누적수익률%는 손익 옆 괄호로. 모두 주식 사업부 한정. */}
+      {invested != null && (
+        <p className="mt-2 text-sm tabular-nums text-muted-foreground">
           투입원금 {money(invested, currency)}
+        </p>
+      )}
+      {profit !== null && (
+        <p className="mt-0.5 text-sm font-medium tabular-nums text-muted-foreground">
+          누적손익 {signedMoney(profit, currency)}
+          {result.cumulativeReturn != null &&
+            ` (${signedPct(result.cumulativeReturn)})`}
         </p>
       )}
 
@@ -351,9 +373,11 @@ export function PerformanceCard({
           </div>
         ) : (
           <p className="text-xs text-muted-foreground">
-            {result.status !== "xirr" && result.message
-              ? result.message
-              : "데이터가 쌓이면 시장(KOSPI)과 비교해 드려요."}
+            {priceFailed
+              ? (result.message ?? "시세가 갱신되면 보여드려요.")
+              : isXirr
+                ? "데이터가 쌓이면 시장(KOSPI)과 비교해 드려요."
+                : `설립 ${daysLeft}일 뒤 정확한 연복리 수익률(XIRR)이 공개돼요. 짧은 기간을 1년으로 환산하면 숫자가 크게 튀어서 그때까지 기다려요.`}
           </p>
         )}
       </div>
