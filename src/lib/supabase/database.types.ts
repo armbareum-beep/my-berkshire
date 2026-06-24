@@ -12,147 +12,70 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
-      krx_index_stats_cache: {
+      accounts: {
         Row: {
-          symbol: string
-          per: number | null
-          pbr: number | null
-          eps: number | null
-          dividend_yield: number | null
-          listed_count: number | null
-          synced_at: string
-        }
-        Insert: {
-          symbol: string
-          per?: number | null
-          pbr?: number | null
-          eps?: number | null
-          dividend_yield?: number | null
-          listed_count?: number | null
-          synced_at?: string
-        }
-        Update: {
-          symbol?: string
-          per?: number | null
-          pbr?: number | null
-          eps?: number | null
-          dividend_yield?: number | null
-          listed_count?: number | null
-          synced_at?: string
-        }
-        Relationships: []
-      }
-      kis_security_master: {
-        Row: {
-          symbol: string
-          name_ko: string
-          name_en: string | null
-          exchange: string | null
-          market: string
-          asset_type: string | null
-          source_date: string | null
-          fetched_at: string
-        }
-        Insert: {
-          symbol: string
-          name_ko: string
-          name_en?: string | null
-          exchange?: string | null
-          market: string
-          asset_type?: string | null
-          source_date?: string | null
-          fetched_at?: string
-        }
-        Update: {
-          symbol?: string
-          name_ko?: string
-          name_en?: string | null
-          exchange?: string | null
-          market?: string
-          asset_type?: string | null
-          source_date?: string | null
-          fetched_at?: string
-        }
-        Relationships: []
-      }
-      user_perf_snapshots: {
-        Row: {
+          account_type: Database["public"]["Enums"]["account_type"]
+          broker: string | null
+          commission_rate: number
+          created_at: string
+          holding_id: string
           id: string
-          user_id: string
-          holding_id: string
-          xirr: number | null
-          cumulative_return: number | null
-          days: number
-          portfolio_krw: number | null
-          mode: Database["public"]["Enums"]["holding_mode"]
-          investment_krw: number | null
-          alpha: number | null
-          benchmark_symbol: string | null
-          updated_at: string
+          name: string
         }
         Insert: {
-          id?: string
-          user_id: string
+          account_type?: Database["public"]["Enums"]["account_type"]
+          broker?: string | null
+          commission_rate?: number
+          created_at?: string
           holding_id: string
-          xirr?: number | null
-          cumulative_return?: number | null
-          days: number
-          portfolio_krw?: number | null
-          mode?: Database["public"]["Enums"]["holding_mode"]
-          investment_krw?: number | null
-          alpha?: number | null
-          benchmark_symbol?: string | null
-          updated_at?: string
+          id?: string
+          name?: string
         }
         Update: {
-          id?: string
-          user_id?: string
+          account_type?: Database["public"]["Enums"]["account_type"]
+          broker?: string | null
+          commission_rate?: number
+          created_at?: string
           holding_id?: string
-          xirr?: number | null
-          cumulative_return?: number | null
-          days?: number
-          portfolio_krw?: number | null
-          mode?: Database["public"]["Enums"]["holding_mode"]
-          investment_krw?: number | null
-          alpha?: number | null
-          benchmark_symbol?: string | null
-          updated_at?: string
+          id?: string
+          name?: string
         }
         Relationships: [
           {
-            foreignKeyName: "user_perf_snapshots_holding_id_fkey"
+            foreignKeyName: "accounts_holding_id_fkey"
             columns: ["holding_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "holdings"
             referencedColumns: ["id"]
           },
         ]
-      }
-      etf_ter_cache: {
-        Row: {
-          fetched_at: string
-          name: string
-          source_date: string
-          symbol: string
-          ter: number
-        }
-        Insert: {
-          fetched_at?: string
-          name: string
-          source_date: string
-          symbol: string
-          ter: number
-        }
-        Update: {
-          fetched_at?: string
-          name?: string
-          source_date?: string
-          symbol?: string
-          ter?: number
-        }
-        Relationships: []
       }
       calculation_snapshots: {
         Row: {
@@ -207,43 +130,50 @@ export type Database = {
           },
         ]
       }
-      accounts: {
+      etf_holdings_cache: {
         Row: {
-          account_type: Database["public"]["Enums"]["account_type"]
-          broker: string | null
-          commission_rate: number
-          created_at: string
-          holding_id: string
-          id: string
-          name: string
+          fetched_at: string
+          holdings: Json
+          source_date: string
+          symbol: string
         }
         Insert: {
-          account_type?: Database["public"]["Enums"]["account_type"]
-          broker?: string | null
-          commission_rate?: number
-          created_at?: string
-          holding_id: string
-          id?: string
-          name?: string
+          fetched_at?: string
+          holdings?: Json
+          source_date: string
+          symbol: string
         }
         Update: {
-          account_type?: Database["public"]["Enums"]["account_type"]
-          broker?: string | null
-          commission_rate?: number
-          created_at?: string
-          holding_id?: string
-          id?: string
-          name?: string
+          fetched_at?: string
+          holdings?: Json
+          source_date?: string
+          symbol?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "accounts_holding_id_fkey"
-            columns: ["holding_id"]
-            isOneToOne: false
-            referencedRelation: "holdings"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
+      }
+      etf_ter_cache: {
+        Row: {
+          fetched_at: string
+          name: string
+          source_date: string
+          symbol: string
+          ter: number
+        }
+        Insert: {
+          fetched_at?: string
+          name: string
+          source_date: string
+          symbol: string
+          ter: number
+        }
+        Update: {
+          fetched_at?: string
+          name?: string
+          source_date?: string
+          symbol?: string
+          ter?: number
+        }
+        Relationships: []
       }
       events: {
         Row: {
@@ -315,15 +245,15 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "events_reverses_event_id_fkey"
-            columns: ["reverses_event_id"]
+            foreignKeyName: "events_funding_deposit_id_fkey"
+            columns: ["funding_deposit_id"]
             isOneToOne: false
             referencedRelation: "events"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "events_funding_deposit_id_fkey"
-            columns: ["funding_deposit_id"]
+            foreignKeyName: "events_reverses_event_id_fkey"
+            columns: ["reverses_event_id"]
             isOneToOne: false
             referencedRelation: "events"
             referencedColumns: ["id"]
@@ -434,6 +364,69 @@ export type Database = {
           },
         ]
       }
+      kis_security_master: {
+        Row: {
+          asset_type: string | null
+          exchange: string | null
+          fetched_at: string
+          market: string
+          name_en: string | null
+          name_ko: string
+          source_date: string | null
+          symbol: string
+        }
+        Insert: {
+          asset_type?: string | null
+          exchange?: string | null
+          fetched_at?: string
+          market: string
+          name_en?: string | null
+          name_ko: string
+          source_date?: string | null
+          symbol: string
+        }
+        Update: {
+          asset_type?: string | null
+          exchange?: string | null
+          fetched_at?: string
+          market?: string
+          name_en?: string | null
+          name_ko?: string
+          source_date?: string | null
+          symbol?: string
+        }
+        Relationships: []
+      }
+      krx_index_stats_cache: {
+        Row: {
+          dividend_yield: number | null
+          eps: number | null
+          listed_count: number | null
+          pbr: number | null
+          per: number | null
+          symbol: string
+          synced_at: string
+        }
+        Insert: {
+          dividend_yield?: number | null
+          eps?: number | null
+          listed_count?: number | null
+          pbr?: number | null
+          per?: number | null
+          symbol: string
+          synced_at?: string
+        }
+        Update: {
+          dividend_yield?: number | null
+          eps?: number | null
+          listed_count?: number | null
+          pbr?: number | null
+          per?: number | null
+          symbol?: string
+          synced_at?: string
+        }
+        Relationships: []
+      }
       liabilities: {
         Row: {
           created_at: string
@@ -481,10 +474,62 @@ export type Database = {
           },
         ]
       }
+      manual_asset_income: {
+        Row: {
+          amount: number
+          cost: number
+          created_at: string
+          date: string
+          deleted_at: string | null
+          holding_id: string
+          id: string
+          manual_asset_id: string
+          note: string | null
+        }
+        Insert: {
+          amount: number
+          cost?: number
+          created_at?: string
+          date: string
+          deleted_at?: string | null
+          holding_id: string
+          id?: string
+          manual_asset_id: string
+          note?: string | null
+        }
+        Update: {
+          amount?: number
+          cost?: number
+          created_at?: string
+          date?: string
+          deleted_at?: string | null
+          holding_id?: string
+          id?: string
+          manual_asset_id?: string
+          note?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "manual_asset_income_holding_id_fkey"
+            columns: ["holding_id"]
+            isOneToOne: false
+            referencedRelation: "holdings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "manual_asset_income_manual_asset_id_fkey"
+            columns: ["manual_asset_id"]
+            isOneToOne: false
+            referencedRelation: "manual_assets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       manual_assets: {
         Row: {
           acquired_at: string | null
           acquired_price: number | null
+          acquisition_cost: number | null
           created_at: string
           current_value: number
           deleted_at: string | null
@@ -493,11 +538,17 @@ export type Database = {
           kind: Database["public"]["Enums"]["manual_asset_kind"]
           name: string
           note: string | null
+          sale_at: string | null
+          sale_cost: number | null
+          sale_price: number | null
           updated_at: string
+          valuation_source: string | null
+          valued_at: string | null
         }
         Insert: {
           acquired_at?: string | null
           acquired_price?: number | null
+          acquisition_cost?: number | null
           created_at?: string
           current_value?: number
           deleted_at?: string | null
@@ -506,11 +557,17 @@ export type Database = {
           kind?: Database["public"]["Enums"]["manual_asset_kind"]
           name: string
           note?: string | null
+          sale_at?: string | null
+          sale_cost?: number | null
+          sale_price?: number | null
           updated_at?: string
+          valuation_source?: string | null
+          valued_at?: string | null
         }
         Update: {
           acquired_at?: string | null
           acquired_price?: number | null
+          acquisition_cost?: number | null
           created_at?: string
           current_value?: number
           deleted_at?: string | null
@@ -519,7 +576,12 @@ export type Database = {
           kind?: Database["public"]["Enums"]["manual_asset_kind"]
           name?: string
           note?: string | null
+          sale_at?: string | null
+          sale_cost?: number | null
+          sale_price?: number | null
           updated_at?: string
+          valuation_source?: string | null
+          valued_at?: string | null
         }
         Relationships: [
           {
@@ -707,7 +769,12 @@ export type Database = {
       }
     }
     Functions: {
-      [_ in never]: never
+      bump_holding_revision: {
+        Args: { target_holding_id: string }
+        Returns: undefined
+      }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
     }
     Enums: {
       account_type: "GENERAL" | "ISA" | "PENSION" | "OVERSEAS" | "IRP"
@@ -852,6 +919,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       account_type: ["GENERAL", "ISA", "PENSION", "OVERSEAS", "IRP"],

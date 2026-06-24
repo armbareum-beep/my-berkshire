@@ -132,6 +132,12 @@ export interface ManualAssetInput {
   /** 취득일(YYYY-MM-DD) 또는 빈 문자열. */
   acquiredAt?: string;
   note?: string;
+  /** 취득 부대비용(세금·중개 단일 합산, ₩) 또는 null. */
+  acquisitionCost?: number | null;
+  /** 평가 출처(KB시세·실거래가·감정가 등). */
+  valuationSource?: string;
+  /** 평가 갱신일(YYYY-MM-DD) 또는 빈 문자열. */
+  valuedAt?: string;
 }
 
 function validateAsset(input: ManualAssetInput): string | null {
@@ -141,6 +147,8 @@ function validateAsset(input: ManualAssetInput): string | null {
   if (!(input.currentValue >= 0)) return "평가액이 올바르지 않습니다.";
   if (input.acquiredPrice != null && !(input.acquiredPrice >= 0))
     return "취득가가 올바르지 않습니다.";
+  if (input.acquisitionCost != null && !(input.acquisitionCost >= 0))
+    return "취득 부대비용이 올바르지 않습니다.";
   return null;
 }
 
@@ -167,6 +175,9 @@ export async function addManualAsset(
     acquired_price: input.acquiredPrice ?? null,
     acquired_at: input.acquiredAt || null,
     note: input.note?.trim() || null,
+    acquisition_cost: input.acquisitionCost ?? null,
+    valuation_source: input.valuationSource?.trim() || null,
+    valued_at: input.valuedAt || null,
   });
   if (error) return { ok: false, error: error.message };
 
@@ -198,6 +209,9 @@ export async function updateManualAsset(
       acquired_price: input.acquiredPrice ?? null,
       acquired_at: input.acquiredAt || null,
       note: input.note?.trim() || null,
+      acquisition_cost: input.acquisitionCost ?? null,
+      valuation_source: input.valuationSource?.trim() || null,
+      valued_at: input.valuedAt || null,
     })
     .eq("id", id);
   if (error) return { ok: false, error: error.message };
@@ -217,6 +231,111 @@ export async function deleteManualAsset(id: string): Promise<Result> {
   const { error } = await supabase
     .from("manual_assets")
     .update({ deleted_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/networth");
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────
+// 부동산 사업부 임대수익(실현) — events 와 분리된 자체 원장.
+// ─────────────────────────────────────────────────────────────
+
+export interface ManualAssetIncomeInput {
+  manualAssetId: string;
+  /** 받은 날(YYYY-MM-DD). */
+  date: string;
+  /** 임대수익(₩). */
+  amount: number;
+  /** 임대 관련 비용(재산세·관리비 단일 합산, ₩). 모르면 0. */
+  cost?: number;
+}
+
+export async function addManualAssetIncome(
+  input: ManualAssetIncomeInput,
+): Promise<Result> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "로그인이 필요합니다." };
+
+  if (!input.manualAssetId) return { ok: false, error: "자산을 찾을 수 없습니다." };
+  if (!input.date) return { ok: false, error: "받은 날을 입력하세요." };
+  if (!(input.amount >= 0)) return { ok: false, error: "임대수익이 올바르지 않습니다." };
+  if (input.cost != null && !(input.cost >= 0))
+    return { ok: false, error: "비용이 올바르지 않습니다." };
+
+  const holdingId = await getHoldingId(supabase);
+  if (!holdingId) return { ok: false, error: "회사를 찾을 수 없습니다." };
+
+  const { error } = await supabase.from("manual_asset_income").insert({
+    holding_id: holdingId,
+    manual_asset_id: input.manualAssetId,
+    date: input.date,
+    amount: input.amount,
+    cost: input.cost ?? 0,
+  });
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/networth");
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
+export async function deleteManualAssetIncome(id: string): Promise<Result> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "로그인이 필요합니다." };
+
+  const { error } = await supabase
+    .from("manual_asset_income")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/networth");
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────
+// 부동산 매도(처분) — 매도차익 실현. 매도 대금은 events 미연동.
+// ─────────────────────────────────────────────────────────────
+
+export interface SellManualAssetInput {
+  salePrice: number;
+  saleAt: string;
+  saleCost?: number;
+}
+
+export async function sellManualAsset(
+  id: string,
+  input: SellManualAssetInput,
+): Promise<Result> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "로그인이 필요합니다." };
+
+  if (!(input.salePrice >= 0)) return { ok: false, error: "매도가가 올바르지 않습니다." };
+  if (!input.saleAt) return { ok: false, error: "매도일을 입력하세요." };
+  if (input.saleCost != null && !(input.saleCost >= 0))
+    return { ok: false, error: "매도 비용이 올바르지 않습니다." };
+
+  // RLS 가 소유권 보장 → id 로만 갱신.
+  const { error } = await supabase
+    .from("manual_assets")
+    .update({
+      sale_price: input.salePrice,
+      sale_at: input.saleAt,
+      sale_cost: input.saleCost ?? null,
+    })
     .eq("id", id);
   if (error) return { ok: false, error: error.message };
 

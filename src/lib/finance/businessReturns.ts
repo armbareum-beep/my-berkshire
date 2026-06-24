@@ -28,17 +28,23 @@ export interface BusinessReturnsResult {
   total: DivisionReturn | null;
 }
 
+/** 수기 사업부 입력(부동산/대체/사업 각각). 취득가 합·손익 합. */
+export interface ManualDivisionInput {
+  key: string;
+  label: string;
+  cost: number;
+  gain: number;
+}
+
 export function computeBusinessReturns(params: {
   /** 주식 투입원가(설립자본 + 증자, gross) ₩. */
   stockInvested: number;
   /** 주식 누적손익 ₩. 시세 실패 시 null. */
   stockGain: number | null;
-  /** 취득가 있는 수기자산 합산 취득원가 ₩. */
-  manualCost: number;
-  /** 취득가 있는 수기자산 합산 평가손익 ₩. */
-  manualGain: number;
+  /** 수기 사업부들(부동산·대체·사업) — 취득가 있는 자산만 집계됨. */
+  manualDivisions: ManualDivisionInput[];
 }): BusinessReturnsResult {
-  const { stockInvested, stockGain, manualCost, manualGain } = params;
+  const { stockInvested, stockGain, manualDivisions } = params;
   const divisions: DivisionReturn[] = [];
 
   const stockOk = stockGain !== null && stockInvested > 0;
@@ -53,14 +59,14 @@ export function computeBusinessReturns(params: {
     });
   }
 
-  const hasManual = manualCost > 0;
-  if (hasManual) {
+  const manual = manualDivisions.filter((m) => m.cost > 0);
+  for (const m of manual) {
     divisions.push({
-      key: "manual",
-      label: "부동산 등 사업부",
-      invested: manualCost,
-      gain: manualGain,
-      ret: manualGain / manualCost,
+      key: m.key,
+      label: m.label,
+      invested: m.cost,
+      gain: m.gain,
+      ret: m.gain / m.cost,
       estimated: true,
     });
   }
@@ -68,8 +74,10 @@ export function computeBusinessReturns(params: {
   // 합계는 주식(시세) 계산이 가능할 때만 — 안 그러면 불완전이라 호도.
   let total: DivisionReturn | null = null;
   if (stockOk) {
-    const invested = stockInvested + (hasManual ? manualCost : 0);
-    const gain = (stockGain as number) + (hasManual ? manualGain : 0);
+    const manualCost = manual.reduce((s, m) => s + m.cost, 0);
+    const manualGain = manual.reduce((s, m) => s + m.gain, 0);
+    const invested = stockInvested + manualCost;
+    const gain = (stockGain as number) + manualGain;
     total =
       invested > 0
         ? {
@@ -78,7 +86,7 @@ export function computeBusinessReturns(params: {
             invested,
             gain,
             ret: gain / invested,
-            estimated: hasManual,
+            estimated: manual.length > 0,
           }
         : null;
   }
