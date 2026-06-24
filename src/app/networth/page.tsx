@@ -13,9 +13,10 @@ import { loadPortfolioValueSeries } from "@/lib/portfolioValueSeries";
 import { loadAccountGroups } from "@/lib/accounts";
 import { loadLiabilities } from "@/lib/liabilities";
 import { totalLiabilities, annualInterest } from "@/lib/finance/liabilities";
-import { loadManualAssets } from "@/lib/realAssets";
-import { totalManualAssets, manualAssetsCostBasis } from "@/lib/finance/realAssets";
+import { loadManualAssets, loadManualAssetIncome } from "@/lib/realAssets";
+import { totalManualAssets, computeDivisions } from "@/lib/finance/realAssets";
 import { computeBusinessReturns } from "@/lib/finance/businessReturns";
+import { DivisionCard } from "@/components/networth/DivisionCard";
 import { BusinessReturnsCard } from "@/components/networth/BusinessReturnsCard";
 import { todayKST } from "@/lib/date";
 import { BackButton } from "@/components/BackButton";
@@ -25,7 +26,7 @@ import { CashCard } from "@/components/dashboard/cards";
 import { ValueTrendChart } from "@/components/trend/ValueTrendChart";
 import { NetWorthSummary } from "@/components/networth/NetWorthSummary";
 import { LiabilitiesSection } from "@/components/networth/LiabilitiesSection";
-import { ManualAssetsSection } from "@/components/networth/ManualAssetsSection";
+import Link from "next/link";
 
 /**
  * 순자산 상세 — 홈 "현재 자산" › 에서 진입.
@@ -43,10 +44,7 @@ export default async function NetWorthPage({
     <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
       <BottomTabBar />
       <BackButton />
-      <NetWorthContent
-        autoOpenDebt={add === "debt"}
-        autoOpenAsset={add === "asset"}
-      />
+      <NetWorthContent autoOpenDebt={add === "debt"} />
     </main>
   );
 }
@@ -58,10 +56,8 @@ export default async function NetWorthPage({
  */
 export async function NetWorthContent({
   autoOpenDebt = false,
-  autoOpenAsset = false,
 }: {
   autoOpenDebt?: boolean;
-  autoOpenAsset?: boolean;
 }) {
   const supabase = await createClient();
   const {
@@ -119,6 +115,10 @@ export async function NetWorthContent({
   });
   const liabilitiesPromise = loadLiabilities(supabase, portfolio.holding.id);
   const manualAssetsPromise = loadManualAssets(supabase, portfolio.holding.id);
+  const manualAssetIncomePromise = loadManualAssetIncome(
+    supabase,
+    portfolio.holding.id,
+  );
 
   // 통화별 현금 풀(외화 분해 표시용)
   const pools = companyCashPools(
@@ -137,6 +137,7 @@ export async function NetWorthContent({
           stockInvestedKrw={stockInvestedKrw}
           stockGainKrw={stockGainKrw}
           manualAssetsPromise={manualAssetsPromise}
+          manualAssetIncomePromise={manualAssetIncomePromise}
           liabilitiesPromise={liabilitiesPromise}
           factor={factor}
           currency={data.currency}
@@ -164,24 +165,23 @@ export async function NetWorthContent({
         </Suspense>
       )}
 
-      {/* 현금 — 순자산의 일부. 모든 자산을 한 화면에. */}
+      {/* 사업부 자산 — 부동산·대체·사업. 자산 나열(주식 보유처럼). 탭하면 전용 페이지에서 관리. */}
+      <Suspense fallback={<CardSkeleton />}>
+        <NetWorthDivisionsStreamed
+          manualAssetsPromise={manualAssetsPromise}
+          manualAssetIncomePromise={manualAssetIncomePromise}
+          factor={factor}
+          currency={data.currency}
+        />
+      </Suspense>
+
+      {/* 현금 — 자산의 최하단(주식 → 사업부 → 현금). */}
       <CashCard
         cash={data.cash}
         cashWeight={data.cashWeight}
         currency={data.currency}
         pools={pools}
       />
-
-      {/* 실물·대체 자산(부동산 등 수기 평가) — 자산 쪽. */}
-      <Suspense fallback={<CardSkeleton />}>
-        <ManualAssetsStreamed
-          manualAssetsPromise={manualAssetsPromise}
-          factor={factor}
-          currency={data.currency}
-          today={today}
-          autoOpen={autoOpenAsset}
-        />
-      </Suspense>
 
       {/* 부채 — 재무상태표의 반대편. 추가/수정/삭제. */}
       <Suspense fallback={<CardSkeleton />}>
@@ -206,6 +206,7 @@ export async function NetWorthContent({
 type AccountGroupsResult = Awaited<ReturnType<typeof loadAccountGroups>>;
 type LiabilitiesResult = Awaited<ReturnType<typeof loadLiabilities>>;
 type ManualAssetsResult = Awaited<ReturnType<typeof loadManualAssets>>;
+type ManualAssetIncomeResult = Awaited<ReturnType<typeof loadManualAssetIncome>>;
 type ValueSeriesResult = Awaited<ReturnType<typeof loadPortfolioValueSeries>>;
 
 async function NetWorthSummaryStreamed({
@@ -213,6 +214,7 @@ async function NetWorthSummaryStreamed({
   stockInvestedKrw,
   stockGainKrw,
   manualAssetsPromise,
+  manualAssetIncomePromise,
   liabilitiesPromise,
   factor,
   currency,
@@ -222,25 +224,31 @@ async function NetWorthSummaryStreamed({
   stockInvestedKrw: number;
   stockGainKrw: number | null;
   manualAssetsPromise: Promise<ManualAssetsResult>;
+  manualAssetIncomePromise: Promise<ManualAssetIncomeResult>;
   liabilitiesPromise: Promise<LiabilitiesResult>;
   factor: number;
   currency: ReturnType<typeof computeDashboard>["currency"];
   priceAvailable: boolean;
 }) {
-  const [manualAssets, liabilities] = await Promise.all([
+  const [manualAssets, manualIncome, liabilities] = await Promise.all([
     manualAssetsPromise,
+    manualAssetIncomePromise,
     liabilitiesPromise,
   ]);
   const manualTotalKrw = totalManualAssets(manualAssets);
   const assetsKrw = investmentKrw !== null ? investmentKrw + manualTotalKrw : null;
 
-  // 사업부별 누적수익률(주식 + 부동산) — 히어로 총 누적수익률의 분해.
-  const reBasis = manualAssetsCostBasis(manualAssets);
+  // 사업부별 누적수익률(주식 + 부동산/대체/사업) — 히어로 총 누적수익률의 분해.
+  const manualDivisions = computeDivisions(manualAssets, manualIncome).map((d) => ({
+    key: d.key,
+    label: d.label,
+    cost: d.totals.cost,
+    gain: d.totals.gain,
+  }));
   const businessReturns = computeBusinessReturns({
     stockInvested: stockInvestedKrw,
     stockGain: stockGainKrw,
-    manualCost: reBasis.cost,
-    manualGain: reBasis.gain,
+    manualDivisions,
   });
 
   return (
@@ -259,6 +267,53 @@ async function NetWorthSummaryStreamed({
         currency={currency}
       />
     </>
+  );
+}
+
+async function NetWorthDivisionsStreamed({
+  manualAssetsPromise,
+  manualAssetIncomePromise,
+  factor,
+  currency,
+}: {
+  manualAssetsPromise: Promise<ManualAssetsResult>;
+  manualAssetIncomePromise: Promise<ManualAssetIncomeResult>;
+  factor: number;
+  currency: ReturnType<typeof computeDashboard>["currency"];
+}) {
+  const [manualAssets, manualIncome] = await Promise.all([
+    manualAssetsPromise,
+    manualAssetIncomePromise,
+  ]);
+  const divisions = computeDivisions(manualAssets, manualIncome);
+  if (divisions.length === 0) {
+    return (
+      <Link
+        href="/real-estate?add=asset"
+        className="flex items-center justify-between rounded-2xl bg-card p-5 shadow-card transition active:scale-[0.99]"
+      >
+        <span className="flex flex-col">
+          <span className="font-bold">내 사업부 (부동산·대체·사업)</span>
+          <span className="text-xs text-muted-foreground">
+            부동산·미술품·비상장 등 추가
+          </span>
+        </span>
+        <span className="text-muted-foreground">+</span>
+      </Link>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-4">
+      {divisions.map((d) => (
+        <DivisionCard
+          key={d.key}
+          division={d}
+          factor={factor}
+          currency={currency}
+          href="/real-estate"
+        />
+      ))}
+    </div>
   );
 }
 
@@ -294,31 +349,6 @@ async function AccountGroupsStreamed({
 }) {
   const accountGroups = await accountGroupsPromise;
   return <AccountGroups groups={accountGroups} currency={currency} />;
-}
-
-async function ManualAssetsStreamed({
-  manualAssetsPromise,
-  factor,
-  currency,
-  today,
-  autoOpen,
-}: {
-  manualAssetsPromise: Promise<ManualAssetsResult>;
-  factor: number;
-  currency: ReturnType<typeof computeDashboard>["currency"];
-  today: string;
-  autoOpen: boolean;
-}) {
-  const manualAssets = await manualAssetsPromise;
-  return (
-    <ManualAssetsSection
-      items={manualAssets}
-      factor={factor}
-      currency={currency}
-      today={today}
-      autoOpen={autoOpen}
-    />
-  );
 }
 
 async function LiabilitiesStreamed({

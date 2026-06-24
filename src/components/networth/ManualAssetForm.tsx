@@ -48,24 +48,31 @@ export function ManualAssetForm({
   );
   const [acquiredAt, setAcquiredAt] = useState(editing?.acquiredAt ?? "");
   const [note, setNote] = useState(editing?.note ?? "");
+  const [acquisitionCost, setAcquisitionCost] = useState(
+    editing?.acquisitionCost != null ? String(editing.acquisitionCost) : "",
+  );
+  const [valuationSource, setValuationSource] = useState(
+    editing?.valuationSource ?? "",
+  );
+  const [valuedAt, setValuedAt] = useState(editing?.valuedAt ?? "");
 
-  function submit() {
-    const input: ManualAssetInput = {
+  function buildInput(): ManualAssetInput {
+    return {
       name,
       kind,
       currentValue: Number(currentValue) || 0,
       acquiredPrice: acquiredPrice.trim() === "" ? null : Number(acquiredPrice),
       acquiredAt: acquiredAt || undefined,
       note: note || undefined,
+      acquisitionCost:
+        acquisitionCost.trim() === "" ? null : Number(acquisitionCost),
+      valuationSource: valuationSource || undefined,
+      valuedAt: valuedAt || undefined,
     };
-    if (!input.name.trim()) {
-      toast.error("자산 이름을 입력하세요.");
-      return;
-    }
-    if (!(input.currentValue > 0)) {
-      toast.error("현재 평가액을 입력하세요.");
-      return;
-    }
+  }
+
+  function doSubmit() {
+    const input = buildInput();
     startTransition(async () => {
       const res = editing
         ? await updateManualAsset(editing.id, input)
@@ -84,6 +91,28 @@ export function ManualAssetForm({
       }
       onSaved();
     });
+  }
+
+  function submit() {
+    if (!name.trim()) {
+      toast.error("자산 이름을 입력하세요.");
+      return;
+    }
+    const cur = Number(currentValue) || 0;
+    if (!(cur > 0)) {
+      toast.error("현재 평가액을 입력하세요.");
+      return;
+    }
+    // 입력 안전장치(FR-006) — 현재가 < 매입가면 평가손실 확인.
+    const acq = acquiredPrice.trim() === "" ? null : Number(acquiredPrice);
+    if (acq != null && cur < acq) {
+      toast("현재가가 매입가보다 낮아요 — 평가손실이 맞나요?", {
+        description: "매입가/현재가를 바꿔 입력하지 않았는지 확인하세요.",
+        action: { label: "맞아요, 저장", onClick: doSubmit },
+      });
+      return;
+    }
+    doSubmit();
   }
 
   return (
@@ -157,6 +186,44 @@ export function ManualAssetForm({
             className="mt-1 h-11"
           />
         </div>
+      </div>
+
+      <div className="flex gap-3">
+        <NumberPadField
+          className="flex-1"
+          label="취득 부대비용 (원, 선택)"
+          value={acquisitionCost}
+          onChange={setAcquisitionCost}
+          prefix="₩"
+          placeholder="취득세·중개 등 한번에"
+        />
+        <div className="flex-1">
+          <label className="text-sm font-medium">
+            평가일 <span className="text-muted-foreground">(선택)</span>
+          </label>
+          <Input
+            type="date"
+            max={today}
+            value={valuedAt}
+            onChange={(e) => setValuedAt(e.target.value)}
+            className="mt-1 h-11"
+          />
+        </div>
+      </div>
+
+      <div>
+        <label className="text-sm font-medium">
+          평가 출처 <span className="text-muted-foreground">(선택)</span>
+        </label>
+        <Input
+          value={valuationSource}
+          onChange={(e) => setValuationSource(e.target.value)}
+          placeholder="예: KB시세 · 실거래가 · 감정가"
+          className="mt-1 h-11"
+        />
+        <p className="mt-1 text-xs text-muted-foreground">
+          추정 평가라 출처를 남겨두면 더 정직해요.
+        </p>
       </div>
 
       <div className="flex gap-2">
