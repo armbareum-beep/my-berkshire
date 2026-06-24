@@ -105,65 +105,112 @@ export function HeroValuationCard({
   dailyChange,
   currency = "KRW",
   parts,
+  sinceLastSeen,
 }: {
   netWorth: number;
   dailyChange: number | null;
   currency?: Currency;
-  /** 순자산 구성(표시통화). 음수=차감(빚). 0인 항목은 숨김. */
+  /** 자산 구성(표시통화). 음수=차감(빚). 0인 항목은 숨김. */
   parts?: { label: string; value: number }[];
+  /** 지난 접속 이후 벌어들인 손익(표시통화) + 수익률. null이면 어제 대비로 폴백. */
+  sinceLastSeen?: { earned: number; pct: number | null } | null;
 }) {
-  // 어제 대비 % = 일일변동 ÷ 어제 순자산(현재−변동).
-  const prevValue = dailyChange !== null ? netWorth - dailyChange : null;
-  const dailyRate =
-    prevValue !== null && prevValue > 0 ? dailyChange! / prevValue : null;
-  // 칩에 보일 구성 항목 — 금액 0은 제외(예: 부동산·빚 없으면 안 보임).
+  // 구성 항목 — 금액 0은 제외(예: 부동산·빚 없으면 안 보임).
   const shownParts = (parts ?? []).filter((p) => Math.abs(p.value) > 0.005);
+  // 자산(양수)은 스택 바·헤드라인(총자산)으로, 빚(음수)은 재무상태표 차감으로(헌법 IV: 브랜드색 농도만).
+  const assetParts = shownParts.filter((p) => p.value > 0);
+  const debtPart = shownParts.find((p) => p.value < 0);
+  const totalAssets = assetParts.reduce((s, p) => s + p.value, 0);
+  const partShade = (i: number) =>
+    i === 0 ? "bg-primary" : i === 1 ? "bg-primary/45" : "bg-primary/20";
+  // 어제 대비 % = 일일변동 ÷ 어제 총자산(현재−변동). 일일변동은 보유 종목 시세 변동분.
+  const prevAssets = dailyChange !== null ? totalAssets - dailyChange : null;
+  const dailyRate =
+    prevAssets !== null && prevAssets > 0 ? dailyChange! / prevAssets : null;
   return (
     <section className="rounded-2xl bg-card p-6 shadow-card">
-      {/* 숫자 자체는 안 누른다(레일 어포던스 규칙). 옆 › 로만 순자산 상세 진입. */}
+      {/* 숫자 자체는 안 누른다(레일 어포던스 규칙). 옆 › 로만 자산 상세 진입. */}
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm text-muted-foreground">순자산</p>
-          <p className="text-xs text-muted-foreground">내 전 재산 · 빚 뺀 내 몫</p>
+          <p className="text-sm text-muted-foreground">총자산</p>
+          <p className="text-xs text-muted-foreground">내가 가진 전부 · 빚 빼기 전</p>
         </div>
         <Link
           href="/networth"
           scroll={false}
           className="text-muted-foreground"
-          aria-label="순자산 상세"
+          aria-label="자산 상세"
         >
           ›
         </Link>
       </div>
-      {/* 통화 토글은 순자산 숫자 바로 옆 — 무엇이 바뀌는지 한눈에 */}
+      {/* 통화 토글은 총자산 숫자 바로 옆 — 무엇이 바뀌는지 한눈에 */}
       <div className="mt-1 flex items-center gap-2">
         <CountUp
-          value={netWorth}
+          value={totalAssets}
           format="money"
           currency={currency}
           className="text-4xl font-extrabold tracking-tight"
         />
         <CurrencyToggle current={currency} variant="icon" />
       </div>
-      {dailyChange !== null && (
+      {/* 지난 접속 이후 벌어들인 손익(정직: 증자·매수 제외). 없으면 어제 대비로 폴백. */}
+      {sinceLastSeen ? (
         <p
           className="mt-2 text-base font-semibold tabular-nums"
-          style={{ color: changeColor(dailyChange) }}
+          style={{ color: changeColor(sinceLastSeen.earned) }}
         >
-          어제보다 {signedMoney(dailyChange, currency)}
-          {dailyRate !== null && ` (${signedPct(dailyRate, 2)})`}
+          지난 접속 이후 {signedMoney(sinceLastSeen.earned, currency)}
+          {sinceLastSeen.pct !== null && ` (${signedPct(sinceLastSeen.pct, 2)})`}
         </p>
+      ) : (
+        dailyChange !== null && (
+          <p
+            className="mt-2 text-base font-semibold tabular-nums"
+            style={{ color: changeColor(dailyChange) }}
+          >
+            어제보다 {signedMoney(dailyChange, currency)}
+            {dailyRate !== null && ` (${signedPct(dailyRate, 2)})`}
+          </p>
+        )
       )}
-      {/* 구성 칩 — "주식은 내 재산의 일부"를 눈으로. 수익률↔순자산 혼동 차단. */}
-      {shownParts.length > 0 && (
-        <p className="mt-3 text-xs text-muted-foreground tabular-nums">
-          {shownParts.map((p, i) => (
-            <span key={p.label}>
-              {i > 0 && (p.value < 0 ? " − " : " · ")}
-              {p.label} {money(Math.abs(p.value), currency)}
-            </span>
-          ))}
-        </p>
+      {/* 자산 구성 — "주식은 내 재산의 일부"를 눈으로. 스택 바(브랜드색 농도) + 점 범례. */}
+      {assetParts.length > 0 && totalAssets > 0 && (
+        <div className="mt-4">
+          <span className="flex h-2 w-full overflow-hidden rounded-full bg-secondary">
+            {assetParts.map((p, i) => (
+              <span
+                key={p.label}
+                className={partShade(i)}
+                style={{ width: `${(p.value / totalAssets) * 100}%` }}
+              />
+            ))}
+          </span>
+          <div className="mt-2.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground tabular-nums">
+            {assetParts.map((p, i) => (
+              <span key={p.label} className="inline-flex items-center gap-1.5">
+                <span className={`h-2 w-2 shrink-0 rounded-full ${partShade(i)}`} />
+                {p.label} {money(p.value, currency)}
+              </span>
+            ))}
+          </div>
+
+          {/* 재무상태표 — 총자산(위 헤드라인) − 부채 = 순자산. 부채 있을 때만. */}
+          {debtPart && (
+            <dl className="mt-3 flex flex-col gap-1 border-t border-border pt-3 text-sm tabular-nums">
+              <div className="flex items-center justify-between">
+                <dt className="text-muted-foreground">− 부채</dt>
+                <dd className="font-medium">
+                  {money(Math.abs(debtPart.value), currency)}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between border-t border-border pt-1 font-bold">
+                <dt>= 순자산</dt>
+                <dd>{money(netWorth, currency)}</dd>
+              </div>
+            </dl>
+          )}
+        </div>
       )}
       {/* 누적손익·투입원금은 아래 성과(수익률) 카드로 이동(중복 제거). */}
     </section>
@@ -581,7 +628,7 @@ export function RecentActivityCard({ recent }: { recent: ActivityFeedItem[] }) {
 
 export function TimelineCard({ timeline }: { timeline: TimelineItem[] }) {
   return (
-    <CardShell title="회사 연혁" href="/activity">
+    <CardShell title="회사 연혁" href="/timeline">
       <ul className="flex flex-col gap-3">
         {timeline.map((t, i) => (
           <li key={i} className="flex items-center gap-3 text-sm">

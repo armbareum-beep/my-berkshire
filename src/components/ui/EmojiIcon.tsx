@@ -2,7 +2,7 @@ import {
   Crown, TreePine, Rocket, Shield, Globe, Banknote, RefreshCw,
   AlertTriangle, Coins, ReceiptText, Star, Landmark, CircleCheck,
   TrendingUp, BookText, PiggyBank, ThumbsUp, Building2, Link2,
-  Search, BarChart3, Lightbulb,
+  Search, BarChart3, Lightbulb, Sprout, Leaf,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -15,6 +15,9 @@ import { cn } from "@/lib/utils";
 const MAP: Record<string, LucideIcon> = {
   "🎩": Crown,
   "🌳": TreePine,
+  "🌱": Sprout,
+  "🌿": Leaf,
+  "🏢": Building2,
   "🚀": Rocket,
   "🛡️": Shield,
   "🛡": Shield,

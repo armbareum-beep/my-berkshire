@@ -1,8 +1,10 @@
 <!--
 Sync Impact Report
-- Version change: (template) → 1.0.0
+- Version change: 1.0.0 → 1.1.0 (MINOR — Additional Constraints의 모드 정의 개정)
+- Amendment 2026-06-23 (007-family-ledger-growth): 챌린지·라이브 모드 제거, 단일 ledger(가족 장부)로 수렴.
+  근거: 수기 장부 위 경쟁 랭킹은 조작 가능 → 원칙 II(정직)와 충돌. 검증 데이터(증권사 연동)는 비대상.
 - Ratification: initial adoption 2026-06-22
-- Principles defined:
+- Principles defined (unchanged):
   I. 스타일 중립 (Style-Neutral Scoring)
   II. 정직한 게이미피케이션 (Honest Gamification)
   III. 엔진 정확·화면 단순 (Accurate Engine, Simple Surface)
@@ -18,7 +20,7 @@ Sync Impact Report
 
 # my-berkshire Constitution
 
-버크셔식 지주회사 메타포로 개인 투자를 운영·기록하는 앱(기능통화 KRW, 장부/챌린지/라이브 모드). 아래 원칙은 협상 불가이며, 모든 spec·plan·구현은 이를 통과해야 한다.
+버크셔식 지주회사 메타포로 가족의 투자를 운영·기록하는 앱(기능통화 KRW, 단일 장부 모드). 아래 원칙은 협상 불가이며, 모든 spec·plan·구현은 이를 통과해야 한다.
 
 ## Core Principles
 
@@ -45,8 +47,9 @@ Sync Impact Report
 ## Additional Constraints (Stack & Data Invariants)
 
 - **스택:** Next.js(이 repo의 변형 — `node_modules/next/dist/docs/` 가이드 우선 확인), TypeScript, Supabase(Postgres + RLS), Tailwind. 모바일 단일·라이트 단일(다크모드 비대상).
+- **단일 회사:** 사용자당 지주회사(holding)는 1개로 고정. 추가 생성·전환·삭제 없음(가족 장부).
 - **계좌 레이어:** 지주회사 → 계좌 → 자회사 3층. 현금·보유는 계좌 단위 회계, 현금은 통화별 풀.
-- **모드:** `ledger`(소급 입력 자유) / `challenge`·`live`(소급 불가, 시세 강제·상쇄로 취소).
+- **모드:** 단일 `ledger`(소급 입력 자유·수기 평단·import). 챌린지·라이브(경쟁/검증 랭킹) 모드는 폐지 — 수기 데이터 랭킹은 조작 가능하므로(원칙 II). `holding_mode` enum/컬럼은 잔존하나 항상 'ledger'.
 - **시세·검색:** 인터페이스 뒤 야후(추후 토스 교체). 한글 검색 한계 인지.
 - **RLS:** 모든 서버 접근은 사용자 소유 holding/계좌로 스코프. 서버 액션은 ownership 검증.
 
@@ -61,4 +64,4 @@ Sync Impact Report
 
 이 헌장은 다른 관행에 우선한다. 개정은 (a) 변경 사유와 영향 문서화, (b) 버전 범프(MAJOR=원칙 제거/재정의, MINOR=원칙·섹션 추가, PATCH=문구 정정), (c) 의존 템플릿(plan/spec/tasks) 동기화를 요구한다. 모든 spec/plan은 "Constitution Check"에서 위 원칙 위반이 없는지 확인하며, 위반은 명시적 정당화 또는 설계 변경으로만 통과한다.
 
-**Version**: 1.0.0 | **Ratified**: 2026-06-22 | **Last Amended**: 2026-06-22
+**Version**: 1.1.0 | **Ratified**: 2026-06-22 | **Last Amended**: 2026-06-23

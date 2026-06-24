@@ -5,17 +5,13 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { IconChip } from "@/components/transactions/eventIcons";
 import { BuyWizard } from "@/components/transactions/wizard/BuyWizard";
 import {
   Award,
-  BookText,
   Building2,
-  Link2,
   Plus,
   Trash2,
   TrendingUp,
-  type LucideIcon,
 } from "lucide-react";
 import {
   foundCompany,
@@ -28,23 +24,21 @@ import {
   type AccountType,
 } from "@/lib/config/tax";
 
-type Step = "J0" | "J1" | "J2" | "J2_5" | "J3" | "J4";
-type Mode = "challenge" | "ledger";
+type Step = "J1" | "J2" | "J2_5" | "J3" | "J4";
 
 export function OnboardingRail({
   today,
   prices,
-  additionalCompany = false,
+  fxRates = {},
 }: {
   today: string;
   prices: Record<string, number>;
-  additionalCompany?: boolean;
+  fxRates?: Record<string, number>;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
-  const [step, setStep] = useState<Step>("J0");
-  const [mode, setMode] = useState<Mode | null>(null);
+  const [step, setStep] = useState<Step>("J1");
   const [name, setName] = useState("");
   const [accounts, setAccounts] = useState<FoundingAccount[]>([
     { name: "", accountType: "GENERAL" },
@@ -71,11 +65,9 @@ export function OnboardingRail({
   }
 
   function found() {
-    if (!mode) return;
     setError(null);
     startTransition(async () => {
       const res = await foundCompany({
-        mode,
         name,
         foundedAt: today,
         stocks: [],
@@ -91,54 +83,12 @@ export function OnboardingRail({
     });
   }
 
-  // ── J0: 모드 선택 ──
-  if (step === "J0") {
-    return (
-      <Shell
-        title="어떻게 시작할까요?"
-        onBack={additionalCompany ? () => router.push("/company") : undefined}
-        progress={{ current: 0, total: 3 }}
-      >
-        <div className="flex flex-col gap-3">
-          <ModeCard
-            icon={TrendingUp}
-            label="챌린지로 시작"
-            desc="돈 없이 오늘부터 가상 투자. 남과 경쟁할 수 있어요."
-            onClick={() => {
-              setMode("challenge");
-              setStep("J1");
-            }}
-          />
-          <ModeCard
-            icon={BookText}
-            label="장부로 시작"
-            desc="보유 종목·수익률을 기록하고 나·시장과 비교해요."
-            onClick={() => {
-              setMode("ledger");
-              setStep("J1");
-            }}
-          />
-          <div className="mt-1 flex items-center gap-3 rounded-2xl bg-card p-4 opacity-50 shadow-card">
-            <IconChip icon={Link2} size="lg" />
-            <div>
-              <p className="font-bold">라이브 (연동)</p>
-              <p className="text-sm text-muted-foreground">준비 중</p>
-            </div>
-          </div>
-          <p className="mt-1 text-center text-xs text-muted-foreground">
-            나중에 다른 회사도 설립할 수 있어요.
-          </p>
-        </div>
-      </Shell>
-    );
-  }
-
   // ── J1: 회사명 ──
   if (step === "J1") {
     return (
       <Shell
         title="회사의 이름을 새기세요"
-        onBack={() => setStep("J0")}
+        onBack={undefined}
         progress={{ current: 1, total: 3 }}
       >
         <p className="text-sm leading-relaxed text-muted-foreground">
@@ -353,11 +303,11 @@ export function OnboardingRail({
   if (step === "J4") {
     return (
       <BuyWizard
-        mode={mode ?? "challenge"}
+        mode="ledger"
         today={today}
         accounts={createdAccounts}
         pools={{ KRW: 0 }}
-        fxRates={{}}
+        fxRates={fxRates}
         prices={prices}
         names={{}}
         defaultFundingSource="deposit"
@@ -418,32 +368,6 @@ function Shell({
       )}
       <div className="flex-1">{children}</div>
     </main>
-  );
-}
-
-function ModeCard({
-  icon,
-  label,
-  desc,
-  onClick,
-}: {
-  icon: LucideIcon;
-  label: string;
-  desc: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex items-center gap-3 rounded-2xl bg-card p-4 text-left shadow-card transition active:scale-[0.99]"
-    >
-      <IconChip icon={icon} size="lg" />
-      <div>
-        <p className="font-bold">{label}</p>
-        <p className="text-sm text-muted-foreground">{desc}</p>
-      </div>
-    </button>
   );
 }
 

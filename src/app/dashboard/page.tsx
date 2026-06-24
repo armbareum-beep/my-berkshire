@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { Search, ReceiptText, Upload } from "lucide-react";
+import { Search, Upload } from "lucide-react";
 import { after } from "next/server";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -9,7 +9,6 @@ import { getPortfolio } from "@/lib/portfolio";
 import { syncDividends } from "@/lib/dividends/sync";
 import { computeDashboard } from "@/lib/dashboard";
 import { computeBenchmark } from "@/lib/finance/benchmark";
-import { computeStyle } from "@/lib/style";
 import { parsePlan, planProgress } from "@/lib/plan";
 import { getNextAction } from "@/lib/nextAction";
 import { loadLiabilities } from "@/lib/liabilities";
@@ -21,24 +20,16 @@ import { loadAccountGroups, type AccountGroup } from "@/lib/accounts";
 import { loadWatchlist } from "@/lib/watchlist";
 import { loadSecurityNames, loadSecurityMeta } from "@/lib/securities";
 import { groupAllocationByType } from "@/lib/allocation";
-import {
-  quarterBounds,
-  quartersBetween,
-  reviewedQuarters,
-  reportStreak,
-} from "@/lib/finance/quarterClose";
+import { quarterBounds } from "@/lib/finance/quarterClose";
 import { resolveHomeSignals, loadDismissed, type HomeSignal } from "@/lib/finance/homeSignal";
 import { computeCelebrations, mergeCelebrations } from "@/lib/celebration";
-import { computeLookThrough } from "@/lib/finance/lookThrough";
-import { getOrComputeSnapshot } from "@/lib/calculationSnapshots";
-import type { AllocationSlice } from "@/lib/dashboard";
 import { todayKST } from "@/lib/date";
-import { annualReportEligibility } from "@/lib/finance/annualReport";
 import { getPortfolioDisclosureFeed } from "@/lib/finance/disclosureFeed";
 import { signOut } from "@/app/auth/actions";
+import { LAST_SEEN_COOKIE } from "@/lib/lastSeen";
+import { LastSeenSync } from "@/components/dashboard/LastSeenSync";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
 import { HomeSignalBanner } from "@/components/dashboard/HomeSignalBanner";
-import { LookThroughCard } from "@/components/dashboard/LookThroughCard";
 import { AccountGroups } from "@/components/dashboard/AccountGroups";
 import { CurrencyProvider } from "@/components/dashboard/CurrencyProvider";
 import { CurrencyView } from "@/components/dashboard/CurrencyView";
@@ -52,7 +43,6 @@ import {
   CardAction,
   RecentActivityCard,
 } from "@/components/dashboard/cards";
-import { StyleCard } from "@/components/dashboard/StyleCard";
 
 /**
  * CEO 대시보드 — 확장 가능한 카드 그리드.
@@ -62,15 +52,12 @@ import { StyleCard } from "@/components/dashboard/StyleCard";
 // 홈은 "한눈에 보는 콘솔" — 핵심만. 자산 깊이(보유·구성·현금·마찰)는 자산 탭,
 // 회사연혁은 연혁 탭으로 분배(대시보드 길이↓, 사이트맵 정합).
 //
-// 상단 3렌즈(버핏式) — 넓은→좁은 깔때기로 붙여서 "서로 다른 걸 잰다"를 인접성으로 가르침:
-//   순자산(Hero, 위) = 규모(전 재산) → performance = 성과(가격) → lookthrough = 본질(이익).
-// 그 아래는 자산 깊이(계좌·현금·구성) → 리포트 → 스타일 → 최근활동 순.
+// 상단 렌즈(버핏式): 순자산(Hero) = 규모(전 재산) → performance = 성과(가격).
+// 그 아래는 자산 깊이(계좌·현금·구성) → 최근활동.
+// style(규율)·report(리포트)·lookthrough(본질/사업부 실적)는 "내 회사"(/growth)로 이전 — 홈은 계기판/자산만.
 const CARD_ORDER = [
   "performance",
-  "lookthrough",
   "holdings",
-  "report",
-  "style",
   "recent",
 ] as const;
 
@@ -121,9 +108,21 @@ async function DashboardContent({
   // ₩→$ 환산 계수($ 버전 숫자에 곱함). 환율 없으면 1(=₩과 동일).
   const factorUSD = portfolio.usdKrw ? 1 / portfolio.usdKrw : 1;
 
-  // 투시(내 사업부 실적) 소스 — 펀더멘털이 ₩이므로 항상 ₩ allocation 으로 계산.
-  const doLookThrough =
-    dataKRW.priceAvailable && dataKRW.allocation.length > 0;
+  // 지난 접속 이후 "벌어들인 손익"(정직: 누적손익의 변화 → 증자·매수 자동 제외). ₩ 기준.
+  const currentProfitKrw = dataKRW.profit;
+  const currentValueKrw = result.currentValuation;
+  const lastSeen = parseLastSeen(cookieStore.get(LAST_SEEN_COOKIE)?.value);
+  const sinceLastSeenKrw =
+    lastSeen && currentProfitKrw !== null
+      ? (() => {
+          const earned = currentProfitKrw - lastSeen.profit;
+          if (Math.abs(earned) < 1) return null; // 변화 없음 → 어제 대비로 폴백
+          return {
+            earned,
+            pct: lastSeen.value > 0 ? earned / lastSeen.value : null,
+          };
+        })()
+      : null;
 
   // 벤치마크 스냅샷(₩·$ 두 지수 모두 동일 흐름).
   const benchSnapshot = {
@@ -202,45 +201,6 @@ async function DashboardContent({
         />
       </Suspense>
     ),
-    report: (
-      <Suspense key="report" fallback={<DashboardCardSkeleton />}>
-        <ReportLinkStreamed
-          foundedAt={holding.founded_at}
-          today={today}
-          dismissedPromise={dismissedPromise}
-        />
-      </Suspense>
-    ),
-    style: (
-      <Suspense key="style" fallback={<DashboardCardSkeleton />}>
-        <StyleStreamed
-          portfolio={portfolio}
-          data={data}
-          liabilitiesPromise={liabilitiesPromise}
-          securityMetaPromise={secMetaPromise}
-          planRatio={
-            planProg && planProg.total > 0
-              ? planProg.doneCount / planProg.total
-              : null
-          }
-        />
-      </Suspense>
-    ),
-    lookthrough: (
-      <Suspense key="lookthrough" fallback={<LookThroughCardSkeleton />}>
-        <LookThroughStreamed
-          supabase={supabase}
-          enabled={doLookThrough}
-          allocation={dataKRW.allocation}
-          invested={dataKRW.invested}
-          holdingId={portfolio.holding.id}
-          portfolioRevision={portfolio.holding.portfolio_revision}
-          asOfDate={today}
-          year={Number(today.slice(0, 4))}
-          factorUSD={factorUSD}
-        />
-      </Suspense>
-    ),
     holdings:
       data.allocation.length === 0 ? (
         <div
@@ -288,8 +248,7 @@ async function DashboardContent({
             {holding.name} ›
           </Link>
           <p className="text-xs text-muted-foreground">
-            설립 {holding.founded_at} ·{" "}
-            {holding.mode === "challenge" ? "챌린지" : "장부"}
+            설립 {holding.founded_at}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -391,8 +350,24 @@ async function DashboardContent({
               factorUSD={factorUSD}
               liabilitiesPromise={liabilitiesPromise}
               manualAssetsPromise={manualAssetsPromise}
+              sinceLastSeenKrw={sinceLastSeenKrw}
             />
           </Suspense>
+          {/* 이번 방문 손익을 "지난 접속" 스냅샷으로 갱신(다음 비교용). */}
+          {currentProfitKrw !== null && currentValueKrw !== null && (
+            <LastSeenSync
+              profitKrw={currentProfitKrw}
+              valueKrw={currentValueKrw}
+            />
+          )}
+
+          {/* 순자산(전 재산) → 아래는 회사가 직접 운용하는 종목 부문. 부동산 등 다른 자산은 순자산 상세에. */}
+          <div className="mt-2 px-1">
+            <h2 className="text-base font-extrabold tracking-tight">주식 사업부</h2>
+            <p className="text-xs text-muted-foreground">
+              내 회사가 직접 운용하는 종목
+            </p>
+          </div>
           {CARD_ORDER.map((key) => cardMap[key])}
         </>
       ) : (
@@ -402,22 +377,20 @@ async function DashboardContent({
         </>
       )}
 
-      {/* 거래내역 가져오기 — 장부 모드 전용 */}
-      {holding.mode === "ledger" && (
-        <Link
-          href="/import"
-          className="flex items-center gap-3 rounded-2xl bg-card p-5 shadow-card transition active:scale-[0.99]"
-        >
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-            <Upload size={18} />
-          </span>
-          <div>
-            <p className="text-sm font-semibold">거래내역 가져오기</p>
-            <p className="text-xs text-muted-foreground">키움·KB·미래에셋 등 파일 업로드</p>
-          </div>
-          <span className="ml-auto text-muted-foreground">›</span>
-        </Link>
-      )}
+      {/* 거래내역 가져오기 */}
+      <Link
+        href="/import"
+        className="flex items-center gap-3 rounded-2xl bg-card p-5 shadow-card transition active:scale-[0.99]"
+      >
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <Upload size={18} />
+        </span>
+        <div>
+          <p className="text-sm font-semibold">거래내역 가져오기</p>
+          <p className="text-xs text-muted-foreground">키움·KB·미래에셋 등 파일 업로드</p>
+        </div>
+        <span className="ml-auto text-muted-foreground">›</span>
+      </Link>
 
       <BottomTabBar />
     </main>
@@ -430,6 +403,26 @@ type PortfolioSnapshot = NonNullable<Awaited<ReturnType<typeof getPortfolio>>>;
 type DashboardData = ReturnType<typeof computeDashboard>;
 type BenchmarkSnapshot = Awaited<ReturnType<typeof computeBenchmark>>;
 type DismissedSignals = Awaited<ReturnType<typeof loadDismissed>>;
+
+/** "지난 접속" 스냅샷 쿠키 파싱 — 손상되면 null(다음 방문에 갱신). */
+function parseLastSeen(
+  raw: string | undefined,
+): { date: string; profit: number; value: number } | null {
+  if (!raw) return null;
+  try {
+    const o = JSON.parse(raw);
+    if (
+      typeof o?.profit === "number" &&
+      typeof o?.value === "number" &&
+      typeof o?.date === "string"
+    ) {
+      return { date: o.date, profit: o.profit, value: o.value };
+    }
+  } catch {
+    // 손상된 쿠키 — 무시.
+  }
+  return null;
+}
 
 async function PerformanceStreamed({
   result,
@@ -488,6 +481,7 @@ async function HeroValuationStreamed({
   factorUSD,
   liabilitiesPromise,
   manualAssetsPromise,
+  sinceLastSeenKrw,
 }: {
   result: PortfolioSnapshot["result"];
   dataKRW: DashboardData;
@@ -495,6 +489,8 @@ async function HeroValuationStreamed({
   factorUSD: number;
   liabilitiesPromise: Promise<Awaited<ReturnType<typeof loadLiabilities>>>;
   manualAssetsPromise: Promise<Awaited<ReturnType<typeof loadManualAssets>>>;
+  /** 지난 접속 이후 손익(₩) + 수익률. null이면 어제 대비로 폴백. */
+  sinceLastSeenKrw: { earned: number; pct: number | null } | null;
 }) {
   const [liabilities, manualAssets] = await Promise.all([
     liabilitiesPromise,
@@ -533,6 +529,7 @@ async function HeroValuationStreamed({
           dailyChange={dataKRW.dailyChange}
           currency="KRW"
           parts={netWorthPartsKrw}
+          sinceLastSeen={sinceLastSeenKrw}
         />
       }
       usd={
@@ -541,6 +538,14 @@ async function HeroValuationStreamed({
           dailyChange={dataUSD.dailyChange}
           currency="USD"
           parts={netWorthPartsUSD}
+          sinceLastSeen={
+            sinceLastSeenKrw
+              ? {
+                  earned: sinceLastSeenKrw.earned * factorUSD,
+                  pct: sinceLastSeenKrw.pct,
+                }
+              : null
+          }
         />
       }
     />
@@ -641,89 +646,6 @@ async function HoldingsStreamed({
   );
 }
 
-async function ReportLinkStreamed({
-  foundedAt,
-  today,
-  dismissedPromise,
-}: {
-  foundedAt: string;
-  today: string;
-  dismissedPromise: Promise<DismissedSignals>;
-}) {
-  const dismissed = await dismissedPromise;
-  const reportStreakN = reportStreak(
-    quartersBetween(foundedAt, today).map((q) => q.label),
-    reviewedQuarters(dismissed),
-  );
-  const annual = annualReportEligibility(foundedAt, today);
-
-  return (
-    <section className="rounded-2xl bg-card p-5 shadow-card">
-      <Link href="/report" scroll={false} className="block transition active:opacity-70">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <p className="flex items-center gap-1.5 text-sm font-semibold">
-            <ReceiptText size={15} className="text-muted-foreground" /> 분기 경영 리포트
-          </p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            이번 분기 수익률·활동·배당 한눈에
-          </p>
-        </div>
-        <span className="flex shrink-0 items-center gap-2">
-          {reportStreakN > 0 && (
-            <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-bold text-accent-foreground">
-              🔥 {reportStreakN}
-            </span>
-          )}
-          <span className="text-muted-foreground">›</span>
-        </span>
-      </div>
-      </Link>
-      <Link
-        href="/annual-report"
-        className="mt-4 flex items-center justify-between border-t border-border pt-4 text-sm font-semibold transition active:opacity-70"
-      >
-        <span>ENUF Annual Report</span>
-        <span className="text-xs text-muted-foreground">
-          {annual.eligible
-            ? `${today.slice(0, 4)} 발행됨 ›`
-            : `D-${annual.remainingDays} · 준비 중 ›`}
-        </span>
-      </Link>
-    </section>
-  );
-}
-
-async function StyleStreamed({
-  portfolio,
-  data,
-  liabilitiesPromise,
-  securityMetaPromise,
-  planRatio,
-}: {
-  portfolio: PortfolioSnapshot;
-  data: DashboardData;
-  liabilitiesPromise: Promise<Awaited<ReturnType<typeof loadLiabilities>>>;
-  securityMetaPromise: ReturnType<typeof loadSecurityMeta>;
-  planRatio: number | null;
-}) {
-  const [liabilities, securityMeta] = await Promise.all([
-    liabilitiesPromise,
-    securityMetaPromise,
-  ]);
-
-  return (
-    <StyleCard
-      style={computeStyle(
-        portfolio,
-        data,
-        totalLiabilities(liabilities),
-        planRatio,
-        securityMeta,
-      )}
-    />
-  );
-}
 
 async function HomeSignalsStreamed({
   supabase,
@@ -880,103 +802,3 @@ function DashboardStackSkeleton() {
   );
 }
 
-/**
- * 투시 카드 — DART N+1 으로 가장 느려 Suspense 경계에서 별도 스트리밍.
- * 홈은 이 카드를 기다리지 않고 먼저 페인트되고, 데이터가 오면 스켈레톤이 카드로 교체된다.
- */
-async function LookThroughStreamed({
-  supabase,
-  enabled,
-  allocation,
-  invested,
-  holdingId,
-  portfolioRevision,
-  asOfDate,
-  year,
-  factorUSD,
-}: {
-  supabase: Awaited<ReturnType<typeof createClient>>;
-  enabled: boolean;
-  allocation: AllocationSlice[];
-  invested: number;
-  holdingId: string;
-  portfolioRevision: number;
-  asOfDate: string;
-  year: number;
-  factorUSD: number;
-}) {
-  const lt = enabled
-    ? (
-        await getOrComputeSnapshot({
-          supabase,
-          holdingId,
-          kind: "lookthrough-current",
-          portfolioRevision,
-          asOfDate,
-          ttlMs: 5 * 60 * 1000,
-          compute: () =>
-            computeLookThrough(supabase, { allocation, year, invested }),
-        })
-      ).data
-    : null;
-
-  if (lt && lt.coverage.includedCount > 0) {
-    return (
-      <CurrencyView
-        krw={
-          <LookThroughCard
-            netIncome={lt.netIncome}
-            per={lt.per}
-            pbr={lt.pbr}
-            roe={lt.roe}
-            factor={1}
-            currency="KRW"
-          />
-        }
-        usd={
-          <LookThroughCard
-            netIncome={lt.netIncome}
-            per={lt.per}
-            pbr={lt.pbr}
-            roe={lt.roe}
-            factor={factorUSD}
-            currency="USD"
-          />
-        }
-      />
-    );
-  }
-  return <LookThroughFallbackLink />;
-}
-
-/** 투시 카드 로딩 스켈레톤(스트리밍 대기 동안). */
-function LookThroughCardSkeleton() {
-  return (
-    <div className="rounded-2xl bg-card p-5 shadow-card" aria-busy="true">
-      <div className="h-4 w-32 animate-pulse rounded bg-secondary" />
-      <div className="mt-3 h-7 w-40 animate-pulse rounded bg-secondary" />
-      <div className="mt-3 h-3 w-28 animate-pulse rounded bg-secondary" />
-    </div>
-  );
-}
-
-/** 반영할 한국 주식 공시가 없을 때 — 정적 링크 카드. */
-function LookThroughFallbackLink() {
-  return (
-    <Link
-      href="/lookthrough"
-      scroll={false}
-      className="block rounded-2xl bg-card p-5 shadow-card transition active:scale-[0.99]"
-    >
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-semibold">🏭 내 사업부 실적</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            보유 회사들의 투시 펀더멘털 — 지분만큼 내 몫
-          </p>
-        </div>
-        <span className="text-muted-foreground">›</span>
-      </div>
-    </Link>
-  );
-}

@@ -28,6 +28,22 @@ function ccyHeuristic(symbol: string): "KRW" | "USD" {
   return /^\d{6}$/.test(symbol) ? "KRW" : "USD";
 }
 
+/**
+ * 장부 단가 프리필 — prices 는 ₩ 환산값이므로 종목 네이티브 통화로 되돌린다.
+ * (단가 입력 필드는 네이티브: USD 종목이면 $ 값. ₩값을 그대로 두면 서버가 환율을 또 곱한다.)
+ */
+function prefillNativePrice(
+  symbol: string,
+  prices: Record<string, number>,
+  fxRates: Record<string, number>,
+): string {
+  const krw = prices[symbol];
+  if (krw == null) return "";
+  if (ccyHeuristic(symbol) === "KRW") return String(Math.round(krw));
+  const fx = fxRates.USD ?? 1;
+  return String(Math.round((krw / fx) * 100) / 100);
+}
+
 type Stage = "account" | "symbol" | "price" | "qty" | "cart";
 
 /**
@@ -74,8 +90,8 @@ export function BuyWizard({
       : null,
   );
   const [addPrice, setAddPrice] = useState(() =>
-    initialSymbol && mode === "ledger" && prices[initialSymbol] != null
-      ? String(prices[initialSymbol])
+    initialSymbol && mode === "ledger"
+      ? prefillNativePrice(initialSymbol, prices, fxRates)
       : "",
   );
   const [addQty, setAddQty] = useState(initialQty ? String(initialQty) : "");
@@ -95,6 +111,12 @@ export function BuyWizard({
   const addMarket = useMarketPrice(adding?.symbol ?? null, prices);
   const addIsCrypto = !!adding && isCrypto(adding.symbol);
   const addUnit = addIsCrypto ? "개" : "주";
+  // 단가는 종목의 네이티브 통화로 입력한다(서버가 그 통화로 해석해 ₩ 환산).
+  // ₩로 라벨만 붙이고 USD 종목 값을 받으면 서버가 환율을 또 곱해 ~1500× 부풀려진다.
+  const addCcy = adding ? ccyHeuristic(adding.symbol) : "KRW";
+  const addFx = addCcy === "KRW" ? 1 : (fxRates.USD ?? 1);
+  const priceCur = addCcy === "KRW" ? "₩" : "$";
+  const priceUnitLabel = addCcy === "KRW" ? "원" : "달러";
 
   // ₩ 추정 합계(서버가 최종 환산 — 여긴 미리보기).
   const krwOf = (it: CartItem) => {
@@ -235,8 +257,8 @@ export function BuyWizard({
         onSelect={(item) => {
           setAdding(item);
           setAddPrice(
-            mode === "ledger" && prices[item.symbol] != null
-              ? String(prices[item.symbol])
+            mode === "ledger"
+              ? prefillNativePrice(item.symbol, prices, fxRates)
               : "",
           );
           setAddQty("");
@@ -250,14 +272,21 @@ export function BuyWizard({
     const ps = priceStepsFor(adding?.symbol ?? "");
     return shell(
       "얼마에 샀나요?",
-      adding ? `${adding.name} · 단가(원)` : undefined,
+      adding ? `${adding.name} · 단가(${priceUnitLabel})` : undefined,
       <AmountBody
         value={addPrice}
         onChange={setAddPrice}
-        prefix="₩"
+        prefix={priceCur}
         decimal
         quickAddSteps={ps.steps}
         quickAddLabel={ps.label}
+        hint={
+          addCcy !== "KRW" && Number(addPrice) > 0 ? (
+            <span className="tabular-nums text-muted-foreground">
+              ≈ ₩{Math.round(Number(addPrice) * addFx).toLocaleString()}
+            </span>
+          ) : undefined
+        }
       />,
       nextBtn("다음", Number(addPrice) > 0, () => setStage("qty")),
     );
@@ -265,11 +294,13 @@ export function BuyWizard({
 
   if (stage === "qty") {
     const priceNow = mode === "ledger" ? Number(addPrice) : (addMarket ?? 0);
+    // ledger 입력가는 네이티브(USD 종목은 ×환율로 ₩) — 챌린지/라이브의 addMarket 은 이미 ₩.
+    const priceKrwUnit = mode === "ledger" ? priceNow * addFx : priceNow;
     return shell(
       "몇 주 살까요?",
       adding
         ? mode === "ledger"
-          ? `${adding.name} · ₩${Number(addPrice).toLocaleString()}`
+          ? `${adding.name} · ${priceCur}${Number(addPrice).toLocaleString()}`
           : `${adding.name} · 현재가 ${addMarket != null ? `₩${addMarket.toLocaleString()}` : "불러오는 중"}`
         : undefined,
       <AmountBody
@@ -281,7 +312,7 @@ export function BuyWizard({
         hint={
           Number(addQty) > 0 && priceNow > 0 ? (
             <span className="tabular-nums text-muted-foreground">
-              = ₩{Math.round(priceNow * Number(addQty)).toLocaleString()}
+              = ₩{Math.round(priceKrwUnit * Number(addQty)).toLocaleString()}
             </span>
           ) : undefined
         }
