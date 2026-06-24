@@ -21,12 +21,15 @@ type FormTarget = null | "new" | Liability;
  */
 export function LiabilitiesSection({
   items,
+  realEstateAssets = [],
   factor,
   currency,
   today,
   autoOpen = false,
 }: {
   items: Liability[];
+  /** 담보대출 연결 후보 부동산(id·이름). 폼 셀렉터·연결명 표시용(spec 012). */
+  realEstateAssets?: { id: string; name: string }[];
   factor: number;
   currency: Currency;
   today: string;
@@ -38,6 +41,7 @@ export function LiabilitiesSection({
   const [target, setTarget] = useState<FormTarget>(autoOpen ? "new" : null);
   const cv = (n: number) => n * factor;
   const sectionRef = useRef<HTMLElement>(null);
+  const assetNameById = new Map(realEstateAssets.map((a) => [a.id, a.name]));
 
   // 딥링크로 들어오면 등록 폼(하단)까지 스크롤.
   useEffect(() => {
@@ -104,6 +108,8 @@ export function LiabilitiesSection({
                   {money(cv(l.principal), currency)}
                   {l.interestRate > 0 && ` · 연 ${pct(l.interestRate)}`}
                   {l.startedAt && ` · ${l.startedAt}`}
+                  {l.manualAssetId && assetNameById.has(l.manualAssetId) &&
+                    ` · 🏠 ${assetNameById.get(l.manualAssetId)}`}
                 </span>
               </span>
               <span className="ml-auto flex gap-2">
@@ -135,6 +141,7 @@ export function LiabilitiesSection({
           <LiabilityForm
             editing={target === "new" ? null : target}
             today={today}
+            assets={realEstateAssets}
             onSaved={() => {
               setTarget(null);
               router.refresh();

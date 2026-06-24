@@ -3,6 +3,9 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getPortfolio } from "@/lib/portfolio";
 import { loadManualAssets, loadManualAssetIncome } from "@/lib/realAssets";
+import { loadLiabilities } from "@/lib/liabilities";
+import { loadFinancingReconciliations } from "@/lib/financingReconciliation";
+import { realEstateFinancingCost, financingByAsset } from "@/lib/finance/realAssets";
 import { todayKST } from "@/lib/date";
 import type { Currency } from "@/lib/format";
 import { BackButton } from "@/components/BackButton";
@@ -52,10 +55,23 @@ async function DivisionsContent({
   const currency: Currency = useUsd ? "USD" : "KRW";
   const today = todayKST();
 
-  const [manualAssets, manualIncome] = await Promise.all([
-    loadManualAssets(supabase, portfolio.holding.id),
-    loadManualAssetIncome(supabase, portfolio.holding.id),
-  ]);
+  const [manualAssets, manualIncome, liabilities, reconciliations] =
+    await Promise.all([
+      loadManualAssets(supabase, portfolio.holding.id),
+      loadManualAssetIncome(supabase, portfolio.holding.id),
+      loadLiabilities(supabase, portfolio.holding.id),
+      loadFinancingReconciliations(supabase, portfolio.holding.id),
+    ]);
+
+  // 부동산 사업부 금융비용(담보대출 추정 이자 + 보정) — 임대료에서 차감(spec 012).
+  const financing = realEstateFinancingCost({
+    liabilities,
+    reconciliations,
+    assets: manualAssets,
+    today,
+  });
+  // 물건별 연결 대출 목록(이름·월/누적 추정 이자) — 물건 카드 안에 통합 표시.
+  const loansByAsset = financingByAsset(liabilities, manualAssets, today);
 
   return (
     <>
@@ -67,6 +83,9 @@ async function DivisionsContent({
       <ManualAssetsSection
         items={manualAssets}
         incomes={manualIncome}
+        financing={financing}
+        reconciliations={reconciliations}
+        loansByAsset={loansByAsset}
         factor={factor}
         currency={currency}
         today={today}

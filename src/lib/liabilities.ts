@@ -24,5 +24,6 @@ export async function loadLiabilities(
     principal: Number(r.principal),
     interestRate: Number(r.interest_rate),
     startedAt: r.started_at,
+    manualAssetId: r.manual_asset_id,
   }));
 }
