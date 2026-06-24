@@ -86,38 +86,50 @@ function fgFor(hex: string): string {
   return lum > 0.62 ? INK : WHITE;
 }
 
-/** KRX ETF 운용사 브랜드 맵 (ETF명 첫 단어 → 운용사 약칭 + 브랜드색) */
-const ETF_BRANDS: Record<string, { label: string; bg: string }> = {
-  KODEX:      { label: "삼성", bg: "#1428A0" },
-  TIGER:      { label: "미래", bg: "#E8380D" },
-  KBSTAR:     { label: "KB",   bg: "#FFBC00" },
-  RISE:       { label: "KB",   bg: "#FFBC00" },
-  ACE:        { label: "ACE",  bg: "#003C71" },
-  "1Q":       { label: "1Q",   bg: "#003C71" },
-  SOL:        { label: "신한", bg: "#0046AD" },
-  KOSEF:      { label: "키움", bg: "#D7000F" },
-  HANARO:     { label: "NH",   bg: "#009A44" },
-  ARIRANG:    { label: "한화", bg: "#FF6600" },
-  PLUS:       { label: "한화", bg: "#FF6600" },
-  FOCUS:      { label: "교보", bg: "#005BAB" },
-  TIMEFOLIO:  { label: "TF",   bg: "#1A1A2E" },
-  WOORI:      { label: "우리", bg: "#0069B4" },
-  MASTER:     { label: "마스터", bg: "#444444" },
-  TREX:       { label: "대신", bg: "#CF2027" },
-  SMART:      { label: "스마트", bg: "#2E5EAA" },
-};
+export interface EtfManager {
+  label: string;
+  bg: string;
+  /** 셀프 호스팅 운용사 로고(public/logos/managers/…). 있으면 favicon보다 우선 — 차단·저화질 회피. */
+  logo?: string;
+  /** 운용사 공식 도메인(Google favicon 으로 로고). 없으면 약칭 텍스트만. */
+  domain?: string;
+}
 
-/** ETF명에서 운용사 브랜드 추출. 6자리 코드 ETF만 적용. */
-function etfBrand(symbol?: string, name?: string): { label: string; bg: string } | null {
-  if (!symbol || !/^\d{6}$/.test(symbol)) return null;
-  if (!name) return null;
-  const brand = name.split(/[\s\d]/)[0].toUpperCase();
-  return ETF_BRANDS[brand] ?? null;
+/**
+ * KRX ETF 운용사 — ETF명에 브랜드 키워드가 **포함**되면 매칭(한/영 부분일치).
+ * 정식 펀드명("삼성KODEX200증권상장지수…")처럼 첫 단어가 운용사명이어도 잡는다.
+ * domain 은 실제 favicon 이 뜨는 것만(google.com 경유라 차단 거의 없음).
+ */
+const ETF_MANAGERS: Array<{ kws: string[] } & EtfManager> = [
+  { kws: ["KODEX", "코덱스"],          label: "삼성",   bg: "#1428A0", logo: "/logos/managers/samsung.png", domain: "samsungfund.com" },
+  { kws: ["TIGER", "타이거"],          label: "미래",   bg: "#E8380D", domain: "miraeasset.com" },
+  { kws: ["KBSTAR", "RISE", "KB STAR"],label: "KB",     bg: "#FFBC00", domain: "kbam.co.kr" },
+  { kws: ["ACE", "KINDEX"],            label: "한투",   bg: "#003C71", domain: "koreainvestment.com" },
+  { kws: ["ARIRANG", "PLUS", "아리랑"],label: "한화",   bg: "#FF6600", domain: "hanwhafund.co.kr" },
+  { kws: ["KOSEF", "KIWOOM", "히어로즈"], label: "키움", bg: "#D7000F", domain: "kiwoomam.com" },
+  { kws: ["SOL"],                       label: "신한",  bg: "#0046AD" },
+  { kws: ["HANARO"],                    label: "NH",    bg: "#009A44" },
+  { kws: ["TIMEFOLIO"],                 label: "TF",    bg: "#1A1A2E" },
+  { kws: ["WOORI", "WON"],              label: "우리",  bg: "#0069B4" },
+  { kws: ["TREX"],                      label: "대신",  bg: "#CF2027" },
+  { kws: ["1Q"],                        label: "1Q",    bg: "#003C71" },
+];
+
+/** ETF명(부분일치)으로 운용사 추출. 6자리 코드 + 이름 필요. */
+export function etfManager(symbol?: string, name?: string): EtfManager | null {
+  if (!symbol || !/^\d{6}$/.test(symbol) || !name) return null;
+  const up = name.toUpperCase();
+  for (const m of ETF_MANAGERS) {
+    if (m.kws.some((k) => up.includes(k.toUpperCase()))) {
+      return { label: m.label, bg: m.bg, logo: m.logo, domain: m.domain };
+    }
+  }
+  return null;
 }
 
 /** 종목/계좌 로고 색 + 표시 레이블. ETF는 운용사 약칭, 그 외는 이름 첫 글자. */
 export function brandLogoLabel(symbol?: string, name?: string): Logo & { label: string } {
-  const etf = etfBrand(symbol, name);
+  const etf = etfManager(symbol, name);
   if (etf) return { bg: etf.bg, fg: fgFor(etf.bg), label: etf.label };
   const curated = curatedLookup(symbol, name);
   const bg = curated ?? `hsl(${hashHue(norm(symbol || name || "?"))} 38% 47%)`;

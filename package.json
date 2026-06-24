@@ -12,6 +12,7 @@
     "sync:krx-ter": "tsx scripts/syncKrxTer.ts",
     "sync:krx-holdings": "tsx scripts/syncKrxEtfHoldings.ts",
     "sync:krx-index": "tsx scripts/syncKrxIndexStats.ts",
+    "sync:logos": "tsx scripts/syncLogos.ts",
     "sync:kis-master": "tsx scripts/syncKisMaster.ts",
     "register:krx-ter-task": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/registerKrxTerTask.ps1",
     "register:kis-master-task": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/registerKisMasterTask.ps1"

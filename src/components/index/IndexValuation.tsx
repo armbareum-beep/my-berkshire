@@ -1,4 +1,5 @@
 import type { IndexSummary, ShillerCape } from "@/lib/finance/indexStats";
+import { metricStatus, statusText } from "@/lib/finance/indexMetrics";
 import { pct } from "@/lib/format";
 
 interface Props {
@@ -17,30 +18,31 @@ function Cell({ label, value }: { label: string; value: string }) {
 }
 
 export function IndexValuation({ summary, cape, isSnp500 }: Props) {
+  const ctx = {
+    isKoreaIndex: summary?.isKoreaIndex ?? false,
+    krxAvailable: summary?.krxAvailable ?? false,
+  };
+
+  // (값, KRX 출처 여부) — PER·PBR·배당은 한국 지수에서 KRX 캐시 전용, ROE 는 보유종목 가중.
+  const cell = (label: string, value: number | null, fmt: (v: number) => string, krxSourced: boolean) => {
+    const status = metricStatus(value ?? null, ctx, krxSourced);
+    return (
+      <Cell
+        key={label}
+        label={label}
+        value={status === "value" && value != null ? fmt(value) : statusText(status)}
+      />
+    );
+  };
+
   return (
     <section className="rounded-2xl bg-card p-5 shadow-card">
       <p className="mb-4 text-sm font-semibold">현재 밸류에이션</p>
       <div className="grid grid-cols-2 gap-y-4">
-        <Cell
-          label="Trailing PER"
-          value={summary?.trailingPE != null ? `${summary.trailingPE.toFixed(1)}배` : "—"}
-        />
-        <Cell
-          label="Forward PER"
-          value={summary?.forwardPE != null ? `${summary.forwardPE.toFixed(1)}배` : "—"}
-        />
-        <Cell
-          label="PBR"
-          value={summary?.pbr != null ? `${summary.pbr.toFixed(2)}배` : "—"}
-        />
-        <Cell
-          label="ROE (상위10 가중평균)"
-          value={summary?.roe != null ? pct(summary.roe) : "—"}
-        />
-        <Cell
-          label="배당수익률"
-          value={summary?.dividendYield != null ? pct(summary.dividendYield) : "—"}
-        />
+        {cell("Trailing PER", summary?.trailingPE ?? null, (v) => `${v.toFixed(1)}배`, true)}
+        {cell("PBR", summary?.pbr ?? null, (v) => `${v.toFixed(2)}배`, true)}
+        {cell("ROE (PBR÷PER)", summary?.roe ?? null, (v) => pct(v), true)}
+        {cell("배당수익률", summary?.dividendYield ?? null, (v) => pct(v), true)}
         {isSnp500 && cape != null && (
           <Cell
             label={`Shiller CAPE (${cape.asOf.slice(0, 7)})`}

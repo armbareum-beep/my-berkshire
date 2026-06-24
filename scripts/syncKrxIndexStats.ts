@@ -48,6 +48,25 @@ function parseNum(row: KrxRow, ...keys: string[]): number | null {
   return null;
 }
 
+/**
+ * 카테고리 행에서 PER 값이 실제로 있는 대표 지수 행 선택.
+ * 당일(장중·미발표)은 PER이 null이라 제외 → 직전 영업일/유효 행으로 폴백.
+ * 정확 명칭("코스피"/"코스닥") 우선, 그다음 최신 거래일(TRD_DD).
+ * row=null 이면 sample(매칭은 됐으나 PER 없는 행)로 실제 키를 진단.
+ */
+function pickIndexRow(rows: KrxRow[], kw: string): { row: KrxRow | null; sample: KrxRow | null } {
+  const matches = rows.filter((r) => String(r.IDX_NM ?? "").includes(kw));
+  const valid = matches.filter((r) => parseNum(r, "WT_PER", "PER") != null);
+  if (valid.length === 0) return { row: null, sample: matches[0] ?? null };
+  valid.sort((a, b) => {
+    const ea = String(a.IDX_NM ?? "").trim() === kw ? 0 : 1;
+    const eb = String(b.IDX_NM ?? "").trim() === kw ? 0 : 1;
+    if (ea !== eb) return ea - eb;
+    return String(b.TRD_DD ?? "").localeCompare(String(a.TRD_DD ?? ""));
+  });
+  return { row: valid[0], sample: matches[0] ?? null };
+}
+
 async function fetchRows(ctx: import("playwright").BrowserContext, trdDd: string, idxIndMidclssCd: string): Promise<KrxRow[]> {
   const strtDd = trdDd.slice(0, 6) + "01"; // 해당 월 1일부터
   const body = new URLSearchParams({
@@ -122,6 +141,7 @@ async function main() {
 
     const syncedAt = new Date().toISOString();
     let found = false;
+    let dumped = false;
 
     for (const trdDd of dates) {
       const [ksRows, kqRows] = await Promise.all([
@@ -134,34 +154,42 @@ async function main() {
         console.log(`[DEBUG trdDd=${trdDd}] KOSDAQ rows=${kqRows.length} IDX_NM: ${kqRows.map(r => r.IDX_NM).join(" | ")}`);
       }
 
-      const ksRow = ksRows.find((r) => String(r.IDX_NM ?? "").includes("코스피"));
-      const kqRow = kqRows.find((r) => String(r.IDX_NM ?? "").includes("코스닥"));
+      const ks = pickIndexRow(ksRows, "코스피");
+      const kq = pickIndexRow(kqRows, "코스닥");
 
-      if (!ksRow && !kqRow) {
-        if (ksRows.length === 0 && kqRows.length === 0) continue;
-        console.log(`[trdDd=${trdDd}] 코스피/코스닥 합성지수 행 없음. IDX_NM:`);
-        [...ksRows, ...kqRows].forEach((r) => console.log(`  ${JSON.stringify(r.IDX_NM)}`));
-        continue;
+      if (!ks.row && !kq.row) {
+        const sample = ks.sample ?? kq.sample;
+        if (sample && !dumped) {
+          // 행은 있으나 PER 파싱 불가 — 당일 미발표(장중)이거나 필드명 불일치.
+          // 실제 키를 덤프해 다음 영업일 폴백/진단에 쓴다.
+          console.log(`[trdDd=${trdDd}] 코스피/코스닥 행은 있으나 PER 파싱 불가(당일 미발표 또는 필드명 불일치).`);
+          console.log(`  실제 필드 키: ${Object.keys(sample).join(", ")}`);
+          console.log(`  샘플 행: ${JSON.stringify(sample)}`);
+          dumped = true;
+        }
+        continue; // 이전 영업일/유효 행으로
       }
 
-      const toStat = (row: KrxRow, symbol: string) => ({
-        symbol,
-        per: parseNum(row, "WT_PER"),
-        pbr: parseNum(row, "WT_STKPRC_NETASST_RTO"),
-        eps: null as number | null,
-        dividend_yield: parseNum(row, "DIV_YD") != null
-          ? (parseNum(row, "DIV_YD")! / 100)
-          : null,
-        listed_count: null as number | null,
-        synced_at: syncedAt,
-      });
+      const toStat = (row: KrxRow, symbol: string) => {
+        const dy = parseNum(row, "DIV_YD", "DIV_YLD", "DVD_YLD");
+        return {
+          symbol,
+          per: parseNum(row, "WT_PER", "PER"),
+          pbr: parseNum(row, "WT_STKPRC_NETASST_RTO", "PBR"),
+          eps: null as number | null,
+          dividend_yield: dy != null ? dy / 100 : null,
+          listed_count: null as number | null,
+          synced_at: syncedAt,
+        };
+      };
 
       const results = [
-        ksRow && toStat(ksRow, "^KS11"),
-        kqRow && toStat(kqRow, "^KQ11"),
+        ks.row && toStat(ks.row, "^KS11"),
+        kq.row && toStat(kq.row, "^KQ11"),
       ].filter((r): r is NonNullable<typeof r> => r !== null);
 
-      console.log(`트레이드일: ${trdDd}`);
+      const dataDd = ks.row?.TRD_DD ?? kq.row?.TRD_DD ?? trdDd;
+      console.log(`조회 트레이드일: ${trdDd} (데이터 거래일: ${dataDd})`);
       for (const r of results) {
         console.log(`  ${r.symbol}  PER=${r.per}  PBR=${r.pbr}  DY=${r.dividend_yield}`);
       }

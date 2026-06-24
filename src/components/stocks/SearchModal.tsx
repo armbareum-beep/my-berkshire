@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { SymbolAvatar } from "@/components/onboarding/SymbolPicker";
 import { searchSymbols, type SymbolSearchResult } from "@/lib/finance/search";
 import { toggleWatch } from "@/app/stocks/watchlistActions";
-import { PRESET_QUOTES } from "@/lib/finance/quotes";
+import { PRESET_QUOTES, fxCodeFromSymbol } from "@/lib/finance/quotes";
 import { pct } from "@/lib/format";
 
 /**
@@ -151,12 +151,15 @@ export function SearchModal({
                 <button
                   type="button"
                   onClick={() => {
+                    const fxCode = fxCodeFromSymbol(item.symbol);
                     const preset = PRESET_QUOTES.find((p) => p.symbol === item.symbol);
-                    const href = preset?.isIndex
-                      ? `/index/${encodeURIComponent(item.symbol)}`
-                      : `/stocks/${item.symbol}?name=${encodeURIComponent(item.name)}${
-                          item.assetType ? `&assetType=${encodeURIComponent(item.assetType)}` : ""
-                        }`;
+                    const href = fxCode
+                      ? `/fx/${fxCode}`
+                      : preset?.isIndex
+                        ? `/index/${encodeURIComponent(item.symbol)}`
+                        : `/stocks/${item.symbol}?name=${encodeURIComponent(item.name)}${
+                            item.assetType ? `&assetType=${encodeURIComponent(item.assetType)}` : ""
+                          }`;
                     router.push(href, { scroll: false });
                     // 검색 모달을 닫아야 인터셉트된 상세 시트가 가려지지 않는다(US2).
                     onClose();
