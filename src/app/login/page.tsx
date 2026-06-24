@@ -33,6 +33,16 @@ export default function LoginPage() {
     };
   }, []);
 
+  async function signInWithKakao() {
+    setError(null);
+    const supabase = createClient();
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "kakao",
+      options: { redirectTo: `${window.location.origin}/auth/callback` },
+    });
+    if (error) setError(error.message);
+  }
+
   async function sendLink(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
@@ -88,6 +98,20 @@ export default function LoginPage() {
           <p className="mt-3 text-center text-xs text-muted-foreground">
             비밀번호 없이, 메일 링크로 입장합니다.
           </p>
+
+          <div className="my-5 flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="h-px flex-1 bg-border" />
+            또는
+            <span className="h-px flex-1 bg-border" />
+          </div>
+
+          <Button
+            type="button"
+            onClick={signInWithKakao}
+            className="h-12 w-full bg-[#FEE500] text-base font-semibold text-[#191600] hover:bg-[#FDD800]"
+          >
+            카카오로 시작하기
+          </Button>
         </form>
       )}
     </main>
