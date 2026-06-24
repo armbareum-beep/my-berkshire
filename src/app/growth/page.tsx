@@ -84,7 +84,7 @@ export default async function GrowthPage() {
     <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
       <BottomTabBar />
       <div>
-        <h1 className="text-2xl font-extrabold tracking-tight">내 회사</h1>
+        <h1 className="text-2xl font-extrabold tracking-tight">마이 버크셔</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           내 지주회사가 자라는 기록 · 규율과 시간으로
         </p>
@@ -93,7 +93,7 @@ export default async function GrowthPage() {
       {/* 기업 등급(헤드라인) */}
       <CompanyTierCard tier={tier} invested={data.invested} />
 
-      {/* 내 사업부 실적(현재 투시 펀더멘털) — DART N+1 으로 무거워 스트리밍 */}
+      {/* 내 지분 실적(현재 투시 펀더멘털) — DART N+1 으로 무거워 스트리밍 */}
       <Suspense fallback={<GrowthCardSkeleton />}>
         <BusinessSnapshotStreamed
           supabase={supabase}
@@ -156,9 +156,9 @@ export default async function GrowthPage() {
 }
 
 /**
- * 내 사업부 실적 — 현재 투시 펀더멘털(연결 순이익·PER/PBR/ROE). DART N+1 으로 무거워 스트리밍.
+ * 내 지분 실적 — 현재 투시 펀더멘털(연결 순이익·PER/PBR/ROE). DART N+1 으로 무거워 스트리밍.
  * 홈에서 이전. /lookthrough 의 `lookthrough-current` 스냅샷과 동일 캐시 키로 공유.
- * ₩ 기준(내 회사 허브는 단일 통화).
+ * ₩ 기준(마이 버크셔 허브는 단일 통화).
  */
 async function BusinessSnapshotStreamed({
   supabase,
@@ -214,7 +214,7 @@ async function BusinessSnapshotStreamed({
     >
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-semibold">🏭 내 사업부 실적</p>
+          <p className="text-sm font-semibold">🏭 내 지분 실적</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
             보유 회사들의 투시 펀더멘털 — 지분만큼 내 몫
           </p>

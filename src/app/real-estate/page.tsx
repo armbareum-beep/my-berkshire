@@ -59,7 +59,7 @@ async function DivisionsContent({
 
   return (
     <>
-      <h1 className="text-2xl font-extrabold tracking-tight">내 사업부</h1>
+      <h1 className="text-2xl font-extrabold tracking-tight">실물 사업부</h1>
       <p className="-mt-2 text-sm text-muted-foreground">
         부동산·미술품·비상장 등 직접 평가하는 자산. 종류별 사업부로 묶여요.
       </p>

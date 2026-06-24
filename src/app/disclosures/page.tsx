@@ -2,7 +2,7 @@ import { BackButton } from "@/components/BackButton";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
 import { DisclosuresContent, type DisclosureFilter } from "./DisclosuresContent";
 
-/** 내 사업부 공시 — 전체 페이지 셸. 본문은 DisclosuresContent(바텀시트와 공유). */
+/** 내 지분 공시 — 전체 페이지 셸. 본문은 DisclosuresContent(바텀시트와 공유). */
 export default async function DisclosuresPage({
   searchParams,
 }: {

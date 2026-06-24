@@ -90,7 +90,7 @@ export function PortfolioFlags({ groups }: { groups: PortfolioFlagGroup[] }) {
   return (
     <section className="rounded-2xl bg-card p-5 shadow-card">
       <div className="mb-1 flex items-center justify-between gap-2">
-        <p className="text-sm font-semibold">내 사업부 재무 신호</p>
+        <p className="text-sm font-semibold">내 지분 재무 신호</p>
         <span className="rounded-full bg-secondary px-2 py-0.5 text-xs font-semibold text-secondary-foreground">
           확인거리 {total}
         </span>

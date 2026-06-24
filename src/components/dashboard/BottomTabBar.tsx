@@ -18,7 +18,7 @@ const TABS: {
   { href: "/dashboard", label: "홈", icon: Home },
   { href: "/search", label: "검색", icon: Search },
   { href: "/transactions", label: "기록", action: true },
-  { href: "/growth", label: "내 회사", icon: Building2 },
+  { href: "/growth", label: "마이 버크셔", icon: Building2 },
 ];
 
 export function BottomTabBar() {

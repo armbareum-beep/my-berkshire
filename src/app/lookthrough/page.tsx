@@ -233,7 +233,7 @@ async function LookThroughBodyStreamed({
 
           <section className="rounded-2xl bg-card p-5 shadow-card">
             <div className="mb-1 flex items-center justify-between gap-2">
-              <p className="text-sm font-semibold">내 사업부</p>
+              <p className="text-sm font-semibold">내 지분 실적</p>
               <div className="flex shrink-0 rounded-full bg-secondary p-0.5 text-[10px] font-semibold">
                 <Link
                   href="/lookthrough?basis=ttm"
@@ -404,7 +404,7 @@ async function DisclosurePreviewStreamed({
         href="/disclosures"
         className="flex items-center justify-between rounded-2xl bg-card p-5 text-sm font-semibold shadow-card"
       >
-        <span>내 사업부 공시</span>
+        <span>내 지분 공시</span>
         <span className="text-muted-foreground">전체 보기 ›</span>
       </Link>
     );
@@ -413,7 +413,7 @@ async function DisclosurePreviewStreamed({
     <DisclosureFeed
       items={core}
       initialReadKeys={[...dismissed]}
-      title="내 사업부 소식"
+      title="내 지분 소식"
       allHref="/disclosures"
     />
   );
