@@ -105,13 +105,22 @@ async function fetchOneKis(symbol: string): Promise<{
     );
     return normalizeDomesticPrice(res.output);
   }
-  // 미국: 거래소(EXCD)를 모르므로 NAS→NYS→AMS 순으로 시도(잘못된 거래소는 last=0 → 다음).
-  for (const excd of KIS_US_EXCHANGES) {
-    const res = await kisFetch<KisQuoteResponse>(
-      "/uapi/overseas-price/v1/quotations/price",
-      { trId: "HHDFS00000300", params: { AUTH: "", EXCD: excd, SYMB: symbol }, revalidate: 10 },
-    );
-    const hit = normalizeOverseasPrice(res.output);
+  // 미국: 거래소(EXCD)를 모르므로 NAS·NYS·AMS를 동시 조회하고 우선순위 순으로 첫 유효값 채택
+  // (티커는 한 거래소에만 존재 — 잘못된 거래소는 last=0 → null). 순차 대비 왕복 1회로 단축.
+  const results = await Promise.all(
+    KIS_US_EXCHANGES.map(async (excd) => {
+      try {
+        const res = await kisFetch<KisQuoteResponse>(
+          "/uapi/overseas-price/v1/quotations/price",
+          { trId: "HHDFS00000300", params: { AUTH: "", EXCD: excd, SYMB: symbol }, revalidate: 10 },
+        );
+        return normalizeOverseasPrice(res.output);
+      } catch {
+        return null;
+      }
+    }),
+  );
+  for (const hit of results) {
     if (hit) return hit;
   }
   return null;
