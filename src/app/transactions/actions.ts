@@ -592,8 +592,12 @@ export async function recordBuys(input: {
   }
 
   // ── BUY 행 ──
+  // id 를 직접 채운다: 같은 insert 배열에 id 가진 DEPOSIT(증자) 행이 섞이면
+  // PostgREST 가 컬럼 합집합을 만들어 id 없는 행에 DB 기본값이 아닌 NULL 을 넣는다
+  // (→ not-null 위반). 모든 행이 id 를 들고 있으면 이 함정이 사라진다.
   for (const p of prepared) {
     rows.push({
+      id: randomUUID(),
       account_id: accountId,
       type: "BUY",
       symbol: p.item.symbol,
