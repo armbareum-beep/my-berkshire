@@ -35,7 +35,8 @@ export interface AssetImage {
   fit: "fill" | "inset";
 }
 
-function gfavicon(domain: string): string {
+/** Google s2 favicon(도메인 기반, 키 불필요). 운용사·증권사 로고 폴백에 공통 사용. */
+export function gfavicon(domain: string): string {
   return `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
 }
 
@@ -50,8 +51,17 @@ function fmpLogo(ticker: string): string {
  * `npm run sync:logos`로 자동 저장(png)하거나, 직접 파일(svg/png)을 넣어도 된다.
  */
 function localLogos(symbol: string): string[] {
-  const e = encodeURIComponent(symbol);
+  const e = logoSlug(symbol);
   return [`/logos/${e}.svg`, `/logos/${e}.png`];
+}
+
+/**
+ * 로고 파일명/URL용 안전 슬러그 — 영숫자·`.`·`-`만 유지하고 나머지(`/` 등)는 `_`로 치환.
+ * 정상 티커/코드(AAPL·005930)는 그대로. `BRK/A` 같은 슬래시 심볼이 경로를 깨거나
+ * %2F 인코딩으로 정적 서빙에 실패하던 문제를 막는다. 셀프 호스팅 측(sync:logos)과 동일 규칙.
+ */
+export function logoSlug(symbol: string): string {
+  return symbol.replace(/[^A-Za-z0-9.\-]/g, "_");
 }
 
 /** 지수 국가코드 → 국기 SVG 파일명(public/flags/{cc}.svg 존재분만). */

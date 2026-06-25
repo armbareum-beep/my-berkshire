@@ -51,6 +51,7 @@ export default async function SleeveAllocationPage({
   const items = inType
     .map((a) => ({
       label: a.name,
+      symbol: a.symbol as string | undefined,
       value: a.value,
       weight: sleeveValue > 0 ? a.value / sleeveValue : 0,
     }))
@@ -101,7 +102,7 @@ export default async function SleeveAllocationPage({
         <ul className="flex flex-col gap-2">
           {items.map((it) => (
             <li key={it.label} className="flex items-center gap-3">
-              <SymbolAvatar name={it.label} />
+              <SymbolAvatar name={it.label} symbol={it.symbol} />
               <span className="flex flex-col">
                 <span className="font-bold">{it.label}</span>
                 <span className="text-sm text-muted-foreground tabular-nums">
