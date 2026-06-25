@@ -195,7 +195,7 @@ function HoldingRow({
 
   return (
     <li className="flex items-center gap-3 border-t border-border py-2.5 first:border-t-0">
-      <SymbolAvatar name={h.name} />
+      <SymbolAvatar name={h.name} symbol={h.ticker} />
       <span className="flex min-w-0 flex-col">
         <span className="flex items-center gap-1.5">
           <span className="truncate text-sm font-medium">{h.name}</span>

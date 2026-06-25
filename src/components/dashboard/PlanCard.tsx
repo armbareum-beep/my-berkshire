@@ -77,7 +77,7 @@ export function PlanCard({ progress }: { progress: PlanProgress }) {
                   key={l.symbol}
                   className="flex items-center gap-3 p-1 opacity-55"
                 >
-                  <SymbolAvatar name={l.name} />
+                  <SymbolAvatar name={l.name} symbol={l.symbol} />
                   <span className="flex flex-col">
                     <span className="font-bold">{l.name}</span>
                     <span className="text-sm text-muted-foreground tabular-nums">
@@ -96,7 +96,7 @@ export function PlanCard({ progress }: { progress: PlanProgress }) {
                   )}&qty=${remaining}&from=${from}`}
                   className="flex items-center gap-3 rounded-xl p-1 transition active:scale-[0.99]"
                 >
-                  <SymbolAvatar name={l.name} />
+                  <SymbolAvatar name={l.name} symbol={l.symbol} />
                   <span className="flex flex-col">
                     <span className="font-bold">{l.name}</span>
                     <span className="text-sm text-muted-foreground tabular-nums">

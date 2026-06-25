@@ -259,7 +259,7 @@ export function SleeveRebalanceEditor({
                 const withinNow = s.value > 0 ? it.value / s.value : 0;
                 return (
                   <li key={it.symbol} className="flex items-center gap-3">
-                    <SymbolAvatar name={it.name} />
+                    <SymbolAvatar name={it.name} symbol={it.symbol} />
                     <div className="flex flex-col">
                       <span className="font-semibold">{it.name}</span>
                       <span className="text-sm text-muted-foreground tabular-nums">

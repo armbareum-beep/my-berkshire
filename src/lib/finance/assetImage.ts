@@ -46,6 +46,15 @@ function fmpLogo(ticker: string): string {
 }
 
 /**
+ * 토스 종목 로고 CDN(국내 6자리 코드) — 주식·ETF 모두 보유, 고품질·일관.
+ * 셀프 호스팅(public/logos)이 1순위라 보유 종목은 이 후보까지 안 가지만, 미보유 카탈로그·검색
+ * 종목은 sync 없이도 이 CDN으로 로고가 뜬다. 차단되면 다음 후보(운용사 favicon)·글자로 폴백.
+ */
+function tossLogo(code: string): string {
+  return `https://static.toss.im/png-icons/securities/icn-sec-fill-${code}.png`;
+}
+
+/**
  * 셀프 호스팅 로고(public/logos/{symbol}.svg|png) — 최우선 후보.
  * 자기 도메인이라 광고차단/네트워크에 안 막힌다. 파일 없으면 404 → 다음 후보.
  * `npm run sync:logos`로 자동 저장(png)하거나, 직접 파일(svg/png)을 넣어도 된다.
@@ -128,15 +137,15 @@ export function assetImage(
     // ETF면 운용사 favicon(google.com 경유). FMP는 국내 ETF에 동일 placeholder만 줘서 안 씀.
     const mgr = etfManager(sym, name);
     if (mgr) {
-      // 종목코드 로컬 → 셀프 호스팅 운용사 로고 → 운용사 favicon(google) 순.
-      const srcs = [...localLogos(sym)];
+      // 로컬 → 토스 CDN(미보유 ETF도 커버) → 셀프호스팅 운용사 로고 → 운용사 favicon(google) 순.
+      const srcs = [...localLogos(sym), tossLogo(sym)];
       if (mgr.logo) srcs.push(mgr.logo);
       if (mgr.domain) srcs.push(gfavicon(mgr.domain));
       // 운용사 favicon/워드마크는 여백 없어 내접(TIGER·ACE 등).
       return { kind: "manager", srcs, alt, fit: "inset" };
     }
-    // 기업: 로컬 → FMP 실제 로고(.KS/.KQ) → 큐레이트 favicon → 텍스트.
-    const srcs = [...localLogos(sym), fmpLogo(`${sym}.KS`), fmpLogo(`${sym}.KQ`)];
+    // 기업: 로컬 → 토스 CDN(미보유 종목도 커버) → FMP(.KS/.KQ) → 큐레이트 favicon → 텍스트.
+    const srcs = [...localLogos(sym), tossLogo(sym), fmpLogo(`${sym}.KS`), fmpLogo(`${sym}.KQ`)];
     if (KR_FALLBACK_DOMAINS[sym]) srcs.push(gfavicon(KR_FALLBACK_DOMAINS[sym]));
     return { kind: "company", srcs, alt, fit: "fill" };
   }

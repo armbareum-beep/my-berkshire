@@ -80,7 +80,7 @@ export function BuyForm({
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-center gap-3 rounded-xl bg-secondary p-3">
-        <SymbolAvatar name={picked.name} />
+        <SymbolAvatar name={picked.name} symbol={picked.symbol} />
         <span className="flex flex-col">
           <span className="font-bold">{picked.name}</span>
           <span className="text-sm text-muted-foreground">{picked.symbol}</span>
