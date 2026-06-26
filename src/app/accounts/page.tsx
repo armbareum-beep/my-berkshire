@@ -5,7 +5,7 @@ import { getPortfolio, activeEventRows } from "@/lib/portfolio";
 import { loadAccountGroups } from "@/lib/accounts";
 import { BackButton } from "@/components/BackButton";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
-import { AccountManager } from "@/components/accounts/AccountManager";
+import { CreateAccountSection } from "@/components/accounts/CreateAccountSection";
 import { AccountRow } from "@/components/accounts/AccountRow";
 import { DeleteAccountButton } from "@/components/accounts/DeleteAccountButton";
 import { FeeRankCard } from "@/components/accounts/FeeRankCard";
@@ -150,7 +150,7 @@ export default async function AccountsPage() {
         })}
       </ul>
 
-      <AccountManager members={members} />
+      <CreateAccountSection members={members} />
     </main>
   );
 }

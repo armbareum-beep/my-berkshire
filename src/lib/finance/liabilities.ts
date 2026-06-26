@@ -31,6 +31,17 @@ export const LIABILITY_KIND_DESC: Record<LiabilityKind, string> = {
   OTHER: "전세보증금·지인 차입 등",
 };
 
+/**
+ * 종류별 아이콘(이모지). 표시 측 EmojiIcon이 lucide 라인 아이콘으로 교체한다.
+ * 주의: 각 값은 EmojiIcon MAP에 존재하는 키여야 한다(폴백 텍스트 방지).
+ */
+export const LIABILITY_KIND_EMOJI: Record<LiabilityKind, string> = {
+  CREDIT: "🧾",
+  MORTGAGE: "🏛️",
+  MARGIN: "📊",
+  OTHER: "💰",
+};
+
 export interface Liability {
   id: string;
   name: string;

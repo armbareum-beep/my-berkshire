@@ -28,6 +28,31 @@ export const ACCOUNT_TYPES: AccountType[] = [
   "OVERSEAS",
 ];
 
+/**
+ * 계좌 종류 한 줄 절세 설명(종류 피커 카드 표시용).
+ * 단일 출처 규칙: 문구의 수치는 이 파일의 TAX_CONFIG·TAX_CREDIT_CONFIG와 정합해야 한다.
+ * (GENERAL/OVERSEAS 배당 15.4%, ISA 비과세·2,000만원, 연금 세액공제 13.2%·600만원, IRP 합산 900만원.)
+ */
+export const ACCOUNT_TYPE_DESCRIPTION: Record<AccountType, string> = {
+  GENERAL: "배당 15.4% 과세 · 자유로운 입출금",
+  ISA: "배당 비과세 · 연 2,000만원 납입한도",
+  PENSION: "세액공제 13.2% · 연 600만원 한도",
+  IRP: "세액공제 · 연금저축 합산 900만원 한도",
+  OVERSEAS: "해외주식 거래 · 배당 15.4% 과세",
+};
+
+/**
+ * 계좌 종류 아이콘(이모지). 표시 측에서 EmojiIcon이 lucide 라인 아이콘으로 교체한다.
+ * 주의: 각 값은 EmojiIcon MAP에 존재하는 키여야 한다(폴백 텍스트로 떨어지지 않게).
+ */
+export const ACCOUNT_TYPE_EMOJI: Record<AccountType, string> = {
+  GENERAL: "🏦",
+  ISA: "🛡️",
+  PENSION: "💰",
+  IRP: "🏛️",
+  OVERSEAS: "🌍",
+};
+
 export interface TaxConfig {
   /** 배당소득세율(원천징수, 지방소득세 포함). 예: 0.154 = 15.4% */
   dividendTaxRate: number;

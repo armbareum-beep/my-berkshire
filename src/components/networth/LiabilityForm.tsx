@@ -10,10 +10,12 @@ import {
   updateLiability,
   type LiabilityInput,
 } from "@/app/networth/actions";
+import { CardPickerField } from "@/components/ui/CardPickerField";
 import {
   LIABILITY_KINDS,
   LIABILITY_KIND_LABEL,
   LIABILITY_KIND_DESC,
+  LIABILITY_KIND_EMOJI,
   type Liability,
   type LiabilityKind,
 } from "@/lib/finance/liabilities";
@@ -46,8 +48,9 @@ export function LiabilityForm({
 }) {
   const [pending, startTransition] = useTransition();
   const [name, setName] = useState(editing?.name ?? "");
-  const [kind, setKind] = useState<LiabilityKind>(
-    editing?.kind ?? defaultKind ?? "CREDIT",
+  // null = 아직 종류 미선택(단계형): 고르기 전엔 나머지 입력을 숨긴다.
+  const [kind, setKind] = useState<LiabilityKind | null>(
+    editing?.kind ?? defaultKind ?? null,
   );
   const [principal, setPrincipal] = useState(
     editing ? String(editing.principal) : "",
@@ -61,6 +64,10 @@ export function LiabilityForm({
   );
 
   function submit() {
+    if (!kind) {
+      toast.error("종류를 선택하세요.");
+      return;
+    }
     const input: LiabilityInput = {
       name,
       kind,
@@ -89,109 +96,105 @@ export function LiabilityForm({
   return (
     <div className="flex flex-col gap-3">
       <div>
-        <label className="text-sm font-medium">이름</label>
-        <Input
-          autoFocus
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="예: 신한 신용대출"
-          className="mt-1 h-11"
-        />
-      </div>
-
-      <div>
         <label className="text-sm font-medium">종류</label>
-        <div className="mt-1 flex flex-wrap gap-2">
-          {LIABILITY_KINDS.map((k) => (
-            <button
-              key={k}
-              type="button"
-              onClick={() => setKind(k)}
-              className={
-                "rounded-full px-3 py-1.5 text-sm font-semibold " +
-                (kind === k
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-secondary text-secondary-foreground")
-              }
-            >
-              {LIABILITY_KIND_LABEL[k]}
-            </button>
-          ))}
-        </div>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {LIABILITY_KIND_DESC[kind]}
-        </p>
-      </div>
-
-      <NumberPadField
-        label="현재 잔액 (원)"
-        value={principal}
-        onChange={setPrincipal}
-        prefix="₩"
-        placeholder="탭해서 잔액 입력"
-      />
-
-      <div className="flex gap-3">
-        <NumberPadField
-          className="flex-1"
-          label="연이율 (%, 선택)"
-          value={interestPct}
-          onChange={setInterestPct}
-          suffix="%"
-          decimal
-          placeholder="예: 5.2"
+        <CardPickerField
+          value={kind}
+          onChange={setKind}
+          items={LIABILITY_KINDS}
+          getLabel={(k) => LIABILITY_KIND_LABEL[k]}
+          getDescription={(k) => LIABILITY_KIND_DESC[k]}
+          getEmoji={(k) => LIABILITY_KIND_EMOJI[k]}
+          ariaLabel="부채 종류"
+          className="mt-1"
         />
-        <div className="flex-1">
-          <label className="text-sm font-medium">
-            차입일 <span className="text-muted-foreground">(선택)</span>
-          </label>
-          <Input
-            type="date"
-            max={today}
-            value={startedAt}
-            onChange={(e) => setStartedAt(e.target.value)}
-            className="mt-1 h-11"
-          />
-        </div>
       </div>
 
-      {/* 담보대출 ↔ 부동산 연결(선택). 후보 자산이 있을 때만 노출(spec 012). */}
-      {kind === "MORTGAGE" && assets.length > 0 && (
-        <div>
-          <label className="text-sm font-medium">
-            연결 부동산 <span className="text-muted-foreground">(선택)</span>
-          </label>
-          <select
-            value={manualAssetId}
-            onChange={(e) => setManualAssetId(e.target.value)}
-            className="mt-1 h-11 w-full rounded-lg border border-border bg-card px-3 text-sm"
-          >
-            <option value="">연결 안 함 (사업부 공통)</option>
-            {assets.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </select>
-          <p className="mt-1 text-xs text-muted-foreground">
-            연결하면 이 대출 이자가 그 물건 수익에서 차감돼요.
-          </p>
-        </div>
+      {kind !== null && (
+        <>
+          <div>
+            <label className="text-sm font-medium">이름</label>
+            <Input
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="예: 신한 신용대출"
+              className="mt-1 h-11"
+            />
+          </div>
+
+          <NumberPadField
+            label="현재 잔액 (원)"
+            value={principal}
+            onChange={setPrincipal}
+            prefix="₩"
+            placeholder="탭해서 잔액 입력"
+          />
+
+          <div className="flex gap-3">
+            <NumberPadField
+              className="flex-1"
+              label="연이율 (%, 선택)"
+              value={interestPct}
+              onChange={setInterestPct}
+              suffix="%"
+              decimal
+              placeholder="예: 5.2"
+            />
+            <div className="flex-1">
+              <label className="text-sm font-medium">
+                차입일 <span className="text-muted-foreground">(선택)</span>
+              </label>
+              <Input
+                type="date"
+                max={today}
+                value={startedAt}
+                onChange={(e) => setStartedAt(e.target.value)}
+                className="mt-1 h-11"
+              />
+            </div>
+          </div>
+
+          {/* 담보대출 ↔ 부동산 연결(선택). 후보 자산이 있을 때만 노출(spec 012). */}
+          {kind === "MORTGAGE" && assets.length > 0 && (
+            <div>
+              <label className="text-sm font-medium">
+                연결 부동산 <span className="text-muted-foreground">(선택)</span>
+              </label>
+              <select
+                value={manualAssetId}
+                onChange={(e) => setManualAssetId(e.target.value)}
+                className="mt-1 h-11 w-full rounded-lg border border-border bg-card px-3 text-sm"
+              >
+                <option value="">연결 안 함 (사업부 공통)</option>
+                {assets.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                연결하면 이 대출 이자가 그 물건 수익에서 차감돼요.
+              </p>
+            </div>
+          )}
+        </>
       )}
 
       <div className="flex gap-2">
-        <Button
-          onClick={submit}
-          disabled={pending}
-          className="h-11 flex-1 bg-primary font-semibold text-primary-foreground"
-        >
-          {pending ? "기록 중…" : editing ? "수정 저장" : "등록"}
-        </Button>
+        {kind !== null && (
+          <Button
+            onClick={submit}
+            disabled={pending}
+            className="h-11 flex-1 bg-primary font-semibold text-primary-foreground"
+          >
+            {pending ? "기록 중…" : editing ? "수정 저장" : "등록"}
+          </Button>
+        )}
         <Button
           variant="secondary"
           onClick={onCancel}
           disabled={pending}
-          className="h-11 px-5 font-semibold"
+          className={"h-11 font-semibold " + (kind !== null ? "px-5" : "flex-1")}
         >
           취소
         </Button>
