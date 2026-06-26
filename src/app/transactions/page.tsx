@@ -63,7 +63,7 @@ export default async function TransactionsPage({
 
   const { data: accountRows } = await supabase
     .from("accounts")
-    .select("id, name, account_type, commission_rate")
+    .select("id, name, account_type, commission_rate, broker")
     .eq("holding_id", portfolio.holding.id)
     .order("created_at", { ascending: true });
   const accounts: AccountOption[] = (accountRows ?? []).map((a) => ({
@@ -71,6 +71,7 @@ export default async function TransactionsPage({
     name: a.name,
     accountType: a.account_type as AccountType,
     commissionRate: Number(a.commission_rate),
+    broker: a.broker ?? null,
   }));
 
   // 계좌별 보유수량(매도 시 그 계좌의 보유만 보이도록)

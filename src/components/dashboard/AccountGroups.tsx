@@ -9,6 +9,7 @@ import {
   type Currency,
 } from "@/lib/format";
 import { qtyUnit } from "@/lib/securities";
+import { ACCOUNT_TYPE_LABEL } from "@/lib/config/tax";
 import type { AccountGroup } from "@/lib/accounts";
 
 /** 계좌별 접이식 보유목록 — 토스식 "이 계좌에 얼마". 네이티브 details 로 접기/펴기. */
@@ -61,11 +62,11 @@ export function AccountGroups({
             ) : (
               <SymbolAvatar name={g.name} />
             )}
-            <span className="flex flex-col">
-              <span className="flex items-center gap-1.5 font-bold">
-                {g.name}
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="flex min-w-0 items-center gap-1.5 font-bold">
+                <span className="truncate">{g.name}</span>
                 {showMemberChip && g.memberId && memberNames?.[g.memberId] && (
-                  <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-semibold text-secondary-foreground">
+                  <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[11px] font-semibold text-secondary-foreground">
                     {memberNames[g.memberId].emoji
                       ? `${memberNames[g.memberId].emoji} `
                       : ""}
@@ -73,11 +74,11 @@ export function AccountGroups({
                   </span>
                 )}
               </span>
-              <span className="text-sm text-muted-foreground">
-                자회사 {g.holdings.length}개
+              <span className="truncate text-sm text-muted-foreground">
+                {ACCOUNT_TYPE_LABEL[g.accountType]} · 자회사 {g.holdings.length}개
               </span>
             </span>
-            <span className="ml-auto flex items-center gap-2">
+            <span className="ml-auto flex shrink-0 items-center gap-2">
               <span className="flex flex-col items-end">
                 <span className="font-semibold tabular-nums">
                   {money(g.value, currency)}

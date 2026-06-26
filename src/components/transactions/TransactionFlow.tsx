@@ -19,6 +19,8 @@ export interface AccountOption {
   name: string;
   accountType: AccountType;
   commissionRate: number;
+  /** 증권사 id(lib/config/brokers). null = 직접 입력 — 로고 폴백. 계좌 선택 카드 표시용. */
+  broker: string | null;
 }
 
 /**
