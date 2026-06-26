@@ -55,6 +55,32 @@ function tossLogo(code: string): string {
 }
 
 /**
+ * 같은 출처(우리 도메인) 로고 프록시 — 광고차단/핫링크 문제를 없앤다. 서버(/api/logo)가
+ * 외부 소스를 받아 CDN 캐시·서빙하므로, 미보유·검색 종목도 sync 없이 로고가 뜬다.
+ */
+function apiLogo(symbol: string): string {
+  return `/api/logo?symbol=${encodeURIComponent(symbol)}`;
+}
+
+/**
+ * 로고 프록시(/api/logo)가 **서버에서** 시도할 외부 소스 목록(앞에서부터). 국내 6자리=토스
+ * CDN(주식·ETF 전부)→FMP→큐레이트 favicon, 해외=FMP. 지수·환율·코인은 로컬이라 빈 배열.
+ * 프록시 전용(클라이언트 후보엔 안 들어감 — 재귀 방지).
+ */
+export function externalLogoSources(symbol: string): string[] {
+  const sym = symbol.trim();
+  const upper = sym.toUpperCase();
+  if (!sym || upper.endsWith("-USD") || sym.startsWith("^") || sym.includes("=")) return [];
+  if (/^\d{6}$/.test(sym)) {
+    const srcs = [tossLogo(sym), fmpLogo(`${sym}.KS`), fmpLogo(`${sym}.KQ`)];
+    if (KR_FALLBACK_DOMAINS[sym]) srcs.push(gfavicon(KR_FALLBACK_DOMAINS[sym]));
+    return srcs;
+  }
+  if (upper.includes("/")) return [fmpLogo(upper.replace("/", "-")), fmpLogo(upper.replace("/", "."))];
+  return [fmpLogo(upper)];
+}
+
+/**
  * 셀프 호스팅 로고(public/logos/{symbol}.svg|png) — 최우선 후보.
  * 자기 도메인이라 광고차단/네트워크에 안 막힌다. 파일 없으면 404 → 다음 후보.
  * `npm run sync:logos`로 자동 저장(png)하거나, 직접 파일(svg/png)을 넣어도 된다.
@@ -132,25 +158,16 @@ export function assetImage(
     return { kind: "fx", srcs: cc ? [`/flags/${cc}.svg`] : [], alt, fit: "inset" };
   }
 
-  // 4) 국내 6자리 코드 — 항상 로컬 로고(public/logos)를 1순위로.
+  // 4) 국내 6자리 코드 — 로컬(public/logos) 1순위 → 로고 프록시(/api/logo). ETF는 내접.
   if (/^\d{6}$/.test(sym)) {
-    // ETF면 운용사 favicon(google.com 경유). FMP는 국내 ETF에 동일 placeholder만 줘서 안 씀.
-    const mgr = etfManager(sym, name);
-    if (mgr) {
-      // 로컬 → 토스 CDN(미보유 ETF도 커버) → 셀프호스팅 운용사 로고 → 운용사 favicon(google) 순.
-      const srcs = [...localLogos(sym), tossLogo(sym)];
-      if (mgr.logo) srcs.push(mgr.logo);
-      if (mgr.domain) srcs.push(gfavicon(mgr.domain));
-      // 운용사 favicon/워드마크는 여백 없어 내접(TIGER·ACE 등).
-      return { kind: "manager", srcs, alt, fit: "inset" };
-    }
-    // 기업: 로컬 → 토스 CDN(미보유 종목도 커버) → FMP(.KS/.KQ) → 큐레이트 favicon → 텍스트.
-    const srcs = [...localLogos(sym), tossLogo(sym), fmpLogo(`${sym}.KS`), fmpLogo(`${sym}.KQ`)];
-    if (KR_FALLBACK_DOMAINS[sym]) srcs.push(gfavicon(KR_FALLBACK_DOMAINS[sym]));
-    return { kind: "company", srcs, alt, fit: "fill" };
+    const srcs = [...localLogos(sym), apiLogo(sym)];
+    // 운용사(ETF) 마크는 여백 없어 내접(TIGER·ACE 등), 기업 로고는 꽉 채움.
+    return etfManager(sym, name)
+      ? { kind: "manager", srcs, alt, fit: "inset" }
+      : { kind: "company", srcs, alt, fit: "fill" };
   }
 
-  // 5) 해외 기업 티커 — 로컬 → FMP.
-  if (sym) return { kind: "company", srcs: [...localLogos(sym), fmpLogo(upper)], alt, fit: "fill" };
+  // 5) 해외 기업 티커 — 로컬 → 로고 프록시(/api/logo).
+  if (sym) return { kind: "company", srcs: [...localLogos(sym), apiLogo(sym)], alt, fit: "fill" };
   return { kind: "company", srcs: [], alt, fit: "fill" };
 }
