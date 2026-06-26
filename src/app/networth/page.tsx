@@ -11,6 +11,7 @@ import {
 } from "@/lib/finance/valuation";
 import { loadPortfolioValueSeries } from "@/lib/portfolioValueSeries";
 import { loadAccountGroups } from "@/lib/accounts";
+import { filterIncludedAccountGroups } from "@/lib/members";
 import { loadLiabilities } from "@/lib/liabilities";
 import { totalLiabilities, annualInterest } from "@/lib/finance/liabilities";
 import { loadManualAssets, loadManualAssetIncome } from "@/lib/realAssets";
@@ -113,12 +114,27 @@ export async function NetWorthContent({
     events: portfolio.events,
     today,
   });
+  // 보유자산 목록(합산 뷰) — 토글로 제외한 컴퍼니 계좌는 빼서 헤드라인과 일관되게.
   const accountGroupsPromise = loadAccountGroups(supabase, {
     holdingId: portfolio.holding.id,
     prices: portfolio.prices,
     names: portfolio.names,
     factor,
-  });
+  }).then((groups) =>
+    filterIncludedAccountGroups(supabase, portfolio.holding.id, groups),
+  );
+  // 계좌별 주인 컴퍼니 칩용 — memberId → {name, emoji}.
+  const memberNamesPromise: Promise<
+    Record<string, { name: string; emoji: string | null }>
+  > = (async () => {
+    const { data } = await supabase
+      .from("members")
+      .select("id, name, emoji")
+      .eq("holding_id", portfolio.holding.id);
+    return Object.fromEntries(
+      (data ?? []).map((m) => [m.id, { name: m.name, emoji: m.emoji }]),
+    );
+  })();
   const liabilitiesPromise = loadLiabilities(supabase, portfolio.holding.id);
   const manualAssetsPromise = loadManualAssets(supabase, portfolio.holding.id);
   const manualAssetIncomePromise = loadManualAssetIncome(
@@ -172,6 +188,7 @@ export async function NetWorthContent({
         <Suspense fallback={<CardSkeleton />}>
           <AccountGroupsStreamed
             accountGroupsPromise={accountGroupsPromise}
+            memberNamesPromise={memberNamesPromise}
             currency={data.currency}
           />
         </Suspense>
@@ -388,13 +405,26 @@ async function ValueTrendStreamed({
 
 async function AccountGroupsStreamed({
   accountGroupsPromise,
+  memberNamesPromise,
   currency,
 }: {
   accountGroupsPromise: Promise<AccountGroupsResult>;
+  memberNamesPromise: Promise<
+    Record<string, { name: string; emoji: string | null }>
+  >;
   currency: ReturnType<typeof computeDashboard>["currency"];
 }) {
-  const accountGroups = await accountGroupsPromise;
-  return <AccountGroups groups={accountGroups} currency={currency} />;
+  const [accountGroups, memberNames] = await Promise.all([
+    accountGroupsPromise,
+    memberNamesPromise,
+  ]);
+  return (
+    <AccountGroups
+      groups={accountGroups}
+      currency={currency}
+      memberNames={memberNames}
+    />
+  );
 }
 
 async function LiabilitiesStreamed({

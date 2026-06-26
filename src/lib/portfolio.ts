@@ -54,6 +54,45 @@ export function activeEventRows<
 }
 
 /**
+ * 컴퍼니 토글 적용 — included=false 컴퍼니의 계좌 이벤트를 제거.
+ * 전원 포함(또는 컴퍼니 없음)이면 입력을 그대로 반환(추가 쿼리·필터 없음 → 회귀 0).
+ * member_id=null 계좌는 기본 컴퍼니(정렬 첫 컴퍼니)에 귀속해 판정.
+ */
+async function scopeToIncludedMembers<T extends { account_id: string }>(
+  supabase: SupabaseClient<Database>,
+  holdingId: string,
+  rows: T[],
+): Promise<T[]> {
+  const { data: memberRows } = await supabase
+    .from("members")
+    .select("id, included, sort_order, created_at")
+    .eq("holding_id", holdingId)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+  const members = memberRows ?? [];
+  if (members.length === 0) return rows; // 컴퍼니 미도입 — 그대로
+  if (members.every((m) => m.included)) return rows; // 전원 포함 — 그대로
+
+  const defaultMemberId = members[0].id;
+  const includedIds = new Set(
+    members.filter((m) => m.included).map((m) => m.id),
+  );
+
+  const { data: accountRows } = await supabase
+    .from("accounts")
+    .select("id, member_id")
+    .eq("holding_id", holdingId);
+  const memberOf = new Map(
+    (accountRows ?? []).map((a) => [a.id, a.member_id ?? defaultMemberId]),
+  );
+
+  return rows.filter((r) => {
+    const memberId = memberOf.get(r.account_id) ?? defaultMemberId;
+    return includedIds.has(memberId);
+  });
+}
+
+/**
  * 활성 holding 의 이벤트를 모아 수익률·포지션을 계산한 스냅샷.
  * 시세는 목업(STEP 6에서 교체). 비즈니스 로직은 finance/ 모듈을 호출만 한다.
  */
@@ -73,7 +112,11 @@ export const getPortfolio = cache(async function getPortfolio(
     .eq("accounts.holding_id", holding.id)
     .order("date", { ascending: true }) as unknown as { data: Database["public"]["Tables"]["events"]["Row"][] | null };
 
-  const active = activeEventRows(rows ?? []);
+  // 컴퍼니(CEO) 토글 — included=false 컴퍼니의 계좌 이벤트는 연결(합산)에서 제외.
+  // 전원 포함이면 필터를 건너뛰어 기존과 100% 동일 결과(회귀 0).
+  const scoped = await scopeToIncludedMembers(supabase, holding.id, rows ?? []);
+
+  const active = activeEventRows(scoped);
   const events: InvestmentEvent[] = active.map((r) => ({
     type: r.type,
     symbol: r.symbol,

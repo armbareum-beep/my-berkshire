@@ -17,6 +17,7 @@ export function AccountGroups({
   currency,
   bare = false,
   singleOpen = false,
+  memberNames,
 }: {
   groups: AccountGroup[];
   currency: Currency;
@@ -28,7 +29,13 @@ export function AccountGroups({
    * false(기본)면 전부 펼침(전체 보기 — /networth).
    */
   singleOpen?: boolean;
+  /** 계좌 주인(컴퍼니) 표시용 memberId→{name,emoji}. 컴퍼니 2개 이상일 때만 칩 노출. */
+  memberNames?: Record<string, { name: string; emoji: string | null }>;
 }) {
+  // 컴퍼니가 2개 이상 표현될 때만 칩(1개면 노이즈).
+  const showMemberChip =
+    !!memberNames &&
+    new Set(groups.map((g) => g.memberId).filter(Boolean)).size > 1;
   return (
     <div className={bare ? "flex flex-col" : "flex flex-col gap-2"}>
       {groups.map((g, i) => (
@@ -55,7 +62,17 @@ export function AccountGroups({
               <SymbolAvatar name={g.name} />
             )}
             <span className="flex flex-col">
-              <span className="font-bold">{g.name}</span>
+              <span className="flex items-center gap-1.5 font-bold">
+                {g.name}
+                {showMemberChip && g.memberId && memberNames?.[g.memberId] && (
+                  <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-semibold text-secondary-foreground">
+                    {memberNames[g.memberId].emoji
+                      ? `${memberNames[g.memberId].emoji} `
+                      : ""}
+                    {memberNames[g.memberId].name}
+                  </span>
+                )}
+              </span>
               <span className="text-sm text-muted-foreground">
                 자회사 {g.holdings.length}개
               </span>

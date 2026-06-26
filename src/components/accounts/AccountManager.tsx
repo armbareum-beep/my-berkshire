@@ -13,14 +13,21 @@ import {
 } from "@/lib/config/tax";
 import { BrokerSelect } from "@/components/accounts/BrokerSelect";
 
-/** 계좌 추가 폼 — 이름 + 유형 + 증권사. */
-export function AccountManager() {
+export interface MemberOption {
+  id: string;
+  name: string;
+  emoji: string | null;
+}
+
+/** 계좌 추가 폼 — 이름 + 유형 + 증권사 + (컴퍼니 2개 이상이면) 주인 컴퍼니. */
+export function AccountManager({ members = [] }: { members?: MemberOption[] }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [name, setName] = useState("");
   const [type, setType] = useState<AccountType>("GENERAL");
   const [broker, setBroker] = useState<string | null>(null);
   const [pct, setPct] = useState("0.015"); // 위탁수수료율 % (기본 0.015%)
+  const [memberId, setMemberId] = useState<string>(members[0]?.id ?? "");
 
   function add() {
     startTransition(async () => {
@@ -29,6 +36,7 @@ export function AccountManager() {
         type,
         pct.trim() === "" ? undefined : Number(pct) / 100,
         broker,
+        memberId || null,
       );
       if (!res.ok) {
         toast.error(res.error);
@@ -77,6 +85,24 @@ export function AccountManager() {
           onPct={setPct}
         />
       </div>
+      {members.length > 1 && (
+        <div className="mt-3">
+          <label className="text-sm font-medium">주인 컴퍼니</label>
+          <select
+            value={memberId}
+            onChange={(e) => setMemberId(e.target.value)}
+            aria-label="주인 컴퍼니"
+            className="mt-2 h-12 w-full rounded-xl bg-secondary px-3 text-sm font-medium outline-none focus:ring-2 focus:ring-primary/30"
+          >
+            {members.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.emoji ? `${m.emoji} ` : ""}
+                {m.name} 컴퍼니
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       <Button
         onClick={add}
         disabled={pending || !name.trim()}
