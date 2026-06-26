@@ -26,7 +26,7 @@
 | 마찰비용 기본(누적비용·드래그·TER 표시) | [dashboard.ts](../src/lib/dashboard.ts) `friction`/`drag`, [catalog.ts](../src/lib/finance/catalog.ts) `ter` |
 | 결산 스트릭 🔥 | [quarterClose.ts](../src/lib/finance/quarterClose.ts) `reportStreak` |
 | 설립기념일 축하 | [celebration.ts](../src/lib/celebration.ts) `anniversary` |
-| 거장 13F 열람(정적) | [legends.ts](../src/lib/finance/legends.ts), LegendExplorer |
+| ~~거장 13F 열람(정적)~~ **[제거됨]** | ~~legends.ts, LegendExplorer~~ — 2026-06-27 코드·DB 전체 삭제. spec/018 CANCELLED 참조. |
 | CFO 리포트(룰기반 코멘트) | [quarterClose.ts](../src/lib/finance/quarterClose.ts) `buildComment`, [report/](../src/app/report/) |
 | 자산 가리기 토글 | MaskProvider |
 | 배당 캘린더(미래/과거 구분·연도 네비) | [dividends/](../src/app/dividends/), DividendView |
@@ -48,7 +48,7 @@
 | ETF 실질부담비용 순위 | ✗ | 동일지수 ETF 비용 비교 섹션은 사용자 요청으로 제거. catalog에 trackedIndex·getEtfIndexGroups() 코드는 남아 있음. 재도입 시 friction 또는 검색에 추가 |
 | 계좌별 자산배분 | ✅ | `/holdings` 계좌별·전체 보기 + 대시보드 `AccountGroups`. `/allocation` 탭 중복 구현은 하지 않음 |
 | 리그/순위 UI | ✅ | `/leaderboard`. 연환산 XIRR 익명 순위. get_xirr_leaderboard(security definer), 내 행 "나" 배지 강조, 상위 30명 표시 |
-| 레전드 PME 비교(거장과 동일현금흐름) | ✗ | 거장 13F 열람은 됨. 단 13F에 취득가 없어 XIRR 비교 불가 |
+| ~~레전드 PME 비교(거장과 동일현금흐름)~~ **[제거됨]** | ✗ | 거장 13F 열람 자체가 2026-06-27 제거됨. 재도입 금지. |
 
 ---
 
@@ -63,7 +63,7 @@
 | 올해의 결정 | ✗ | PRD §10 보조 |
 | 부동산 실거래가 평가(국토부) | ✗ | 수기 입력만, 자동 평가 없음 |
 | Family Holding(가족 합산) | ✗ | |
-| 거장 13F 자동 파이프(SEC EDGAR, CUSIP→티커) | ✗ | 현재 정적 데이터 |
+| ~~거장 13F 자동 파이프(SEC EDGAR, CUSIP→티커)~~ **[구현 후 제거됨]** | ~~✗~~ **삭제** | 2026-06-27 전체 구현 완료(10개 거장 동기화 성공) 후 앱 색깔·데이터 정확도 문제로 의도적 제거. spec/018 CANCELLED 참조. 재도입 금지. |
 
 ---
 

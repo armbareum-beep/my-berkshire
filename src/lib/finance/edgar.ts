@@ -72,6 +72,7 @@ function cikMap(): Promise<Map<string, string>> {
 interface SubmissionRecent {
   accessionNumber?: string[];
   filingDate?: string[];
+  reportDate?: string[];
   form?: string[];
   primaryDocument?: string[];
   primaryDocDescription?: string[];

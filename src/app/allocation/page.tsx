@@ -8,17 +8,14 @@ import type { AllocationSlice } from "@/lib/dashboard";
 import { getPortfolio } from "@/lib/portfolio";
 import { loadSecurityMeta, backfillSectors } from "@/lib/securities";
 import { groupByTag, groupAllocationByType } from "@/lib/allocation";
-import { getPrices } from "@/lib/finance/prices";
-import { LEGENDS } from "@/lib/finance/legends";
 import type { Currency } from "@/lib/format";
 import { BackButton } from "@/components/BackButton";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
 import { BreakdownCard } from "@/components/dashboard/BreakdownCard";
-import { LegendExplorer } from "@/components/benchmark/LegendExplorer";
 
 type SecurityMeta = Awaited<ReturnType<typeof loadSecurityMeta>>;
 
-/** 자산배분 상세 — 종목별·국가별·유형별 비중 + 거장 포트폴리오(13F) 비교. */
+/** 자산배분 상세 — 종목별·국가별·유형별 비중. */
 export default async function AllocationPage() {
   const supabase = await createClient();
   const {
@@ -26,18 +23,13 @@ export default async function AllocationPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [portfolio, cookieStore] = await Promise.all([
-    getPortfolio(supabase),
-    cookies(),
-  ]);
+  const [portfolio, cookieStore] = await Promise.all([getPortfolio(supabase), cookies()]);
   if (!portfolio) redirect("/onboarding");
 
   const displayCcy =
     cookieStore.get("display_ccy")?.value === "USD" ? "USD" : "KRW";
   const data = computeDashboard(portfolio, displayCcy);
 
-  // 주요 비중 카드(유형·국가·슬리브)는 보유 메타 1쿼리면 충분 — 즉시 렌더.
-  // 섹터(공시 백필)·거장 13F(야후 다수)는 무겁고 포트폴리오와 무관 → 아래에서 스트리밍.
   const symbols = data.allocation.map((a) => a.symbol);
   const meta = await loadSecurityMeta(supabase, symbols);
 
@@ -126,11 +118,6 @@ export default async function AllocationPage() {
           </p>
         </>
       )}
-
-      {/* 거장 포트폴리오(13F) — 거장 보유 전 종목 시세(야후 다수)라 무거워 별도 스트리밍. */}
-      <Suspense fallback={<LegendSkeleton />}>
-        <LegendExplorerStreamed positions={portfolio.positions} />
-      </Suspense>
     </main>
   );
 }
@@ -173,26 +160,3 @@ async function SectorBreakdownStreamed({
   );
 }
 
-/** 거장 포트폴리오(13F) — 거장 보유 종목 시세를 받아 비교 카드 렌더. */
-async function LegendExplorerStreamed({
-  positions,
-}: {
-  positions: Record<string, number>;
-}) {
-  const tickers = [
-    ...new Set(LEGENDS.flatMap((l) => l.holdings.map((h) => h.ticker))),
-  ];
-  const { prices, currencies } = await getPrices(tickers);
-  const held = Object.keys(positions).filter((s) => positions[s] > 0);
-  return <LegendExplorer prices={prices} currencies={currencies} held={held} />;
-}
-
-/** 거장 카드 로딩 스켈레톤. */
-function LegendSkeleton() {
-  return (
-    <div className="rounded-2xl bg-card p-5 shadow-card" aria-busy="true">
-      <div className="h-4 w-32 animate-pulse rounded bg-secondary" />
-      <div className="mt-3 h-24 w-full animate-pulse rounded bg-secondary" />
-    </div>
-  );
-}

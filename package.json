@@ -15,7 +15,8 @@
     "sync:logos": "tsx scripts/syncLogos.ts",
     "sync:kis-master": "tsx scripts/syncKisMaster.ts",
     "register:krx-ter-task": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/registerKrxTerTask.ps1",
-    "register:kis-master-task": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/registerKisMasterTask.ps1"
+    "register:kis-master-task": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/registerKisMasterTask.ps1",
+    "sync:13f": "tsx scripts/sync13fHoldings.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.105.0",

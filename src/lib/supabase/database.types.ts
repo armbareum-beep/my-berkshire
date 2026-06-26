@@ -87,44 +87,6 @@ export type Database = {
           },
         ]
       }
-      members: {
-        Row: {
-          created_at: string
-          emoji: string | null
-          holding_id: string
-          id: string
-          included: boolean
-          name: string
-          sort_order: number
-        }
-        Insert: {
-          created_at?: string
-          emoji?: string | null
-          holding_id: string
-          id?: string
-          included?: boolean
-          name: string
-          sort_order?: number
-        }
-        Update: {
-          created_at?: string
-          emoji?: string | null
-          holding_id?: string
-          id?: string
-          included?: boolean
-          name?: string
-          sort_order?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "members_holding_id_fkey"
-            columns: ["holding_id"]
-            isOneToOne: false
-            referencedRelation: "holdings"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       calculation_snapshots: {
         Row: {
           as_of_date: string
@@ -304,6 +266,50 @@ export type Database = {
             columns: ["reverses_event_id"]
             isOneToOne: false
             referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      financing_reconciliation: {
+        Row: {
+          amount: number
+          created_at: string
+          date: string
+          deleted_at: string | null
+          division: string
+          holding_id: string
+          id: string
+          kind: string
+          note: string | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          date: string
+          deleted_at?: string | null
+          division?: string
+          holding_id: string
+          id?: string
+          kind: string
+          note?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          date?: string
+          deleted_at?: string | null
+          division?: string
+          holding_id?: string
+          id?: string
+          kind?: string
+          note?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financing_reconciliation_holding_id_fkey"
+            columns: ["holding_id"]
+            isOneToOne: false
+            referencedRelation: "holdings"
             referencedColumns: ["id"]
           },
         ]
@@ -532,50 +538,6 @@ export type Database = {
           },
         ]
       }
-      financing_reconciliation: {
-        Row: {
-          amount: number
-          created_at: string
-          date: string
-          deleted_at: string | null
-          division: string
-          holding_id: string
-          id: string
-          kind: string
-          note: string | null
-        }
-        Insert: {
-          amount: number
-          created_at?: string
-          date: string
-          deleted_at?: string | null
-          division?: string
-          holding_id: string
-          id?: string
-          kind: string
-          note?: string | null
-        }
-        Update: {
-          amount?: number
-          created_at?: string
-          date?: string
-          deleted_at?: string | null
-          division?: string
-          holding_id?: string
-          id?: string
-          kind?: string
-          note?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "financing_reconciliation_holding_id_fkey"
-            columns: ["holding_id"]
-            isOneToOne: false
-            referencedRelation: "holdings"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       manual_asset_income: {
         Row: {
           amount: number
@@ -732,6 +694,44 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "manual_fundamentals_holding_id_fkey"
+            columns: ["holding_id"]
+            isOneToOne: false
+            referencedRelation: "holdings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      members: {
+        Row: {
+          created_at: string
+          emoji: string | null
+          holding_id: string
+          id: string
+          included: boolean
+          name: string
+          sort_order: number
+        }
+        Insert: {
+          created_at?: string
+          emoji?: string | null
+          holding_id: string
+          id?: string
+          included?: boolean
+          name: string
+          sort_order?: number
+        }
+        Update: {
+          created_at?: string
+          emoji?: string | null
+          holding_id?: string
+          id?: string
+          included?: boolean
+          name?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "members_holding_id_fkey"
             columns: ["holding_id"]
             isOneToOne: false
             referencedRelation: "holdings"
