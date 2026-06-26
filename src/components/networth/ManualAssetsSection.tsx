@@ -18,6 +18,7 @@ import {
   saleGain,
   rentNet,
   computeDivisions,
+  computeAssetMetrics,
   assetDivision,
   type ManualAsset,
   type ManualAssetIncome,
@@ -31,6 +32,7 @@ import {
   money,
   signedMoney,
   signedPct,
+  pct,
   changeColor,
   type Currency,
 } from "@/lib/format";
@@ -77,6 +79,7 @@ export function ManualAssetsSection({
   const [target, setTarget] = useState<FormTarget>(autoOpen ? "new" : null);
   const [subForm, setSubForm] = useState<SubForm>(null);
   const [reconcileOpen, setReconcileOpen] = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
   const cv = (n: number) => n * factor;
   const sectionRef = useRef<HTMLElement>(null);
   const divisions = computeDivisions(items, incomes, financing);
@@ -173,19 +176,69 @@ export function ManualAssetsSection({
             </span>
           </div>
 
+          {/* 레버리지 지표(spec 014) — 대출 있는 부동산 사업부만. 자산수익률 vs 실투자금 수익률 나란히. */}
+          {d.key === "REAL_ESTATE" && d.totals.debt > 0 && (
+            <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 rounded-xl bg-secondary px-3 py-2 text-xs tabular-nums">
+              <span className="flex flex-col">
+                <span className="text-[10px] text-muted-foreground">자산수익률</span>
+                <span
+                  className="font-semibold"
+                  style={{ color: changeColor(d.totals.ret ?? 0) }}
+                >
+                  {d.totals.ret != null ? signedPct(d.totals.ret) : "—"}
+                </span>
+              </span>
+              <span className="flex flex-col">
+                <span className="text-[10px] text-muted-foreground">
+                  실투자금 수익률
+                </span>
+                <span
+                  className="font-semibold"
+                  style={{ color: changeColor(d.totals.ownCapitalReturn ?? 0) }}
+                >
+                  {d.totals.ownCapitalReturn != null
+                    ? signedPct(d.totals.ownCapitalReturn)
+                    : "—"}
+                </span>
+              </span>
+              <span className="flex flex-col">
+                <span className="text-[10px] text-muted-foreground">순자산</span>
+                <span className="font-semibold">
+                  {money(cv(d.totals.netEquity), currency)}
+                </span>
+              </span>
+              <span className="flex flex-col">
+                <span className="text-[10px] text-muted-foreground">LTV</span>
+                <span className="font-semibold">
+                  {d.totals.ltv != null ? pct(d.totals.ltv) : "—"}
+                </span>
+              </span>
+            </div>
+          )}
+
           <ul className="mt-2 flex flex-col gap-2">
             {d.assets.map((a) => {
               const sold = isSold(a);
               const unreal = unrealizedGain(a);
               const realized = saleGain(a) + rentNet(a.id, incomes);
+              const isOpen = expanded === a.id;
+              const loans = loansByAsset[a.id] ?? [];
+              const m = isOpen ? computeAssetMetrics(a, incomes, loans) : null;
               return (
                 <li key={a.id} className="rounded-xl bg-secondary p-3">
                   <div className="flex items-start gap-3">
-                    <span className="flex min-w-0 flex-col">
+                    <button
+                      type="button"
+                      onClick={() => setExpanded(isOpen ? null : a.id)}
+                      className="flex min-w-0 flex-1 flex-col text-left"
+                    >
                       <span className="font-bold">
                         {a.name}
                         <span className="ml-1.5 rounded-full bg-card px-1.5 py-0.5 align-middle text-[10px] font-semibold text-muted-foreground">
                           {sold ? "매도됨" : MANUAL_ASSET_KIND_LABEL[a.kind]}
+                        </span>
+                        <span className="ml-1 align-middle text-xs text-muted-foreground">
+                          {isOpen ? "▾" : "▸"}
                         </span>
                       </span>
                       <span className="text-sm tabular-nums text-muted-foreground">
@@ -205,45 +258,7 @@ export function ManualAssetsSection({
                           </span>
                         )}
                       </span>
-                      {(a.valuationSource || a.valuedAt) && (
-                        <span className="text-[11px] text-muted-foreground">
-                          추정
-                          {a.valuationSource ? ` · ${a.valuationSource}` : ""}
-                          {a.valuedAt ? ` · ${a.valuedAt}` : ""}
-                        </span>
-                      )}
-                      {(loansByAsset[a.id]?.length ?? 0) > 0 && (
-                        <span className="mt-0.5 flex flex-col gap-0.5 text-[11px] text-amber-700">
-                          {loansByAsset[a.id].map(({ liability: loan, monthly, cumulative }) => (
-                            <span key={loan.id} className="flex flex-wrap items-center gap-x-1.5">
-                              <span>
-                                🔗 {loan.name} · 이자(추정) 월 약{" "}
-                                {money(cv(monthly), currency)} · 누적{" "}
-                                {money(cv(cumulative), currency)}
-                              </span>
-                              <button
-                                type="button"
-                                disabled={pending}
-                                onClick={() =>
-                                  setSubForm({ kind: "loan", asset: a, liability: loan })
-                                }
-                                className="underline"
-                              >
-                                수정
-                              </button>
-                              <button
-                                type="button"
-                                disabled={pending}
-                                onClick={() => removeLoan(loan)}
-                                className="underline"
-                              >
-                                삭제
-                              </button>
-                            </span>
-                          ))}
-                        </span>
-                      )}
-                    </span>
+                    </button>
                     <span className="ml-auto flex shrink-0 flex-wrap justify-end gap-1.5">
                       {!sold && d.producesIncome && (
                         <button
@@ -293,6 +308,88 @@ export function ManualAssetsSection({
                       </button>
                     </span>
                   </div>
+
+                  {/* 펼침(spec 014 US3) — 물건별 지표 + 평가 출처 + 연결 대출. 점진적 공개. */}
+                  {isOpen && (
+                    <div className="mt-2 flex flex-col gap-1.5 border-t border-border pt-2">
+                      {m && m.debt > 0 && (
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-xl bg-card px-3 py-2 text-xs tabular-nums">
+                          <span className="flex flex-col">
+                            <span className="text-[10px] text-muted-foreground">자산수익률</span>
+                            <span
+                              className="font-semibold"
+                              style={{ color: changeColor(m.ret ?? 0) }}
+                            >
+                              {m.ret != null ? signedPct(m.ret) : "—"}
+                            </span>
+                          </span>
+                          <span className="flex flex-col">
+                            <span className="text-[10px] text-muted-foreground">
+                              실투자금 수익률
+                            </span>
+                            <span
+                              className="font-semibold"
+                              style={{ color: changeColor(m.ownCapitalReturn ?? 0) }}
+                            >
+                              {m.ownCapitalReturn != null
+                                ? signedPct(m.ownCapitalReturn)
+                                : "—"}
+                            </span>
+                          </span>
+                          <span className="flex flex-col">
+                            <span className="text-[10px] text-muted-foreground">순자산</span>
+                            <span className="font-semibold">
+                              {money(cv(m.netEquity), currency)}
+                            </span>
+                          </span>
+                          <span className="flex flex-col">
+                            <span className="text-[10px] text-muted-foreground">LTV</span>
+                            <span className="font-semibold">
+                              {m.ltv != null ? pct(m.ltv) : "—"}
+                            </span>
+                          </span>
+                        </div>
+                      )}
+                      {(a.valuationSource || a.valuedAt) && (
+                        <span className="text-[11px] text-muted-foreground">
+                          추정
+                          {a.valuationSource ? ` · ${a.valuationSource}` : ""}
+                          {a.valuedAt ? ` · ${a.valuedAt}` : ""}
+                        </span>
+                      )}
+                      {loans.length > 0 && (
+                        <span className="flex flex-col gap-0.5 text-[11px] text-amber-700">
+                          {loans.map(({ liability: loan, monthly, cumulative }) => (
+                            <span key={loan.id} className="flex flex-wrap items-center gap-x-1.5">
+                              <span>
+                                🔗 {loan.name} · 이자(추정) 월 약{" "}
+                                {money(cv(monthly), currency)} · 누적{" "}
+                                {money(cv(cumulative), currency)}
+                              </span>
+                              <button
+                                type="button"
+                                disabled={pending}
+                                onClick={() =>
+                                  setSubForm({ kind: "loan", asset: a, liability: loan })
+                                }
+                                className="underline"
+                              >
+                                수정
+                              </button>
+                              <button
+                                type="button"
+                                disabled={pending}
+                                onClick={() => removeLoan(loan)}
+                                className="underline"
+                              >
+                                삭제
+                              </button>
+                            </span>
+                          ))}
+                        </span>
+                      )}
+                    </div>
+                  )}
 
                   {subForm?.asset.id === a.id && (
                     <div className="mt-3 border-t border-border pt-3">

@@ -11,7 +11,12 @@
  * 모든 금액 ₩(기능통화). 부동산 이자·보정은 events 를 건드리지 않는다(주식 XIRR 불변).
  */
 
-import { annualInterest, weightedAvgRate, type Liability } from "./liabilities";
+import {
+  annualInterest,
+  totalLiabilities,
+  weightedAvgRate,
+  type Liability,
+} from "./liabilities";
 
 /** 보정 체크포인트 — 추정 누계를 실제값에 스냅. events 와 분리된 division-level 원장. */
 export interface FinancingReconciliation {
@@ -52,6 +57,8 @@ export interface DivisionFinancingCost {
   weightedAvgRate: number | null;
   /** 표시용 월 추정 이자 = Σ(잔액×이율)/12. */
   monthlyEstimate: number;
+  /** 담보대출 잔액 합(₩) = Σ 잔액 — 실투자금(분모) 차감·LTV·순자산 계산용(spec 014). */
+  debt: number;
 }
 
 /**
@@ -140,5 +147,6 @@ export function divisionFinancingCost(
     capitalAdded,
     weightedAvgRate: weightedAvgRate(liabilities),
     monthlyEstimate: annualInterest(liabilities) / 12,
+    debt: totalLiabilities(liabilities),
   };
 }

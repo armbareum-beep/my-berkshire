@@ -6,7 +6,12 @@
  * 모든 금액 ₩(기능통화). 표시 통화 환산은 화면에서 factor 로.
  */
 
-import { mortgageLiabilities, type Liability } from "./liabilities";
+import {
+  leverageRatio,
+  mortgageLiabilities,
+  netWorth,
+  type Liability,
+} from "./liabilities";
 import {
   divisionFinancingCost,
   monthsBetween,
@@ -194,6 +199,23 @@ export interface RealEstateDivision {
   unrealizedRet: number | null;
   /** 주입 시 금융비용 내역(이자 차감·자본 가산 반영됨). 표시용(추정 이자·가중평균율). */
   financing?: DivisionFinancingCost;
+  // ── 레버리지 지표(spec 014). 대출 없으면 debt 0·ltv 0 → UI 미노출. ──
+  /** 담보대출 잔액 합(₩) = financing?.debt ?? 0. */
+  debt: number;
+  /** Σ 보유(미매도) 자산 현재 평가액 — 순자산·LTV 분모. 취득가 없는 자산도 포함. */
+  marketValue: number;
+  /** 실투자금(₩) = 원가 − 대출 = 내가 실제 넣은 돈. */
+  ownCapital: number;
+  /**
+   * 실투자금 수익률 = gain / 실투자금. 레버리지 반영(자산수익률보다 증폭).
+   * "수익률"은 임대수익 전제 아님 — 임대 0(거주용·차익형)이면 분자는 평가차익 − 이자.
+   * 실투자금 ≤ 0(대출 ≥ 원가)이면 null.
+   */
+  ownCapitalReturn: number | null;
+  /** 순자산(₩) = 보유 평가액 − 대출. */
+  netEquity: number;
+  /** LTV = 대출 / 보유 평가액. 평가액 0이면 null. */
+  ltv: number | null;
 }
 
 /**
@@ -211,7 +233,10 @@ export function computeRealEstateDivision(
   let cost = 0;
   let unrealized = 0;
   let realized = 0;
+  let marketValue = 0;
   for (const a of assets) {
+    // 보유(미매도) 평가액은 취득가 유무와 무관하게 순자산·LTV 분모에 합산.
+    if (!isSold(a)) marketValue += a.currentValue;
     const c = effectiveCost(a);
     if (c == null) continue; // 취득가 모르면 수익률 스코프 밖(가치는 별도 합산)
     cost += c;
@@ -223,6 +248,9 @@ export function computeRealEstateDivision(
     realized -= financing.totalInterest; // 대출 이자 → 실현 차감(분자)
   }
   const gain = unrealized + realized;
+  // 레버리지 지표(spec 014): gain·이자는 이미 위에서 반영됨(이자 이중계상 없음).
+  const debt = financing?.debt ?? 0;
+  const ownCapital = cost - debt; // 실투자금 = 내가 실제 넣은 돈
   return {
     cost,
     unrealized,
@@ -232,6 +260,12 @@ export function computeRealEstateDivision(
     realizedRet: cost > 0 ? realized / cost : null,
     unrealizedRet: cost > 0 ? unrealized / cost : null,
     financing,
+    debt,
+    marketValue,
+    ownCapital,
+    ownCapitalReturn: ownCapital > 0 ? gain / ownCapital : null,
+    netEquity: netWorth(marketValue, debt),
+    ltv: marketValue > 0 ? leverageRatio(marketValue, debt) : null,
   };
 }
 
@@ -305,6 +339,65 @@ export function financingByAsset(
     });
   }
   return out;
+}
+
+// ── 물건별 지표(spec 014 US3) — 탭하면 펼치는 물건 단위 실투자금 수익률·LTV. ──
+// 사업부 합산과 같은 공식이되 그 물건의 연결 대출(manualAssetId)만 쓴다.
+// 미연결 공통 대출은 물건별에 안 잡힘(사업부 합산 전용).
+
+export interface AssetMetrics {
+  /** 실질취득가(취득가 없으면 null → 수익률 스코프 밖). */
+  cost: number | null;
+  /** 보유 중 현재 평가액(매도면 0). */
+  marketValue: number;
+  /** 연결 대출 잔액 합(₩). */
+  debt: number;
+  /** 연결 대출 누적 추정 이자 합(₩) — gain 분자에서 차감. */
+  interest: number;
+  /** 미실현 + 매도차익 + 임대순익 − 이자(취득가 없으면 null). */
+  gain: number | null;
+  /** 자산수익률 = gain / 실질취득가. */
+  ret: number | null;
+  /** 실투자금 = 실질취득가 − 연결 대출. */
+  ownCapital: number | null;
+  /** 실투자금 수익률 = gain / 실투자금(≤0이면 null). */
+  ownCapitalReturn: number | null;
+  /** 순자산 = 평가액 − 연결 대출. */
+  netEquity: number;
+  /** LTV = 연결 대출 / 평가액(평가액 0이면 null). */
+  ltv: number | null;
+}
+
+/** 물건 한 건의 지표 — 그 물건의 연결 대출(financingByAsset 결과)만 사용. */
+export function computeAssetMetrics(
+  a: ManualAsset,
+  incomes: ManualAssetIncome[],
+  linkedLoans: LinkedLoan[] = [],
+): AssetMetrics {
+  const cost = effectiveCost(a);
+  const marketValue = isSold(a) ? 0 : a.currentValue;
+  const debt = linkedLoans.reduce((s, l) => s + l.liability.principal, 0);
+  const interest = linkedLoans.reduce((s, l) => s + l.cumulative, 0);
+  const gain =
+    cost == null
+      ? null
+      : unrealizedGain(a) + saleGain(a) + rentNet(a.id, incomes) - interest;
+  const ownCapital = cost == null ? null : cost - debt;
+  return {
+    cost,
+    marketValue,
+    debt,
+    interest,
+    gain,
+    ret: cost != null && cost > 0 && gain != null ? gain / cost : null,
+    ownCapital,
+    ownCapitalReturn:
+      ownCapital != null && ownCapital > 0 && gain != null
+        ? gain / ownCapital
+        : null,
+    netEquity: netWorth(marketValue, debt),
+    ltv: marketValue > 0 ? leverageRatio(marketValue, debt) : null,
+  };
 }
 
 // ── 사업부(자산 클래스) 그룹 ───────────────────────────────────────
