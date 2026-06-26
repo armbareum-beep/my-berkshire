@@ -42,6 +42,8 @@ export interface CreatedAccount {
   name: string;
   accountType: AccountType;
   commissionRate: number;
+  /** 증권사 id. 설립 직후 기본계좌는 보통 null(아바타 폴백). */
+  broker: string | null;
 }
 
 type ActionResult =
@@ -235,7 +237,7 @@ export async function foundCompany(input: FoundInput): Promise<ActionResult> {
 
   const { data: createdAccountRows, error: createdAccountsError } = await supabase
     .from("accounts")
-    .select("id, name, account_type, commission_rate")
+    .select("id, name, account_type, commission_rate, broker")
     .eq("holding_id", holding.id)
     .order("created_at", { ascending: true });
   if (createdAccountsError)
@@ -251,6 +253,7 @@ export async function foundCompany(input: FoundInput): Promise<ActionResult> {
       name: row.name,
       accountType: row.account_type,
       commissionRate: Number(row.commission_rate),
+      broker: row.broker ?? null,
     })),
   };
 }

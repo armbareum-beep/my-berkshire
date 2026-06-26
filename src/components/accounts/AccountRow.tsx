@@ -104,8 +104,8 @@ export function AccountRow({
           ) : (
             <Avatar name={account.name} size="lg" />
           )}
-          <span className="flex min-w-0 flex-col">
-            <span className="font-bold">{account.name}</span>
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="truncate font-bold">{account.name}</span>
             <span className="truncate text-sm text-muted-foreground">
               {findBroker(account.broker)?.name
                 ? `${findBroker(account.broker)!.name} · `
@@ -113,7 +113,7 @@ export function AccountRow({
               {ACCOUNT_TYPE_LABEL[account.accountType]} · 자회사 {holdingsCount}개
             </span>
           </span>
-          <span className="ml-auto flex items-center gap-1">
+          <span className="ml-auto flex shrink-0 items-center gap-1 whitespace-nowrap">
             {accountValue != null && (
               <span className="font-semibold tabular-nums">
                 {money(accountValue, currency)}

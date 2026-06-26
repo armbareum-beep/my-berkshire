@@ -16,6 +16,7 @@ import { SymbolPicker } from "@/components/onboarding/SymbolPicker";
 import { StepShell } from "./StepShell";
 import { SuccessOverlay } from "./SuccessOverlay";
 import { AmountBody, CurrencyChips } from "./steps";
+import { AccountPicker } from "./AccountPicker";
 import type { TypeCfg } from "@/components/transactions/eventTypes";
 import type { AccountOption } from "@/components/transactions/TransactionFlow";
 
@@ -282,27 +283,15 @@ export function TxnWizard({
     return shell(
       "어느 계좌인가요?",
       "거래가 귀속될 계좌를 고르세요.",
-      <div className="flex flex-wrap gap-2">
-        {accounts.map((a) => (
-          <button
-            key={a.id}
-            type="button"
-            onClick={() => {
-              setAccountId(a.id);
-              setPicked(null);
-              setQty("");
-            }}
-            className={
-              "rounded-full px-4 py-2 text-sm font-semibold " +
-              (a.id === accountId
-                ? "bg-primary text-primary-foreground"
-                : "bg-secondary text-secondary-foreground")
-            }
-          >
-            {a.name}
-          </button>
-        ))}
-      </div>,
+      <AccountPicker
+        accounts={accounts}
+        selectedId={accountId}
+        onSelect={(id) => {
+          setAccountId(id);
+          setPicked(null);
+          setQty("");
+        }}
+      />,
       nextBtn("다음", !!accountId, () => go(1)),
     );
   }

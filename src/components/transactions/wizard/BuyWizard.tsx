@@ -14,6 +14,7 @@ import { SymbolSearch } from "@/components/onboarding/SymbolSearch";
 import { StepShell } from "./StepShell";
 import { SuccessOverlay } from "./SuccessOverlay";
 import { AmountBody } from "./steps";
+import { AccountPicker } from "./AccountPicker";
 import type { AccountOption } from "@/components/transactions/TransactionFlow";
 
 interface CartItem {
@@ -228,23 +229,11 @@ export function BuyWizard({
     return shell(
       "어느 계좌인가요?",
       "매수가 귀속될 계좌를 고르세요.",
-      <div className="flex flex-wrap gap-2">
-        {accounts.map((a) => (
-          <button
-            key={a.id}
-            type="button"
-            onClick={() => setAccountId(a.id)}
-            className={
-              "rounded-full px-4 py-2 text-sm font-semibold " +
-              (a.id === accountId
-                ? "bg-primary text-primary-foreground"
-                : "bg-secondary text-secondary-foreground")
-            }
-          >
-            {a.name}
-          </button>
-        ))}
-      </div>,
+      <AccountPicker
+        accounts={accounts}
+        selectedId={accountId}
+        onSelect={setAccountId}
+      />,
       nextBtn("다음", !!accountId, () => setStage("symbol")),
     );
   }
