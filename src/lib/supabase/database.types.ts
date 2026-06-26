@@ -47,6 +47,7 @@ export type Database = {
           created_at: string
           holding_id: string
           id: string
+          member_id: string | null
           name: string
         }
         Insert: {
@@ -56,6 +57,7 @@ export type Database = {
           created_at?: string
           holding_id: string
           id?: string
+          member_id?: string | null
           name?: string
         }
         Update: {
@@ -65,11 +67,57 @@ export type Database = {
           created_at?: string
           holding_id?: string
           id?: string
+          member_id?: string | null
           name?: string
         }
         Relationships: [
           {
             foreignKeyName: "accounts_holding_id_fkey"
+            columns: ["holding_id"]
+            isOneToOne: false
+            referencedRelation: "holdings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "accounts_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      members: {
+        Row: {
+          created_at: string
+          emoji: string | null
+          holding_id: string
+          id: string
+          included: boolean
+          name: string
+          sort_order: number
+        }
+        Insert: {
+          created_at?: string
+          emoji?: string | null
+          holding_id: string
+          id?: string
+          included?: boolean
+          name: string
+          sort_order?: number
+        }
+        Update: {
+          created_at?: string
+          emoji?: string | null
+          holding_id?: string
+          id?: string
+          included?: boolean
+          name?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "members_holding_id_fkey"
             columns: ["holding_id"]
             isOneToOne: false
             referencedRelation: "holdings"

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getPortfolio } from "@/lib/portfolio";
 import { loadAccountGroups } from "@/lib/accounts";
+import { filterIncludedAccountGroups } from "@/lib/members";
 import { BackButton } from "@/components/BackButton";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
 import { HoldingsBrowser } from "@/components/holdings/HoldingsBrowser";
@@ -46,12 +47,17 @@ export async function HoldingsContent() {
   const useUsd = displayCcy === "USD" && !!portfolio.usdKrw;
   const factor = useUsd ? 1 / (portfolio.usdKrw as number) : 1;
 
-  const groups = await loadAccountGroups(supabase, {
-    holdingId: holding.id,
-    prices: portfolio.prices,
-    names: portfolio.names,
-    factor,
-  });
+  // 합산 뷰 — 토글로 제외한 컴퍼니 계좌는 빼서 헤드라인과 일관되게.
+  const groups = await filterIncludedAccountGroups(
+    supabase,
+    holding.id,
+    await loadAccountGroups(supabase, {
+      holdingId: holding.id,
+      prices: portfolio.prices,
+      names: portfolio.names,
+      factor,
+    }),
+  );
 
   return (
     <>

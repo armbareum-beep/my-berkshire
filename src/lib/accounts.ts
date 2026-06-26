@@ -24,6 +24,8 @@ export interface AccountGroup {
   id: string;
   name: string;
   accountType: AccountType;
+  /** 소속 컴퍼니(CEO) id. null = 미지정(기본 컴퍼니 '본인'). */
+  memberId: string | null;
   /** 증권사 id(lib/config/brokers). null = 직접 입력 — 로고 폴백. */
   broker: string | null;
   value: number; // 보유 종목 평가액(표시 통화). 현금은 회사 레벨이라 제외.
@@ -31,6 +33,8 @@ export interface AccountGroup {
   changeRate: number | null;
   /** 계좌 전체 평가차익(표시 통화) = Σ 평단확인 보유의 (현재가−평단)×수량. */
   gain: number | null;
+  /** 평단확인 보유의 원가 합(표시 통화). 컴퍼니 단위 재집계용(rate는 평균 불가, 원가/차익은 가산). */
+  costBasis: number;
   holdings: AccountHolding[];
 }
 
@@ -51,7 +55,7 @@ export async function loadAccountGroups(
 
   const { data: accountRows } = await supabase
     .from("accounts")
-    .select("id, name, account_type, broker")
+    .select("id, name, account_type, broker, member_id")
     .eq("holding_id", holdingId)
     .order("created_at", { ascending: true });
   const accounts = accountRows ?? [];
@@ -122,10 +126,12 @@ export async function loadAccountGroups(
       id: acc.id,
       name: acc.name,
       accountType: acc.account_type as AccountType,
+      memberId: acc.member_id,
       broker: acc.broker,
       value: holdings.reduce((s, h) => s + h.value, 0),
       changeRate: costKrw > 0 ? curForCostKrw / costKrw - 1 : null,
       gain: costKrw > 0 ? (curForCostKrw - costKrw) * factor : null,
+      costBasis: costKrw * factor,
       holdings,
     };
   });

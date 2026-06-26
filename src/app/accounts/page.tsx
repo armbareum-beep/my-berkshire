@@ -47,12 +47,21 @@ export default async function AccountsPage() {
     }),
     supabase
       .from("accounts")
-      .select("id, name, account_type, commission_rate, broker")
+      .select("id, name, account_type, commission_rate, broker, member_id")
       .eq("holding_id", holding.id)
       .order("created_at", { ascending: true }),
   ]);
   const groupById = new Map(groups.map((g) => [g.id, g]));
   const accounts = accountsResult.data;
+
+  // 컴퍼니(CEO) 목록 — 계좌 주인 선택용(2개 이상일 때 드롭다운).
+  const { data: memberRows } = await supabase
+    .from("members")
+    .select("id, name, emoji")
+    .eq("holding_id", holding.id)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+  const members = memberRows ?? [];
 
   // 수수료 랭킹 — 올해 계좌별 거래대금(매수+매도 gross, ₩) × 계좌 수수료율
   const accountList = accounts ?? [];
@@ -129,7 +138,9 @@ export default async function AccountsPage() {
                 accountType: a.account_type as AccountType,
                 commissionRate: Number(a.commission_rate),
                 broker: a.broker,
+                memberId: a.member_id,
               }}
+              members={members}
               holdingsCount={g?.holdings.length ?? 0}
               accountValue={g?.value}
               currency={displayCcy}
@@ -139,7 +150,7 @@ export default async function AccountsPage() {
         })}
       </ul>
 
-      <AccountManager />
+      <AccountManager members={members} />
     </main>
   );
 }

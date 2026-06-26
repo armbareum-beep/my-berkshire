@@ -20,6 +20,7 @@ export async function createAccount(
   accountType: AccountType,
   commissionRate?: number,
   broker?: string | null,
+  memberId?: string | null,
 ): Promise<Result> {
   const supabase = await createClient();
   const {
@@ -39,6 +40,7 @@ export async function createAccount(
     name: trimmed,
     account_type: accountType,
     broker: broker || null,
+    member_id: memberId || null, // null = 기본 컴퍼니
     // 비우면 DB 기본값(0.015%) 사용
     ...(rate != null ? { commission_rate: rate } : {}),
   });
@@ -89,6 +91,7 @@ export async function updateAccount(
   accountType: AccountType,
   commissionRate: number,
   broker?: string | null,
+  memberId?: string | null,
 ): Promise<Result> {
   const supabase = await createClient();
   const {
@@ -111,6 +114,7 @@ export async function updateAccount(
       account_type: accountType,
       commission_rate: rate,
       broker: broker || null,
+      ...(memberId !== undefined ? { member_id: memberId || null } : {}),
     })
     .eq("id", id);
   if (error) return { ok: false, error: error.message };

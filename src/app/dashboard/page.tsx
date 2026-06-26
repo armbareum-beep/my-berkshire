@@ -24,6 +24,7 @@ import { loadFinancingReconciliations } from "@/lib/financingReconciliation";
 import { DivisionCard } from "@/components/networth/DivisionCard";
 import { companyCashPools } from "@/lib/finance/valuation";
 import { loadAccountGroups, type AccountGroup } from "@/lib/accounts";
+import { filterIncludedAccountGroups } from "@/lib/members";
 import { loadWatchlist } from "@/lib/watchlist";
 import { loadSecurityNames, loadSecurityMeta } from "@/lib/securities";
 import { groupAllocationByType } from "@/lib/allocation";
@@ -172,12 +173,27 @@ async function DashboardContent({
     supabase,
     holding.id,
   );
+  // 보유 계좌(합산 뷰) — 토글로 제외한 컴퍼니 계좌는 빼서 헤드라인과 일관되게.
   const accountGroupsKRWPromise = loadAccountGroups(supabase, {
     holdingId: holding.id,
     prices: portfolio.prices,
     names: portfolio.names,
     factor: 1, // ₩ 기준 적재 → $ 는 메모리에서 환산(추가 쿼리 없음)
-  });
+  }).then((groups) =>
+    filterIncludedAccountGroups(supabase, holding.id, groups),
+  );
+  // 보유계좌 컴퍼니 칩용 — memberId → {name, emoji}. 컴퍼니 2개 이상일 때만 칩 노출.
+  const memberNamesPromise: Promise<
+    Record<string, { name: string; emoji: string | null }>
+  > = (async () => {
+    const { data } = await supabase
+      .from("members")
+      .select("id, name, emoji")
+      .eq("holding_id", holding.id);
+    return Object.fromEntries(
+      (data ?? []).map((m) => [m.id, { name: m.name, emoji: m.emoji }]),
+    );
+  })();
   const watchSymbolsPromise = loadWatchlist(supabase, holding.id);
   const dismissedPromise = loadDismissed(supabase, holding.id);
 
@@ -239,6 +255,7 @@ async function DashboardContent({
             factorUSD={factorUSD}
             secMetaPromise={secMetaPromise}
             accountGroupsKRWPromise={accountGroupsKRWPromise}
+            memberNamesPromise={memberNamesPromise}
           />
         </Suspense>
       ),
@@ -736,15 +753,20 @@ async function HoldingsStreamed({
   factorUSD,
   secMetaPromise,
   accountGroupsKRWPromise,
+  memberNamesPromise,
 }: {
   dataKRW: DashboardData;
   factorUSD: number;
   secMetaPromise: Promise<Awaited<ReturnType<typeof loadSecurityMeta>>>;
   accountGroupsKRWPromise: Promise<Awaited<ReturnType<typeof loadAccountGroups>>>;
+  memberNamesPromise: Promise<
+    Record<string, { name: string; emoji: string | null }>
+  >;
 }) {
-  const [secMeta, accountGroupsKRW] = await Promise.all([
+  const [secMeta, accountGroupsKRW, memberNames] = await Promise.all([
     secMetaPromise,
     accountGroupsKRWPromise,
+    memberNamesPromise,
   ]);
   const accountGroupsUSD: AccountGroup[] =
     factorUSD === 1
@@ -776,6 +798,7 @@ async function HoldingsStreamed({
               currency="KRW"
               bare
               singleOpen
+              memberNames={memberNames}
             />
           }
           usd={
@@ -784,6 +807,7 @@ async function HoldingsStreamed({
               currency="USD"
               bare
               singleOpen
+              memberNames={memberNames}
             />
           }
         />

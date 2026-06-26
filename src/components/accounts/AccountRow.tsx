@@ -16,6 +16,7 @@ import {
 import { findBroker } from "@/lib/config/brokers";
 import { money, type Currency } from "@/lib/format";
 import { BrokerSelect, BrokerChip } from "@/components/accounts/BrokerSelect";
+import type { MemberOption } from "@/components/accounts/AccountManager";
 
 export interface AccountRowData {
   id: string;
@@ -25,6 +26,8 @@ export interface AccountRowData {
   commissionRate: number;
   /** 증권사 id(lib/config/brokers). null = 직접 입력. */
   broker: string | null;
+  /** 소속 컴퍼니 id. null = 미지정(기본 컴퍼니). */
+  memberId: string | null;
 }
 
 /** % 표기(소수 rate → 퍼센트 문자열). 0.00015 → "0.015". */
@@ -38,12 +41,14 @@ function toPct(rate: number): string {
  */
 export function AccountRow({
   account,
+  members = [],
   holdingsCount = 0,
   accountValue,
   currency = "KRW",
   deleteButton,
 }: {
   account: AccountRowData;
+  members?: MemberOption[];
   holdingsCount?: number;
   accountValue?: number;
   currency?: Currency;
@@ -56,12 +61,14 @@ export function AccountRow({
   const [type, setType] = useState<AccountType>(account.accountType);
   const [broker, setBroker] = useState<string | null>(account.broker);
   const [pct, setPct] = useState(toPct(account.commissionRate));
+  const [memberId, setMemberId] = useState<string>(account.memberId ?? "");
 
   function reset() {
     setName(account.name);
     setType(account.accountType);
     setBroker(account.broker);
     setPct(toPct(account.commissionRate));
+    setMemberId(account.memberId ?? "");
   }
 
   function save() {
@@ -72,6 +79,7 @@ export function AccountRow({
         type,
         Number(pct) / 100,
         broker,
+        memberId || null,
       );
       if (!res.ok) {
         toast.error(res.error);
@@ -161,6 +169,25 @@ export function AccountRow({
           onPct={setPct}
         />
       </div>
+
+      {members.length > 1 && (
+        <div className="mt-3">
+          <p className="text-sm font-medium">주인 컴퍼니</p>
+          <select
+            value={memberId}
+            onChange={(e) => setMemberId(e.target.value)}
+            aria-label="주인 컴퍼니"
+            className="mt-2 h-12 w-full rounded-xl bg-secondary px-3 text-sm font-medium outline-none focus:ring-2 focus:ring-primary/30"
+          >
+            {members.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.emoji ? `${m.emoji} ` : ""}
+                {m.name} 컴퍼니
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div className="mt-4 flex gap-2">
         <Button

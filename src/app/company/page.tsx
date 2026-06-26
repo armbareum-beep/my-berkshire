@@ -6,6 +6,7 @@ import { getActiveHolding } from "@/lib/holdings";
 import { BackButton } from "@/components/BackButton";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
 import { CompanyStructure } from "@/components/company/CompanyStructure";
+import { CompanyMembers } from "@/components/company/CompanyMembers";
 import { renameActiveCompany } from "./actions";
 
 /**
@@ -59,11 +60,28 @@ export default async function CompanyPage() {
         </p>
       </section>
 
+      {/* 컴퍼니(CEO) */}
+      <div className="mt-2">
+        <h2 className="text-lg font-extrabold tracking-tight">컴퍼니</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          가족 한 사람의 계좌 묶음 = 하나의 컴퍼니. 토글로 합산에서 빼면 그 컴퍼니
+          수익률을 가늠할 수 있습니다. (토글은 주식 계좌 기준 — 부동산·부채는 가족 공유로
+          그대로 남습니다.)
+        </p>
+      </div>
+      <Suspense
+        fallback={
+          <div className="h-28 animate-pulse rounded-2xl bg-card shadow-card" />
+        }
+      >
+        <CompanyMembers holdingId={holding.id} displayCcy={displayCcy} />
+      </Suspense>
+
       {/* 지배구조도 */}
       <div className="mt-2">
         <h2 className="text-lg font-extrabold tracking-tight">지배구조</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          지주회사 → 계좌 → 자회사 구조를 봅니다.
+          지주회사 → 컴퍼니 → 계좌 → 자회사 구조를 봅니다.
         </p>
       </div>
       <Suspense
