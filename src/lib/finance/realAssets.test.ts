@@ -6,10 +6,12 @@ import {
   rentNet,
   computeRealEstateDivision,
   computeDivisions,
+  computeAssetMetrics,
   realEstateFinancingCost,
   financingByAsset,
   type ManualAsset,
   type ManualAssetIncome,
+  type LinkedLoan,
 } from "./realAssets";
 import type { DivisionFinancingCost } from "./financing";
 import type { Liability } from "./liabilities";
@@ -22,6 +24,7 @@ const fin = (over: Partial<DivisionFinancingCost> = {}): DivisionFinancingCost =
   capitalAdded: 0,
   weightedAvgRate: null,
   monthlyEstimate: 0,
+  debt: 0,
   ...over,
 });
 
@@ -171,6 +174,118 @@ describe("부동산 사업부 — 금융비용(이자/자본) 반영 (spec 012)"
     const biz = divs.find((d) => d.key === "BUSINESS")!;
     expect(re.totals.realized).toBe(-1_000_000); // 이자 차감
     expect(biz.totals.realized).toBe(0); // 비상장엔 영향 없음
+  });
+});
+
+describe("부동산 사업부 — 실투자금 수익률·순자산·LTV (spec 014)", () => {
+  // 10억 취득, 11억 평가, 대출 7억 → 자기돈 3억.
+  const leveraged = asset({ acquiredPrice: 1_000_000_000, currentValue: 1_100_000_000 });
+
+  it("실투자금 = 취득원가 − 대출, 실투자금 수익률은 자산수익률보다 증폭", () => {
+    const d = computeRealEstateDivision([leveraged], [], fin({ debt: 700_000_000 }));
+    expect(d.cost).toBe(1_000_000_000);
+    expect(d.gain).toBe(100_000_000); // 평가차익 1억
+    expect(d.debt).toBe(700_000_000);
+    expect(d.ownCapital).toBe(300_000_000); // 10억 − 7억
+    expect(d.ret).toBeCloseTo(0.1, 6); // 자산수익률 +10%
+    expect(d.ownCapitalReturn).toBeCloseTo(1 / 3, 6); // 실투자금 수익률 +33.3% (증폭)
+    expect(d.ownCapitalReturn!).toBeGreaterThan(d.ret!);
+  });
+
+  it("임대 0(거주용·차익형)도 실투자금 수익률 산출 — null 아님", () => {
+    const d = computeRealEstateDivision([leveraged], [], fin({ debt: 700_000_000 }));
+    expect(d.ownCapitalReturn).not.toBeNull();
+  });
+
+  it("대출 0(financing 미주입) → 실투자금 = 원가, 실투자금 수익률 = 자산수익률", () => {
+    const d = computeRealEstateDivision([leveraged], []);
+    expect(d.debt).toBe(0);
+    expect(d.ownCapital).toBe(d.cost);
+    expect(d.ownCapitalReturn).toBe(d.ret);
+  });
+
+  it("실투자금 ≤ 0(대출 ≥ 취득원가) → 실투자금 수익률 null", () => {
+    const d = computeRealEstateDivision([leveraged], [], fin({ debt: 1_200_000_000 }));
+    expect(d.ownCapital! <= 0).toBe(true);
+    expect(d.ownCapitalReturn).toBeNull();
+  });
+
+  it("순자산 = 보유 평가액 − 대출, LTV = 대출 / 평가액", () => {
+    const d = computeRealEstateDivision([leveraged], [], fin({ debt: 700_000_000 }));
+    expect(d.marketValue).toBe(1_100_000_000);
+    expect(d.netEquity).toBe(400_000_000); // 11억 − 7억
+    expect(d.ltv).toBeCloseTo(700_000_000 / 1_100_000_000, 6);
+  });
+
+  it("취득가 없는 보유 자산도 순자산(marketValue)엔 합산 — 수익률 스코프 밖이어도", () => {
+    const d = computeRealEstateDivision(
+      [leveraged, asset({ id: "a2", acquiredPrice: null, currentValue: 200_000_000 })],
+      [],
+      fin({ debt: 700_000_000 }),
+    );
+    expect(d.cost).toBe(1_000_000_000); // a2 는 수익률 스코프 밖
+    expect(d.marketValue).toBe(1_300_000_000); // 11억 + 2억
+  });
+
+  it("평가액 0(전부 매도/보유 없음) → LTV null, 순자산 = −대출", () => {
+    const sold = asset({
+      acquiredPrice: 1_000_000_000,
+      salePrice: 1_100_000_000,
+      saleAt: "2026-01-01",
+      saleCost: 0,
+    });
+    const d = computeRealEstateDivision([sold], [], fin({ debt: 700_000_000 }));
+    expect(d.marketValue).toBe(0);
+    expect(d.ltv).toBeNull();
+    expect(d.netEquity).toBe(-700_000_000);
+  });
+});
+
+describe("computeAssetMetrics — 물건별 지표 (spec 014 US3)", () => {
+  const re = asset({ acquiredPrice: 1_000_000_000, currentValue: 1_100_000_000 });
+  const linked = (over: Partial<Liability> = {}, cumulative = 0): LinkedLoan => ({
+    liability: {
+      id: "m1",
+      name: "담보대출",
+      kind: "MORTGAGE",
+      principal: 700_000_000,
+      interestRate: 0.03,
+      startedAt: null,
+      manualAssetId: re.id,
+      ...over,
+    },
+    monthly: 0,
+    cumulative,
+  });
+
+  it("연결 대출로 물건별 실투자금 수익률·순자산·LTV 산출", () => {
+    const m = computeAssetMetrics(re, [], [linked()]);
+    expect(m.cost).toBe(1_000_000_000);
+    expect(m.debt).toBe(700_000_000);
+    expect(m.gain).toBe(100_000_000); // 평가차익 1억(이자 0)
+    expect(m.ownCapital).toBe(300_000_000);
+    expect(m.ownCapitalReturn).toBeCloseTo(1 / 3, 6);
+    expect(m.ret).toBeCloseTo(0.1, 6);
+    expect(m.netEquity).toBe(400_000_000);
+    expect(m.ltv).toBeCloseTo(700_000_000 / 1_100_000_000, 6);
+  });
+
+  it("연결 대출 없으면 debt 0, 실투자금 수익률 = 자산수익률", () => {
+    const m = computeAssetMetrics(re, [], []);
+    expect(m.debt).toBe(0);
+    expect(m.ownCapitalReturn).toBe(m.ret);
+  });
+
+  it("연결 대출 누적이자는 gain(분자)에서 차감", () => {
+    const m = computeAssetMetrics(re, [], [linked({}, 10_000_000)]);
+    expect(m.interest).toBe(10_000_000);
+    expect(m.gain).toBe(90_000_000); // 1억 − 이자 1천만
+  });
+
+  it("대출 ≥ 취득원가(실투자금 ≤ 0) → 실투자금 수익률 null", () => {
+    const m = computeAssetMetrics(re, [], [linked({ principal: 1_200_000_000 })]);
+    expect(m.ownCapital! <= 0).toBe(true);
+    expect(m.ownCapitalReturn).toBeNull();
   });
 });
 

@@ -61,6 +61,16 @@ describe("divisionFinancingCost", () => {
     expect(f.capitalAdded).toBe(0);
     expect(f.weightedAvgRate).toBeNull();
     expect(f.monthlyEstimate).toBe(0);
+    expect(f.debt).toBe(0);
+  });
+
+  it("debt = 담보대출 잔액 합(이율·기점 무관)", () => {
+    const f = divisionFinancingCost({
+      liabilities: [loan(), loan({ id: "l2", principal: 50_000_000, interestRate: 0 })],
+      reconciliations: [],
+      ...base,
+    });
+    expect(f.debt).toBe(150_000_000); // 1억 + 5천(이율 0이어도 잔액은 합산)
   });
 
   it("1억@3% 1개월 → 추정 25만", () => {
