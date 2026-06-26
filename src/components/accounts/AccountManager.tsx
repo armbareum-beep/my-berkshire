@@ -6,11 +6,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { createAccount } from "@/app/accounts/actions";
-import {
-  ACCOUNT_TYPES,
-  ACCOUNT_TYPE_LABEL,
-  type AccountType,
-} from "@/lib/config/tax";
+import { type AccountType } from "@/lib/config/tax";
+import { AccountTypePicker } from "@/components/accounts/AccountTypePicker";
 import { BrokerSelect } from "@/components/accounts/BrokerSelect";
 
 export interface MemberOption {
@@ -20,7 +17,14 @@ export interface MemberOption {
 }
 
 /** 계좌 추가 폼 — 이름 + 유형 + 증권사 + (컴퍼니 2개 이상이면) 주인 컴퍼니. */
-export function AccountManager({ members = [] }: { members?: MemberOption[] }) {
+export function AccountManager({
+  members = [],
+  onAdded,
+}: {
+  members?: MemberOption[];
+  /** 추가 성공 시 호출(예: 생성 섹션 접기). 없으면 폼을 그대로 유지. */
+  onAdded?: () => void;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [name, setName] = useState("");
@@ -48,6 +52,7 @@ export function AccountManager({ members = [] }: { members?: MemberOption[] }) {
       setBroker(null);
       setPct("0.015");
       router.refresh();
+      onAdded?.();
     });
   }
 
@@ -60,23 +65,7 @@ export function AccountManager({ members = [] }: { members?: MemberOption[] }) {
         placeholder="예: 삼성증권 ISA"
         className="mt-3 h-12"
       />
-      <div className="mt-2 flex flex-wrap gap-2">
-        {ACCOUNT_TYPES.map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setType(t)}
-            className={
-              "rounded-full px-3 py-1.5 text-sm font-semibold " +
-              (type === t
-                ? "bg-primary text-primary-foreground"
-                : "bg-secondary text-secondary-foreground")
-            }
-          >
-            {ACCOUNT_TYPE_LABEL[t]}
-          </button>
-        ))}
-      </div>
+      <AccountTypePicker value={type} onChange={setType} className="mt-3" />
       <div className="mt-3">
         <BrokerSelect
           broker={broker}

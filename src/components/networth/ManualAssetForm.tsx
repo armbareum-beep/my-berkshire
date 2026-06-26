@@ -10,10 +10,12 @@ import {
   updateManualAsset,
   type ManualAssetInput,
 } from "@/app/networth/actions";
+import { CardPickerField } from "@/components/ui/CardPickerField";
 import {
   MANUAL_ASSET_KINDS,
   MANUAL_ASSET_KIND_LABEL,
   MANUAL_ASSET_KIND_DESC,
+  MANUAL_ASSET_KIND_EMOJI,
   MANUAL_ASSET_DIVISION,
   type ManualAsset,
   type ManualAssetKind,
@@ -27,7 +29,7 @@ import {
 export function ManualAssetForm({
   editing,
   today,
-  defaultKind = "REAL_ESTATE",
+  defaultKind,
   onSaved,
   onCancel,
 }: {
@@ -39,7 +41,10 @@ export function ManualAssetForm({
 }) {
   const [pending, startTransition] = useTransition();
   const [name, setName] = useState(editing?.name ?? "");
-  const [kind, setKind] = useState<ManualAssetKind>(editing?.kind ?? defaultKind);
+  // null = 아직 종류 미선택(단계형): 고르기 전엔 나머지 입력을 숨긴다.
+  const [kind, setKind] = useState<ManualAssetKind | null>(
+    editing?.kind ?? defaultKind ?? null,
+  );
   const [currentValue, setCurrentValue] = useState(
     editing ? String(editing.currentValue) : "",
   );
@@ -59,7 +64,7 @@ export function ManualAssetForm({
   function buildInput(): ManualAssetInput {
     return {
       name,
-      kind,
+      kind: kind as ManualAssetKind,
       currentValue: Number(currentValue) || 0,
       acquiredPrice: acquiredPrice.trim() === "" ? null : Number(acquiredPrice),
       acquiredAt: acquiredAt || undefined,
@@ -72,6 +77,7 @@ export function ManualAssetForm({
   }
 
   function doSubmit() {
+    if (!kind) return;
     const input = buildInput();
     startTransition(async () => {
       const res = editing
@@ -118,39 +124,31 @@ export function ManualAssetForm({
   return (
     <div className="flex flex-col gap-3">
       <div>
-        <label className="text-sm font-medium">이름</label>
-        <Input
-          autoFocus
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="예: 마포 자가"
-          className="mt-1 h-11"
+        <label className="text-sm font-medium">종류</label>
+        <CardPickerField
+          value={kind}
+          onChange={setKind}
+          items={MANUAL_ASSET_KINDS}
+          getLabel={(k) => MANUAL_ASSET_KIND_LABEL[k]}
+          getDescription={(k) => MANUAL_ASSET_KIND_DESC[k]}
+          getEmoji={(k) => MANUAL_ASSET_KIND_EMOJI[k]}
+          ariaLabel="자산 종류"
+          className="mt-1"
         />
       </div>
 
-      <div>
-        <label className="text-sm font-medium">종류</label>
-        <div className="mt-1 flex flex-wrap gap-2">
-          {MANUAL_ASSET_KINDS.map((k) => (
-            <button
-              key={k}
-              type="button"
-              onClick={() => setKind(k)}
-              className={
-                "rounded-full px-3 py-1.5 text-sm font-semibold " +
-                (kind === k
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-secondary text-secondary-foreground")
-              }
-            >
-              {MANUAL_ASSET_KIND_LABEL[k]}
-            </button>
-          ))}
-        </div>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {MANUAL_ASSET_KIND_DESC[kind]}
-        </p>
-      </div>
+      {kind !== null && (
+        <>
+          <div>
+            <label className="text-sm font-medium">이름</label>
+            <Input
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="예: 마포 자가"
+              className="mt-1 h-11"
+            />
+          </div>
 
       <div>
         <NumberPadField
@@ -226,19 +224,24 @@ export function ManualAssetForm({
         </p>
       </div>
 
+        </>
+      )}
+
       <div className="flex gap-2">
-        <Button
-          onClick={submit}
-          disabled={pending}
-          className="h-11 flex-1 bg-primary font-semibold text-primary-foreground"
-        >
-          {pending ? "기록 중…" : editing ? "수정 저장" : "등록"}
-        </Button>
+        {kind !== null && (
+          <Button
+            onClick={submit}
+            disabled={pending}
+            className="h-11 flex-1 bg-primary font-semibold text-primary-foreground"
+          >
+            {pending ? "기록 중…" : editing ? "수정 저장" : "등록"}
+          </Button>
+        )}
         <Button
           variant="secondary"
           onClick={onCancel}
           disabled={pending}
-          className="h-11 px-5 font-semibold"
+          className={"h-11 font-semibold " + (kind !== null ? "px-5" : "flex-1")}
         >
           취소
         </Button>

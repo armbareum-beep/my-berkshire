@@ -55,6 +55,19 @@ export const MANUAL_ASSET_KIND_DESC: Record<ManualAssetKind, string> = {
   OTHER: "그 외 수기 평가 자산",
 };
 
+/**
+ * 종류별 아이콘(이모지). 표시 측 EmojiIcon이 lucide 라인 아이콘으로 교체한다.
+ * 주의: 각 값은 EmojiIcon MAP에 존재하는 키여야 한다(폴백 텍스트 방지).
+ */
+export const MANUAL_ASSET_KIND_EMOJI: Record<ManualAssetKind, string> = {
+  REAL_ESTATE: "🏢",
+  LAND: "🌳",
+  COMMERCIAL: "🏛️",
+  UNLISTED: "🚀",
+  COLLECTIBLE: "⭐",
+  OTHER: "🧾",
+};
+
 /** "사업부" 게이미피케이션 라벨 — 자산 추가 시 성취 토스트용. */
 export const MANUAL_ASSET_DIVISION: Record<ManualAssetKind, string> = {
   REAL_ESTATE: "부동산 사업부",
