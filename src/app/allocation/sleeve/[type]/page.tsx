@@ -1,15 +1,18 @@
+import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect, notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getPortfolio } from "@/lib/portfolio";
 import { computeDashboard } from "@/lib/dashboard";
 import { loadSecurityMeta } from "@/lib/securities";
+import { groupAllocationByType } from "@/lib/allocation";
 import { BackButton } from "@/components/BackButton";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
-import { SymbolAvatar } from "@/components/onboarding/SymbolPicker";
+import { StockRow } from "@/components/ui/StockRow";
 import { Donut } from "@/components/dashboard/Donut";
 import { donutColor } from "@/components/dashboard/donutPalette";
-import { money, pct } from "@/lib/format";
+import { money, pct, signedMoneyShort, signedPct, changeColor } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 /**
  * 유형 구성 상세 — 한 자산 유형(주식/ETF/원자재/코인) 안의 종목 비중을 100%로 정규화한
@@ -40,6 +43,9 @@ export default async function SleeveAllocationPage({
     data.allocation.map((a) => a.symbol),
   );
 
+  // 포트폴리오에 존재하는 유형 목록(탭 바용).
+  const sleeveTypes = groupAllocationByType(data.allocation, meta).map((g) => g.type);
+
   // 이 유형에 속한 종목만(폴백 "주식"). 없는 유형이면 404.
   const inType = data.allocation.filter(
     (a) => (meta[a.symbol]?.assetType ?? "주식") === type,
@@ -54,6 +60,9 @@ export default async function SleeveAllocationPage({
       symbol: a.symbol as string | undefined,
       value: a.value,
       weight: sleeveValue > 0 ? a.value / sleeveValue : 0,
+      avgCost: a.avgCost,
+      quantity: a.quantity,
+      changeRate: a.changeRate,
     }))
     .sort((a, b) => b.value - a.value);
 
@@ -73,6 +82,24 @@ export default async function SleeveAllocationPage({
     <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
       <BottomTabBar />
       <BackButton />
+      {sleeveTypes.length > 1 && (
+        <nav className="flex gap-1 rounded-xl bg-secondary p-1">
+          {sleeveTypes.map((t) => (
+            <Link
+              key={t}
+              href={`/allocation/sleeve/${encodeURIComponent(t)}`}
+              className={cn(
+                "flex-1 rounded-lg py-1.5 text-center text-sm font-semibold transition",
+                type === t
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground",
+              )}
+            >
+              {t}
+            </Link>
+          ))}
+        </nav>
+      )}
       <h1 className="text-2xl font-extrabold tracking-tight">{type} 구성</h1>
       <p className="text-sm text-muted-foreground">
         {type} 안에서의 종목별 비중입니다(이 유형만 해서 100% 기준).
@@ -99,21 +126,37 @@ export default async function SleeveAllocationPage({
 
       {/* 전체 종목 목록 */}
       <section className="rounded-2xl bg-card p-5 shadow-card">
-        <ul className="flex flex-col gap-2">
-          {items.map((it) => (
-            <li key={it.label} className="flex items-center gap-3">
-              <SymbolAvatar name={it.label} symbol={it.symbol} />
-              <span className="flex flex-col">
-                <span className="font-bold">{it.label}</span>
-                <span className="text-sm text-muted-foreground tabular-nums">
-                  {pct(it.weight)}
-                </span>
-              </span>
-              <span className="ml-auto font-semibold tabular-nums">
-                {money(it.value, data.currency)}
-              </span>
-            </li>
-          ))}
+        <ul className="flex flex-col gap-1">
+          {items.map((it) => {
+            const gain =
+              it.avgCost > 0 ? it.value - it.avgCost * it.quantity : null;
+            return (
+              <li key={it.label}>
+                <StockRow
+                  symbol={it.symbol ?? it.label}
+                  name={it.label}
+                  href={it.symbol ? `/stocks/${it.symbol}` : undefined}
+                  sub={pct(it.weight)}
+                  right={
+                    <span className="ml-auto flex flex-col items-end">
+                      <span className="font-semibold tabular-nums">
+                        {money(it.value, data.currency)}
+                      </span>
+                      {gain !== null && it.changeRate !== null && (
+                        <span
+                          className="text-sm font-medium tabular-nums"
+                          style={{ color: changeColor(it.changeRate) }}
+                        >
+                          {signedMoneyShort(gain, data.currency)}{" "}
+                          {signedPct(it.changeRate)}
+                        </span>
+                      )}
+                    </span>
+                  }
+                />
+              </li>
+            );
+          })}
         </ul>
       </section>
     </main>

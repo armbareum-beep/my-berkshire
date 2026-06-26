@@ -13,7 +13,8 @@ import { StockRow } from "@/components/ui/StockRow";
 import { CashBreakdown } from "@/components/dashboard/CashBreakdown";
 import { Donut } from "@/components/dashboard/Donut";
 import { donutColor } from "@/components/dashboard/donutPalette";
-import { money, pct } from "@/lib/format";
+import { money, pct, signedMoneyShort, signedPct, changeColor } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 const TAGS = {
   country: { key: "country" as const, title: "국가별 자산배분" },
@@ -25,6 +26,9 @@ interface CategoryItem {
   symbol: string;
   name: string;
   value: number;
+  avgCost: number;
+  quantity: number;
+  changeRate: number | null;
 }
 interface Category {
   label: string;
@@ -74,7 +78,7 @@ export default async function AllocationDetailPage({
     const label = tagLabel(meta[a.symbol], cfg.key);
     const cat = map.get(label) ?? { label, value: 0, weight: 0, items: [] };
     cat.value += a.value;
-    cat.items.push({ symbol: a.symbol, name: a.name, value: a.value });
+    cat.items.push({ symbol: a.symbol, name: a.name, value: a.value, avgCost: a.avgCost, quantity: a.quantity, changeRate: a.changeRate });
     map.set(label, cat);
   }
   // 현금은 국가·유형에만 슬라이스로(섹터엔 현금 개념 없음).
@@ -97,6 +101,28 @@ export default async function AllocationDetailPage({
     <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
       <BottomTabBar />
       <BackButton />
+      <nav className="flex gap-1 rounded-xl bg-secondary p-1">
+        {(
+          [
+            { label: "유형별", seg: "type" },
+            { label: "국가별", seg: "country" },
+            { label: "산업별", seg: "sector" },
+          ] as const
+        ).map((t) => (
+          <Link
+            key={t.seg}
+            href={`/allocation/${t.seg}`}
+            className={cn(
+              "flex-1 rounded-lg py-1.5 text-center text-sm font-semibold transition",
+              tag === t.seg
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted-foreground",
+            )}
+          >
+            {t.label}
+          </Link>
+        ))}
+      </nav>
       <h1 className="text-2xl font-extrabold tracking-tight">{cfg.title}</h1>
 
       {categories.length === 0 ? (
@@ -143,7 +169,16 @@ export default async function AllocationDetailPage({
                   className="h-3 w-3 rounded-full"
                   style={{ backgroundColor: donutColor(i) }}
                 />
-                <p className="text-sm font-semibold">{c.label}</p>
+                {tag === "type" ? (
+                  <Link
+                    href={`/allocation/sleeve/${encodeURIComponent(c.label)}`}
+                    className="text-sm font-semibold"
+                  >
+                    {c.label} ›
+                  </Link>
+                ) : (
+                  <p className="text-sm font-semibold">{c.label}</p>
+                )}
                 <span className="ml-auto text-sm tabular-nums text-muted-foreground">
                   {pct(c.weight)} · {money(c.value, data.currency)}
                 </span>
@@ -158,17 +193,38 @@ export default async function AllocationDetailPage({
                 )
               ) : (
                 <ul className="flex flex-col gap-1">
-                  {c.items.map((it) => (
-                    <li key={it.symbol}>
-                      <StockRow
-                        symbol={it.symbol}
-                        name={it.name}
-                        href={`/stocks/${it.symbol}`}
-                        sub={`${pct(c.value > 0 ? it.value / c.value : 0)} of ${c.label}`}
-                        value={money(it.value, data.currency)}
-                      />
-                    </li>
-                  ))}
+                  {c.items.map((it) => {
+                    const gain =
+                      it.avgCost > 0
+                        ? it.value - it.avgCost * it.quantity
+                        : null;
+                    return (
+                      <li key={it.symbol}>
+                        <StockRow
+                          symbol={it.symbol}
+                          name={it.name}
+                          href={`/stocks/${it.symbol}`}
+                          sub={`${pct(c.value > 0 ? it.value / c.value : 0)} of ${c.label}`}
+                          right={
+                            <span className="ml-auto flex flex-col items-end">
+                              <span className="font-semibold tabular-nums">
+                                {money(it.value, data.currency)}
+                              </span>
+                              {gain !== null && it.changeRate !== null && (
+                                <span
+                                  className="text-sm font-medium tabular-nums"
+                                  style={{ color: changeColor(it.changeRate) }}
+                                >
+                                  {signedMoneyShort(gain, data.currency)}{" "}
+                                  {signedPct(it.changeRate)}
+                                </span>
+                              )}
+                            </span>
+                          }
+                        />
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </section>
