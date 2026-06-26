@@ -26,7 +26,7 @@
 - [x] **T1.6 HomeSignalBanner 색** — warn 톤 `bg-warn-tint text-warn`.
 - [x] **T1.7 차트 그라데이션 제거** — ValueTrendChart·BenchmarkChart·**PriceChart**(추가 발견)의 `<Area>`+`linearGradient` → `<Line strokeWidth={2}>`. Area import 제거. grep `linearGradient` 0건.
 - [x] **T1.8 도넛 팔레트 토널화** — `donutPalette.ts` 7색 채도 → 토스블루+쿨그레이 명도 8단계(--chart-* 계열).
-- [x] **T1.9 인라인 색 → 유틸/시맨틱** — DisclosureList hintColor(=QuarterReport와 동일 교정), FinancialHealth 플래그 warn(fall→warn), 리밸런싱 합계검증(rise→warn ×2), 관심★ 토글(rise→primary ×2), health 상태점(rise→primary), ManualAssets 손익→`changeColor`. LegendExplorer는 보유 증감 *방향*이라 변화 시맨틱으로 보존.
+- [x] **T1.9 인라인 색 → 유틸/시맨틱** — DisclosureList hintColor(=QuarterReport와 동일 교정), FinancialHealth 플래그 warn(fall→warn), 리밸런싱 합계검증(rise→warn ×2), 관심★ 토글(rise→primary ×2), health 상태점(rise→primary), ManualAssets 손익→`changeColor`. (LegendExplorer는 2026-06-27 삭제됨 — 13F 기능 전체 제거)
 - [x] **T1.10 `changeColor` 0 처리** — `format.ts` 0=중립(muted), >0 rise, <0 fall.
 - 검증: `tsc` 클린 · `eslint`(변경분) 클린 · grep 게이트(linearGradient 0 · 비-시세 rise/fall 잔여는 전부 정당[changeColor·손익·증감방향]).
 - 비고: `SearchModal.tsx:34` setState-in-effect 는 **기존 lint 에러**(검색 디바운스, 색 수정과 무관) — 범위 밖이라 보존.
