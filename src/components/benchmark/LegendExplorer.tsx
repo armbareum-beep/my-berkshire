@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { SymbolAvatar } from "@/components/onboarding/SymbolPicker";
 import { Donut } from "@/components/dashboard/Donut";
 import { money, pct, type Currency } from "@/lib/format";
@@ -194,30 +195,35 @@ function HoldingRow({
   const ccy: Currency = currency === "USD" ? "USD" : "KRW";
 
   return (
-    <li className="flex items-center gap-3 border-t border-border py-2.5 first:border-t-0">
-      <SymbolAvatar name={h.name} symbol={h.ticker} />
-      <span className="flex min-w-0 flex-col">
-        <span className="flex items-center gap-1.5">
-          <span className="truncate text-sm font-medium">{h.name}</span>
-          {owned && (
-            <span className="shrink-0 rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-bold text-accent-foreground">
-              내 보유
-            </span>
-          )}
+    <li className="border-t border-border first:border-t-0">
+      <Link
+        href={`/stocks/${h.ticker}`}
+        className="flex items-center gap-3 py-2.5 transition active:scale-[0.99]"
+      >
+        <SymbolAvatar name={h.name} symbol={h.ticker} />
+        <span className="flex min-w-0 flex-col">
+          <span className="flex items-center gap-1.5">
+            <span className="truncate text-sm font-medium">{h.name}</span>
+            {owned && (
+              <span className="shrink-0 rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-bold text-accent-foreground">
+                내 보유
+              </span>
+            )}
+          </span>
+          <span className="text-xs text-muted-foreground">{h.ticker}</span>
         </span>
-        <span className="text-xs text-muted-foreground">{h.ticker}</span>
-      </span>
-      <span className="ml-auto flex flex-col items-end">
-        <span className="text-sm font-bold tabular-nums">{pct(h.weight)}</span>
-        <span className="text-xs tabular-nums" style={{ color }}>
-          {kind === "유지"
-            ? "유지"
-            : `${kind} ${d !== 0 ? `${d > 0 ? "+" : ""}${(d * 100).toFixed(1)}p` : ""}`}
+        <span className="ml-auto flex flex-col items-end">
+          <span className="text-sm font-bold tabular-nums">{pct(h.weight)}</span>
+          <span className="text-xs tabular-nums" style={{ color }}>
+            {kind === "유지"
+              ? "유지"
+              : `${kind} ${d !== 0 ? `${d > 0 ? "+" : ""}${(d * 100).toFixed(1)}p` : ""}`}
+          </span>
         </span>
-      </span>
-      <span className="ml-2 w-16 shrink-0 text-right text-xs text-muted-foreground tabular-nums">
-        {price != null ? money(price, ccy) : "—"}
-      </span>
+        <span className="ml-2 w-16 shrink-0 text-right text-xs text-muted-foreground tabular-nums">
+          {price != null ? money(price, ccy) : "—"}
+        </span>
+      </Link>
     </li>
   );
 }
