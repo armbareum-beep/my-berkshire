@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { SymbolAvatar } from "@/components/onboarding/SymbolPicker";
+import { BrokerChip } from "@/components/accounts/BrokerSelect";
 import {
   money,
   signedMoneyShort,
@@ -47,7 +48,12 @@ export function AccountGroups({
               (bare ? "py-3" : "p-4")
             }
           >
-            <SymbolAvatar name={g.name} />
+            {/* 계좌는 증권사 로고로(accounts 페이지와 동일), 미지정이면 이름 글자 폴백 */}
+            {g.broker ? (
+              <BrokerChip id={g.broker} />
+            ) : (
+              <SymbolAvatar name={g.name} />
+            )}
             <span className="flex flex-col">
               <span className="font-bold">{g.name}</span>
               <span className="text-sm text-muted-foreground">

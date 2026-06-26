@@ -9,6 +9,7 @@ import { findCatalogItem } from "@/lib/finance/catalog";
 import { nativeMoney } from "@/lib/finance/currencies";
 import { signedWon } from "@/lib/format";
 import { EVENT_ICON, IconChip } from "@/components/transactions/eventIcons";
+import { Avatar } from "@/components/ui/Avatar";
 import type { EventType } from "@/lib/finance/valuation";
 
 export interface ActivityItem {
@@ -171,8 +172,21 @@ export function ActivityList({
             }
           >
             <div className="flex items-center gap-3">
-              {/* 유형 아이콘(모노톤) — 종목명은 보조줄 텍스트로 */}
-              <IconChip icon={EVENT_ICON[it.type]} size="md" type={it.type} />
+              {/* 종목 연결 거래(매수/매도/배당)는 다른 화면과 동일한 종목 로고로, 종목 없는
+                  거래(증자/인출/환전)는 기존 유형 아이콘으로. 거래유형은 아래 텍스트 라벨로 구분. */}
+              {it.symbol ? (
+                <Avatar
+                  name={
+                    names[it.symbol] ??
+                    findCatalogItem(it.symbol)?.name ??
+                    it.symbol
+                  }
+                  symbol={it.symbol}
+                  size="md"
+                />
+              ) : (
+                <IconChip icon={EVENT_ICON[it.type]} size="md" type={it.type} />
+              )}
               <span className="flex min-w-0 flex-col">
                 <span className="font-bold">
                   {LABEL[it.type]}

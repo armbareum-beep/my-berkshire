@@ -14,6 +14,7 @@ import { resolve } from "node:path";
 import { createHash } from "node:crypto";
 import type { Database } from "../src/lib/supabase/database.types";
 import { etfManager } from "../src/lib/finance/brandColor";
+import { logoSlug } from "../src/lib/finance/assetImage";
 
 loadEnvConfig(process.cwd());
 
@@ -27,16 +28,24 @@ function fmp(ticker: string): string {
 function favicon(domain: string): string {
   return `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
 }
+/** 토스 종목 로고 CDN(국내 6자리 코드) — 주식·ETF 모두 보유, 고품질·일관. 셀프 호스팅으로 저장. */
+function toss(code: string): string {
+  return `https://static.toss.im/png-icons/securities/icn-sec-fill-${code}.png`;
+}
 
 /** 심볼 → 시도할 로고 URL 후보(앞에서부터). 지수·환율·코인은 로컬 SVG라 제외. */
 function candidateUrls(symbol: string, name: string): string[] {
   if (symbol.endsWith("-USD") || symbol.startsWith("^") || symbol.includes("=")) return [];
   if (/^\d{6}$/.test(symbol)) {
+    // 국내 주식·ETF: 토스 CDN 우선(FMP 미보유 소형주까지 커버) → 운용사 favicon / FMP 폴백.
     const mgr = etfManager(symbol, name);
-    if (mgr) return mgr.domain ? [favicon(mgr.domain)] : [];
-    return [fmp(`${symbol}.KS`), fmp(`${symbol}.KQ`)];
+    if (mgr) return [toss(symbol), ...(mgr.domain ? [favicon(mgr.domain)] : [])];
+    return [toss(symbol), fmp(`${symbol}.KS`), fmp(`${symbol}.KQ`)];
   }
-  return [fmp(symbol.toUpperCase())];
+  // 해외 티커 — FMP는 클래스주를 BRK-A·BRK.A 형태로 제공(슬래시 미사용). 둘 다 시도.
+  const up = symbol.toUpperCase();
+  if (up.includes("/")) return [fmp(up.replace("/", "-")), fmp(up.replace("/", "."))];
+  return [fmp(up)];
 }
 
 async function fetchLogo(urls: string[]): Promise<Buffer | null> {
@@ -89,7 +98,7 @@ async function main() {
       missing.push(symbol);
       continue;
     }
-    writeFileSync(resolve(PUB_DIR, `${symbol}.png`), buf);
+    writeFileSync(resolve(PUB_DIR, `${logoSlug(symbol)}.png`), buf);
     saved += 1;
     console.log(`✓ ${symbol}  ${name ?? ""}`);
   }

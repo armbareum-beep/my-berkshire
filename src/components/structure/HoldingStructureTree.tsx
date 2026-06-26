@@ -92,7 +92,7 @@ export function HoldingStructureTree({
                       href={`/stocks/${h.symbol}`}
                       className="flex items-center gap-2 rounded-lg py-1.5 transition active:scale-[0.99]"
                     >
-                      <SymbolAvatar name={h.name} />
+                      <SymbolAvatar name={h.name} symbol={h.symbol} />
                       <span className="flex flex-col">
                         <span className="text-sm font-medium">{h.name}</span>
                         <span className="text-xs text-muted-foreground">

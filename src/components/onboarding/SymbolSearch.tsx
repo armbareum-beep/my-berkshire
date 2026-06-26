@@ -126,7 +126,7 @@ export function SymbolSearch({
               onClick={() => onSelect({ symbol: item.symbol, name: item.name })}
               className="flex w-full items-center gap-3 rounded-xl p-3 text-left transition active:scale-[0.99] hover:bg-secondary"
             >
-              <SymbolAvatar name={item.name} />
+              <SymbolAvatar name={item.name} symbol={item.symbol} />
               <span className="flex flex-col">
                 <span className="font-bold">{item.name}</span>
                 <span className="text-sm text-muted-foreground">

@@ -2,24 +2,41 @@
 
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
-import { BROKERS, findBroker } from "@/lib/config/brokers";
+import { BROKERS, findBroker, brokerLogoSrcs } from "@/lib/config/brokers";
+import { LogoImage } from "@/components/ui/LogoImage";
 
 /** 소수 율 → % 문자열. 0.00015 → "0.015". */
 export function rateToPct(rate: number): string {
   return String(Math.round(rate * 100 * 10000) / 10000);
 }
 
-/** 증권사 이니셜 칩(로고 대체 — 이니셜 + 브랜드 컬러). */
+/**
+ * 증권사 칩 — 종목 로고와 동일 파이프라인(셀프 호스팅 → 도메인 favicon)으로 증권사 로고를
+ * 표시하고, 모두 실패하면 이니셜 + 브랜드 컬러 배지로 폴백.
+ */
 export function BrokerChip({ id, size = 40 }: { id: string; size?: number }) {
   const b = findBroker(id);
   if (!b) return null;
   return (
     <span
-      className="flex shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
-      style={{ width: size, height: size, backgroundColor: b.color }}
+      className="flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-secondary"
+      style={{ width: size, height: size }}
       title={b.name}
     >
-      {b.name.slice(0, 1)}
+      <LogoImage
+        srcs={brokerLogoSrcs(b)}
+        alt={b.name}
+        fit="inset"
+        resetKey={b.id}
+        fallback={
+          <span
+            className="flex h-full w-full items-center justify-center text-sm font-bold text-white"
+            style={{ backgroundColor: b.color }}
+          >
+            {b.name.slice(0, 1)}
+          </span>
+        }
+      />
     </span>
   );
 }

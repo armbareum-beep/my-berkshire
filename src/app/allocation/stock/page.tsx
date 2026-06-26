@@ -44,11 +44,12 @@ export default async function StockAllocationPage() {
       .filter((a) => (meta[a.symbol]?.assetType ?? "주식") === "주식")
       .map((a) => ({
         label: a.name,
+        symbol: a.symbol as string | undefined,
         value: a.value,
         weight: a.weight,
       })),
     ...(data.cash > 0
-      ? [{ label: "현금", value: data.cash, weight: data.cashWeight ?? 0 }]
+      ? [{ label: "현금", symbol: undefined, value: data.cash, weight: data.cashWeight ?? 0 }]
       : []),
   ].sort((a, b) => b.value - a.value);
 
@@ -118,7 +119,7 @@ export default async function StockAllocationPage() {
               {items.map((it) => (
                 <li key={it.label} className="flex flex-col gap-3">
                   <div className="flex items-center gap-3">
-                    <SymbolAvatar name={it.label} />
+                    <SymbolAvatar name={it.label} symbol={it.symbol} />
                     <span className="flex flex-col">
                       <span className="font-bold">{it.label}</span>
                       <span className="text-sm text-muted-foreground tabular-nums">

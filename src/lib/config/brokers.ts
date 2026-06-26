@@ -5,30 +5,48 @@
  *    거래대금 구간·이벤트·유관기관 제비용에 따라 다르므로 **편집 가능**으로 둔다.
  *    값은 lib/config 단일 출처(세율과 동일 원칙) — 바뀌면 이 파일만 고친다.
  *
- * color = 칩(이니셜 배지) 브랜드 컬러. 로고 에셋은 라이선스 부담 → 이니셜+컬러로 대체.
+ * color = 칩(이니셜 배지) 브랜드 컬러 — 로고 에셋·favicon 모두 없을 때의 최종 폴백.
+ * domain = 증권사 로고 favicon 소싱용 공식 도메인(종목 로고와 동일 파이프라인 재사용).
  */
+
+import { gfavicon } from "../finance/assetImage";
 
 export interface Broker {
   id: string;
   name: string;
   /** 비대면 위탁수수료율(소수). 0.00015 = 0.015%. 대표값(편집 가능). */
   commissionRate: number;
-  /** 칩 배경 브랜드 컬러(hex). */
+  /** 칩 배경 브랜드 컬러(hex) — 이니셜 폴백용. */
   color: string;
+  /** 공식 도메인(favicon 로고 소싱). 없으면 favicon 후보 생략 → 이니셜+컬러. */
+  domain?: string;
 }
 
 /** 주요 증권사 비대면 대표 수수료(참고용). 저렴→비쌈 순서 무관, 표시는 이름순. */
 export const BROKERS: Broker[] = [
-  { id: "toss", name: "토스증권", commissionRate: 0.00015, color: "#3182F6" },
-  { id: "kiwoom", name: "키움증권", commissionRate: 0.00015, color: "#C8102E" },
-  { id: "korea", name: "한국투자증권", commissionRate: 0.00014, color: "#003C71" },
-  { id: "mirae", name: "미래에셋증권", commissionRate: 0.000140, color: "#FF6600" },
-  { id: "samsung", name: "삼성증권", commissionRate: 0.000147, color: "#1428A0" },
-  { id: "nh", name: "NH투자증권", commissionRate: 0.0001253, color: "#00A86B" },
-  { id: "kb", name: "KB증권", commissionRate: 0.000142, color: "#FFB800" },
-  { id: "shinhan", name: "신한투자증권", commissionRate: 0.0001469, color: "#0046FF" },
-  { id: "daishin", name: "대신증권", commissionRate: 0.00015, color: "#012F6B" },
+  { id: "toss", name: "토스증권", commissionRate: 0.00015, color: "#3182F6", domain: "tossinvest.com" },
+  { id: "kiwoom", name: "키움증권", commissionRate: 0.00015, color: "#C8102E", domain: "kiwoom.com" },
+  { id: "korea", name: "한국투자증권", commissionRate: 0.00014, color: "#003C71", domain: "truefriend.com" },
+  { id: "mirae", name: "미래에셋증권", commissionRate: 0.000140, color: "#FF6600", domain: "miraeasset.com" },
+  { id: "samsung", name: "삼성증권", commissionRate: 0.000147, color: "#1428A0", domain: "samsungpop.com" },
+  { id: "nh", name: "NH투자증권", commissionRate: 0.0001253, color: "#00A86B", domain: "nhqv.com" },
+  { id: "kb", name: "KB증권", commissionRate: 0.000142, color: "#FFB800", domain: "kbsec.com" },
+  { id: "shinhan", name: "신한투자증권", commissionRate: 0.0001469, color: "#0046FF", domain: "shinhansec.com" },
+  { id: "daishin", name: "대신증권", commissionRate: 0.00015, color: "#012F6B", domain: "daishin.com" },
 ];
+
+/**
+ * 증권사 로고 후보(앞에서부터 시도) — 종목 로고와 동일 규칙:
+ *  1) 셀프 호스팅 `public/brokers/{id}.svg|png`(있으면 1순위, 광고차단 무관)
+ *  2) 공식 도메인 favicon(운용사 로고와 동일 메커니즘)
+ * 모두 실패하거나 비면 호출 측에서 이니셜+컬러 배지로 폴백. 추측 이미지는 만들지 않는다.
+ */
+export function brokerLogoSrcs(broker: Broker): string[] {
+  const e = encodeURIComponent(broker.id);
+  const srcs = [`/brokers/${e}.svg`, `/brokers/${e}.png`];
+  if (broker.domain) srcs.push(gfavicon(broker.domain));
+  return srcs;
+}
 
 export function findBroker(id: string | null | undefined): Broker | undefined {
   return id ? BROKERS.find((b) => b.id === id) : undefined;

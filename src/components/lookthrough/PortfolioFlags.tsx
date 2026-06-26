@@ -20,7 +20,7 @@ function FlagGroup({ g }: { g: PortfolioFlagGroup }) {
         className="block rounded-xl p-2 transition active:scale-[0.99] hover:bg-secondary"
       >
         <div className="mb-1.5 flex items-center gap-2">
-          <SymbolAvatar name={g.name} />
+          <SymbolAvatar name={g.name} symbol={g.symbol} />
           <span className="flex-1 text-sm font-semibold">{g.name}</span>
           <span className="rounded-full bg-secondary px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-secondary-foreground">
             {g.flags.length}

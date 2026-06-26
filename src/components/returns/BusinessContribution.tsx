@@ -111,7 +111,7 @@ export function BusinessContribution({
                     : "border-transparent hover:bg-secondary"
                 }`}
               >
-                <SymbolAvatar name={candidate.name} size="sm" />
+                <SymbolAvatar name={candidate.name} symbol={candidate.symbol} size="sm" />
                 <span className="min-w-0 flex-1 truncate text-sm font-semibold">
                   {candidate.name}
                 </span>
