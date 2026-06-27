@@ -38,7 +38,7 @@ import { LAST_SEEN_COOKIE } from "@/lib/lastSeen";
 import { LastSeenSync } from "@/components/dashboard/LastSeenSync";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
 import { HomeSignalBanner } from "@/components/dashboard/HomeSignalBanner";
-import { AccountGroups } from "@/components/dashboard/AccountGroups";
+import { ConsolidatedHoldings } from "@/components/dashboard/ConsolidatedHoldings";
 import { CurrencyProvider } from "@/components/dashboard/CurrencyProvider";
 import { CurrencyView } from "@/components/dashboard/CurrencyView";
 import {
@@ -792,24 +792,8 @@ async function HoldingsStreamed({
         footer={<CardAction href="/accounts">계좌 관리</CardAction>}
       >
         <CurrencyView
-          krw={
-            <AccountGroups
-              groups={accountGroupsKRW}
-              currency="KRW"
-              bare
-              singleOpen
-              memberNames={memberNames}
-            />
-          }
-          usd={
-            <AccountGroups
-              groups={accountGroupsUSD}
-              currency="USD"
-              bare
-              singleOpen
-              memberNames={memberNames}
-            />
-          }
+          krw={<ConsolidatedHoldings groups={accountGroupsKRW} currency="KRW" />}
+          usd={<ConsolidatedHoldings groups={accountGroupsUSD} currency="USD" />}
         />
       </CardShell>
 

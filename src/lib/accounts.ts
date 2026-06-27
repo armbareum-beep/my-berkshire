@@ -38,6 +38,71 @@ export interface AccountGroup {
   holdings: AccountHolding[];
 }
 
+/** 종목별 통합 보유(여러 계좌 합산). 홈화면 종목 통합 뷰용. */
+export interface ConsolidatedHolding {
+  symbol: string;
+  name: string;
+  /** 전 계좌 합산 수량. */
+  totalQuantity: number;
+  /** 전 계좌 합산 평가액(표시통화). */
+  totalValue: number;
+  /** 평단확인 보유의 합산 평가차익(표시통화). 평단 없으면 null. */
+  totalGain: number | null;
+  /** 가중평균 등락률. 평단 없으면 null. */
+  changeRate: number | null;
+}
+
+/**
+ * AccountGroup[] → 종목 단위로 병합. 같은 심볼은 전 계좌에 걸쳐 합산.
+ * 등락률은 원가 가중평균, 평단 없는 보유는 비율 계산 제외.
+ */
+export function flattenHoldings(groups: AccountGroup[]): ConsolidatedHolding[] {
+  const map = new Map<
+    string,
+    {
+      name: string;
+      qty: number;
+      value: number;
+      gain: number | null;
+      costSum: number; // Σ avgCost*qty*factor (평단 확인 분)
+      curSum: number; // Σ price*qty*factor (평단 확인 분)
+    }
+  >();
+
+  for (const g of groups) {
+    for (const h of g.holdings) {
+      const e = map.get(h.symbol) ?? {
+        name: h.name,
+        qty: 0,
+        value: 0,
+        gain: null,
+        costSum: 0,
+        curSum: 0,
+      };
+      e.qty += h.quantity;
+      e.value += h.value;
+      if (h.gain != null) {
+        e.gain = (e.gain ?? 0) + h.gain;
+        // costBasis = value - gain (= avgCost * qty * factor)
+        e.costSum += h.value - h.gain;
+        e.curSum += h.value;
+      }
+      map.set(h.symbol, e);
+    }
+  }
+
+  return [...map.entries()]
+    .map(([symbol, e]) => ({
+      symbol,
+      name: e.name,
+      totalQuantity: e.qty,
+      totalValue: e.value,
+      totalGain: e.gain,
+      changeRate: e.costSum > 0 ? e.curSum / e.costSum - 1 : null,
+    }))
+    .sort((a, b) => b.totalValue - a.totalValue);
+}
+
 /**
  * 계좌별 그룹 로드 — 계좌는 자회사(종목)만 담는다. 현금은 계좌 밖(회사 금고).
  * prices 는 ₩, factor 로 표시 통화 환산.
