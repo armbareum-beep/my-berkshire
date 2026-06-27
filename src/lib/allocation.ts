@@ -55,7 +55,8 @@ export function groupAllocationByType(
 }
 
 /**
- * 자산 유형 그룹화 — ETF는 기초자산 국가별로 추가 분리(미국 ETF/한국 ETF 등).
+ * 자산 유형 그룹화 — ETF는 단일 "ETF" 그룹으로 묶되 각 slice에 countryTag 를 세팅.
+ * AllocationCard 가 ETF 섹션 내부를 국가별로 집계해 표시(국가 드릴다운 UX).
  * 홈 대시보드 자산 구성 카드용. allocation 페이지의 국가별 탭과는 별개.
  */
 export function groupAllocationByTypeWithEtfCountry(
@@ -66,27 +67,18 @@ export function groupAllocationByTypeWithEtfCountry(
   for (const a of allocation) {
     const m = meta[a.symbol];
     const assetType = m?.assetType ?? "주식";
-    // ETF: 기초자산 국가를 타입 키에 포함 → "미국 ETF", "한국 ETF" 등.
-    const key = assetType === "ETF" ? `${m?.country ?? "기타"} ETF` : assetType;
-    const list = byType.get(key) ?? [];
-    list.push(a);
-    byType.set(key, list);
+    const list = byType.get(assetType) ?? [];
+    // ETF slice에 기초자산 국가 태그 첨부 — 카드에서 국가별 집계용.
+    list.push(assetType === "ETF" ? { ...a, countryTag: m?.country ?? "기타" } : a);
+    byType.set(assetType, list);
   }
-  // 고정 순서: 주식 → [국가별 ETF 가나다순] → 원자재 → 코인
-  const etfKeys = [...byType.keys()]
-    .filter((k) => k.endsWith(" ETF"))
-    .sort((a, b) => {
-      // 미국 ETF 먼저, 그 다음 나머지 가나다순
-      if (a === "미국 ETF") return -1;
-      if (b === "미국 ETF") return 1;
-      return a.localeCompare(b, "ko");
-    });
-  const ordered: string[] = ["주식", ...etfKeys, "원자재", "코인"];
-  const known = ordered
-    .filter((t) => byType.has(t))
-    .map((t) => ({ type: t, slices: byType.get(t)! }));
+  // 고정 순서: 주식 → ETF → 원자재 → 코인
+  const known = ASSET_TYPE_ORDER.filter((t) => byType.has(t)).map((t) => ({
+    type: t as string,
+    slices: byType.get(t)!,
+  }));
   const extra = [...byType.keys()]
-    .filter((t) => !ordered.includes(t))
+    .filter((t) => !ASSET_TYPE_ORDER.includes(t as (typeof ASSET_TYPE_ORDER)[number]))
     .map((t) => ({ type: t, slices: byType.get(t)! }));
   return [...known, ...extra];
 }

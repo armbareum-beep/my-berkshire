@@ -533,8 +533,26 @@ export function AllocationCard({
     <CardShell title="자산 구성" href="/allocation" footer={footer}>
       <div className="flex flex-col">
         {groups.map((g, i) => {
-          const totalShare = g.slices.reduce((s, a) => s + a.weight, 0); // 전체 대비
-          const groupValue = g.slices.reduce((s, a) => s + a.value, 0); // 유형 내 합(정규화 분모)
+          const totalShare = g.slices.reduce((s, a) => s + a.weight, 0);
+          const groupValue = g.slices.reduce((s, a) => s + a.value, 0);
+
+          // ETF 섹션: 개별 종목 대신 기초자산 국가별로 집계해서 표시.
+          const isEtf = g.type === "ETF";
+          const etfByCountry = isEtf
+            ? [...g.slices
+                .reduce((m, s) => {
+                  const key = s.countryTag ?? "기타";
+                  const e = m.get(key) ?? { value: 0, weight: 0 };
+                  e.value += s.value;
+                  e.weight += s.weight;
+                  m.set(key, e);
+                  return m;
+                }, new Map<string, { value: number; weight: number }>())
+                .entries()]
+                .map(([label, e]) => ({ label, ...e }))
+                .sort((a, b) => b.value - a.value)
+            : null;
+
           return (
             <details
               key={g.type}
@@ -542,7 +560,6 @@ export function AllocationCard({
               open={i === 0}
               className={`group${i > 0 ? " border-t border-border" : ""}`}
             >
-              {/* 유형 헤더: 유형명 + 전체 자산 대비 비중 + 펼침 화살표 */}
               <summary className="flex cursor-pointer list-none items-center gap-2 py-3 text-sm">
                 <span className="font-semibold">{g.type}</span>
                 <span className="ml-auto flex items-center gap-2">
@@ -555,25 +572,45 @@ export function AllocationCard({
                 </span>
               </summary>
               <ul className="flex flex-col gap-2.5 pb-3">
-                {g.slices.map((a) => {
-                  const w = groupValue > 0 ? a.value / groupValue : 0; // 유형 내 100% 정규화
-                  return (
-                    <li key={a.symbol}>
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="font-medium">{a.name}</span>
-                        <span className="tabular-nums text-muted-foreground">
-                          {pct(w)}
-                        </span>
-                      </div>
-                      <div className="mt-1.5 h-1.5 w-full rounded-full bg-secondary">
-                        <div
-                          className="h-1.5 rounded-full bg-primary"
-                          style={{ width: `${Math.min(100, Math.round(w * 100))}%` }}
-                        />
-                      </div>
-                    </li>
-                  );
-                })}
+                {etfByCountry
+                  ? etfByCountry.map((c) => {
+                      const w = groupValue > 0 ? c.value / groupValue : 0;
+                      return (
+                        <li key={c.label}>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="font-medium">{c.label}</span>
+                            <span className="tabular-nums text-muted-foreground">
+                              {pct(w)}
+                            </span>
+                          </div>
+                          <div className="mt-1.5 h-1.5 w-full rounded-full bg-secondary">
+                            <div
+                              className="h-1.5 rounded-full bg-primary"
+                              style={{ width: `${Math.min(100, Math.round(w * 100))}%` }}
+                            />
+                          </div>
+                        </li>
+                      );
+                    })
+                  : g.slices.map((a) => {
+                      const w = groupValue > 0 ? a.value / groupValue : 0;
+                      return (
+                        <li key={a.symbol}>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="font-medium">{a.name}</span>
+                            <span className="tabular-nums text-muted-foreground">
+                              {pct(w)}
+                            </span>
+                          </div>
+                          <div className="mt-1.5 h-1.5 w-full rounded-full bg-secondary">
+                            <div
+                              className="h-1.5 rounded-full bg-primary"
+                              style={{ width: `${Math.min(100, Math.round(w * 100))}%` }}
+                            />
+                          </div>
+                        </li>
+                      );
+                    })}
               </ul>
             </details>
           );

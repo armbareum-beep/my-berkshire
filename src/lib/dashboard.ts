@@ -27,6 +27,8 @@ export interface AllocationSlice {
   weight: number; // 0~1 (보유자산 대비)
   avgCost: number; // 평균단가
   changeRate: number | null; // 평단 대비 등락(소수). 평단 0이면 null
+  /** ETF 기초자산 국가 태그(자산구성 카드 국가별 집계용). ETF만 세팅, 그 외 undefined. */
+  countryTag?: string;
 }
 
 export interface ActivityFeedItem {
