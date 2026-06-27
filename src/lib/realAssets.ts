@@ -31,6 +31,8 @@ export async function loadManualAssets(
     salePrice: r.sale_price == null ? null : Number(r.sale_price),
     saleAt: r.sale_at,
     saleCost: r.sale_cost == null ? null : Number(r.sale_cost),
+    valuationMethod: (r.valuation_method ?? "direct") as "direct" | "cap_rate",
+    capRate: r.cap_rate == null ? null : Number(r.cap_rate),
   }));
 }
 

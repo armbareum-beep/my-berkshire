@@ -594,6 +594,7 @@ export type Database = {
           acquired_at: string | null
           acquired_price: number | null
           acquisition_cost: number | null
+          cap_rate: number | null
           created_at: string
           current_value: number
           deleted_at: string | null
@@ -606,6 +607,7 @@ export type Database = {
           sale_cost: number | null
           sale_price: number | null
           updated_at: string
+          valuation_method: string
           valuation_source: string | null
           valued_at: string | null
         }
@@ -613,6 +615,7 @@ export type Database = {
           acquired_at?: string | null
           acquired_price?: number | null
           acquisition_cost?: number | null
+          cap_rate?: number | null
           created_at?: string
           current_value?: number
           deleted_at?: string | null
@@ -625,6 +628,7 @@ export type Database = {
           sale_cost?: number | null
           sale_price?: number | null
           updated_at?: string
+          valuation_method?: string
           valuation_source?: string | null
           valued_at?: string | null
         }
@@ -632,6 +636,7 @@ export type Database = {
           acquired_at?: string | null
           acquired_price?: number | null
           acquisition_cost?: number | null
+          cap_rate?: number | null
           created_at?: string
           current_value?: number
           deleted_at?: string | null
@@ -644,6 +649,7 @@ export type Database = {
           sale_cost?: number | null
           sale_price?: number | null
           updated_at?: string
+          valuation_method?: string
           valuation_source?: string | null
           valued_at?: string | null
         }
