@@ -35,10 +35,11 @@ import type { DailyBar } from "./prices";
 import type { AllocationSlice } from "../dashboard";
 
 export type LegStatus =
-  | "included" // 한국 주식·공시 있음 → 합산됨
+  | "included" // 한국·미국 주식 공시 있음, 또는 ETF PER로 귀속 순이익 산출 → 합산됨
   | "no_disclosure" // 한국 주식인데 공시/발행주식수 없음
   | "us_pending" // 미국 주식 — EDGAR 연동 시 채워짐(후속)
-  | "etf_pending" // ETF — 구성종목 펼치기(V2)
+  | "etf_pending" // ETF — 과거 분기 시리즈(당시 PER 없음)
+  | "etf_no_per" // ETF — Yahoo PER 미제공(채권·소형 한국 ETF 등)
   | "no_earnings"; // 코인·금·원자재 — 이익 없는 자산(항상 해당없음)
 
 export interface LookThroughLeg {
@@ -106,7 +107,8 @@ export interface LookThrough {
 const REASON: Record<Exclude<LegStatus, "included">, string> = {
   no_disclosure: "공시·발행주식수 없음",
   us_pending: "미국 — 펀더멘털 연동 예정",
-  etf_pending: "ETF — 구성종목 펼치기 예정",
+  etf_pending: "ETF — 투시 대상 아님(패시브 지수)",
+  etf_no_per: "ETF — 투시 대상 아님(패시브 지수)",
   no_earnings: "이익이 없는 자산",
 };
 
@@ -130,7 +132,7 @@ interface AggItem {
   assetType: string;
   value: number; // 보유 시장가치(₩)
   quantity: number; // 내 보유수량
-  kind: "candidate" | "us_pending" | "etf_pending" | "no_earnings";
+  kind: "candidate" | "us_pending" | "etf_no_per" | "etf_pending" | "no_earnings";
   fund: Fundamentals | null; // candidate 만(없으면 no_disclosure)
 }
 
@@ -283,6 +285,7 @@ export async function computeLookThrough(
   });
 
   const candidates = classified.filter((c) => c.kind === "candidate");
+
   const funds = await Promise.all(
     candidates.map(async (c) => {
       if (basis === "fy")
@@ -291,6 +294,7 @@ export async function computeLookThrough(
       return set.ttm ?? set.latestAnnual;
     }),
   );
+
   const fundOf = new Map<string, Fundamentals | null>(
     candidates.map((c, i) => [c.slice.symbol, funds[i]]),
   );
@@ -301,7 +305,7 @@ export async function computeLookThrough(
     assetType: c.assetType,
     value: c.slice.value,
     quantity: c.slice.quantity,
-    kind: c.kind,
+    kind: c.kind === "etf_pending" ? "etf_no_per" : c.kind,
     fund: c.kind === "candidate" ? (fundOf.get(c.slice.symbol) ?? null) : null,
   }));
 
@@ -379,7 +383,9 @@ export async function computeLookThroughSeries(
       const items: AggItem[] = await Promise.all(
         held.map(async ([symbol, qty]) => {
           const assetType = assetTypeOf(symbol);
-          const kind = classify(symbol, assetType);
+          const rawKind = classify(symbol, assetType);
+          // 과거 분기 시점에는 ETF PER 데이터가 없으므로 etf_no_per 처리.
+          const kind = rawKind === "etf_pending" ? "etf_no_per" : rawKind;
           const price = closeOnOrBefore(priceSeries[symbol] ?? [], q.end) ?? 0;
           const fund =
             kind === "candidate" ? await fundFor(symbol, fiscalYear) : null;
