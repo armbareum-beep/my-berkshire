@@ -275,12 +275,15 @@ export async function recordEvent(input: RecordInput): Promise<Result> {
     const { prices, currencies, instrumentTypes, available } = await getPrices([
       input.symbol,
     ]);
-    currency = currencies[input.symbol] ?? "KRW";
+    // 야후 조회 실패 시 undefined → 6자리=KRW, 그 외=USD 휴리스틱. 야후가 명시적으로
+    // "KRW"를 반환한 경우(= 이미 맵에 있음)는 아래 안전장치가 잡는다.
+    const isKorean = /^\d{6}$/.test(input.symbol);
+    currency = currencies[input.symbol] ?? (isKorean ? "KRW" : "USD");
     instrumentType = instrumentTypes[input.symbol] ?? "EQUITY";
 
-    // 통화 안전장치: 6자리 숫자=한국(KRW). 그 외(해외) 종목이 "KRW"로 잡히면
-    // 통화 감지 실패 → ₩ 환산 없이 외화 가격을 그대로 저장하는 사고 방지(조용히 대체 금지).
-    if (currency === "KRW" && !/^\d{6}$/.test(input.symbol)) {
+    // 통화 안전장치: 해외 종목에 야후가 명시적으로 KRW를 반환하면 환산 사고 방지.
+    // 야후 조회 자체가 실패한 경우(undefined)는 위 휴리스틱으로 이미 처리됐으므로 여기 안 옴.
+    if (currency === "KRW" && !isKorean && input.symbol in currencies) {
       return {
         ok: false,
         error: "종목 통화를 확인하지 못했습니다. 잠시 후 다시 시도하세요.",
@@ -480,8 +483,10 @@ export async function recordBuys(input: {
     await getPrices(symbols);
   const ccyOf: Record<string, string> = {};
   for (const s of symbols) {
-    const ccy = currencies[s] ?? "KRW";
-    if (ccy === "KRW" && !/^\d{6}$/.test(s))
+    const isKorean = /^\d{6}$/.test(s);
+    // 야후 조회 실패(undefined) → 휴리스틱. 야후가 명시적으로 KRW 반환 시만 안전장치.
+    const ccy = currencies[s] ?? (isKorean ? "KRW" : "USD");
+    if (ccy === "KRW" && !isKorean && s in currencies)
       return {
         ok: false,
         error: `종목 통화를 확인하지 못했습니다(${s}). 잠시 후 다시 시도하세요.`,

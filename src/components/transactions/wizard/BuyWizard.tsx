@@ -108,6 +108,8 @@ export function BuyWizard({
     if (accounts.length > 1) return "account";
     return "symbol";
   });
+  // USD 종목 매수 시 원화로 직접 입력하는 모드(달러 단가를 역산해 저장).
+  const [priceModeKrw, setPriceModeKrw] = useState(false);
 
   const addMarket = useMarketPrice(adding?.symbol ?? null, prices);
   const addIsCrypto = !!adding && isCrypto(adding.symbol);
@@ -116,8 +118,10 @@ export function BuyWizard({
   // ₩로 라벨만 붙이고 USD 종목 값을 받으면 서버가 환율을 또 곱해 ~1500× 부풀려진다.
   const addCcy = adding ? ccyHeuristic(adding.symbol) : "KRW";
   const addFx = addCcy === "KRW" ? 1 : (fxRates.USD ?? 1);
-  const priceCur = addCcy === "KRW" ? "₩" : "$";
-  const priceUnitLabel = addCcy === "KRW" ? "원" : "달러";
+  // KRW 원화입력 모드: USD 종목에서만 활성. 입력값은 ₩, commitAdd에서 ÷ 환율로 $ 역산.
+  const isKrwInputMode = addCcy !== "KRW" && priceModeKrw;
+  const priceCur = isKrwInputMode ? "₩" : (addCcy === "KRW" ? "₩" : "$");
+  const priceUnitLabel = isKrwInputMode ? "원" : (addCcy === "KRW" ? "원" : "달러");
 
   // ₩ 추정 합계(서버가 최종 환산 — 여긴 미리보기).
   const krwOf = (it: CartItem) => {
@@ -131,13 +135,21 @@ export function BuyWizard({
     setAdding(null);
     setAddPrice("");
     setAddQty("");
+    setPriceModeKrw(false);
     setStage("symbol");
   }
 
   function commitAdd() {
     if (!adding) return;
     const q = Number(addQty);
-    const p = mode === "ledger" ? Number(addPrice) : (addMarket ?? 0);
+    let p: number;
+    if (mode === "ledger") {
+      const raw = Number(addPrice);
+      // 원화 입력 모드: ₩ ÷ 환율 → $ 단가(서버는 $ 단가를 받아 ₩ 환산).
+      p = isKrwInputMode ? raw / addFx : raw;
+    } else {
+      p = addMarket ?? 0;
+    }
     if (q <= 0 || p <= 0) return;
     setCart((prev) => [
       ...prev,
@@ -146,6 +158,7 @@ export function BuyWizard({
     setAdding(null);
     setAddPrice("");
     setAddQty("");
+    setPriceModeKrw(false);
     setStage("cart");
   }
 
@@ -259,24 +272,51 @@ export function BuyWizard({
 
   if (stage === "price") {
     const ps = priceStepsFor(adding?.symbol ?? "");
+    const priceHint =
+      Number(addPrice) > 0
+        ? isKrwInputMode
+          ? `≈ $${(Number(addPrice) / addFx).toFixed(2)}`
+          : addCcy !== "KRW"
+            ? `≈ ₩${Math.round(Number(addPrice) * addFx).toLocaleString()}`
+            : undefined
+        : undefined;
     return shell(
       "얼마에 샀나요?",
       adding ? `${adding.name} · 단가(${priceUnitLabel})` : undefined,
-      <AmountBody
-        value={addPrice}
-        onChange={setAddPrice}
-        prefix={priceCur}
-        decimal
-        quickAddSteps={ps.steps}
-        quickAddLabel={ps.label}
-        hint={
-          addCcy !== "KRW" && Number(addPrice) > 0 ? (
-            <span className="tabular-nums text-muted-foreground">
-              ≈ ₩{Math.round(Number(addPrice) * addFx).toLocaleString()}
-            </span>
-          ) : undefined
-        }
-      />,
+      <div className="flex flex-col gap-4">
+        {addCcy !== "KRW" && (
+          <div className="flex justify-center gap-2">
+            {(["달러로 입력", "원화로 입력"] as const).map((label, i) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => { setPriceModeKrw(i === 1); setAddPrice(""); }}
+                className={
+                  "rounded-full px-4 py-1.5 text-sm font-semibold " +
+                  ((i === 1) === priceModeKrw
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-secondary text-secondary-foreground")
+                }
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+        <AmountBody
+          value={addPrice}
+          onChange={setAddPrice}
+          prefix={priceCur}
+          decimal
+          quickAddSteps={isKrwInputMode ? undefined : ps.steps}
+          quickAddLabel={isKrwInputMode ? undefined : ps.label}
+          hint={
+            priceHint ? (
+              <span className="tabular-nums text-muted-foreground">{priceHint}</span>
+            ) : undefined
+          }
+        />
+      </div>,
       nextBtn("다음", Number(addPrice) > 0, () => setStage("qty")),
     );
   }
