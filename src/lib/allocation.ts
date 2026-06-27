@@ -54,6 +54,43 @@ export function groupAllocationByType(
   return [...known, ...extra];
 }
 
+/**
+ * 자산 유형 그룹화 — ETF는 기초자산 국가별로 추가 분리(미국 ETF/한국 ETF 등).
+ * 홈 대시보드 자산 구성 카드용. allocation 페이지의 국가별 탭과는 별개.
+ */
+export function groupAllocationByTypeWithEtfCountry(
+  allocation: AllocationSlice[],
+  meta: Record<string, SecurityRecord>,
+): AllocationGroup[] {
+  const byType = new Map<string, AllocationSlice[]>();
+  for (const a of allocation) {
+    const m = meta[a.symbol];
+    const assetType = m?.assetType ?? "주식";
+    // ETF: 기초자산 국가를 타입 키에 포함 → "미국 ETF", "한국 ETF" 등.
+    const key = assetType === "ETF" ? `${m?.country ?? "기타"} ETF` : assetType;
+    const list = byType.get(key) ?? [];
+    list.push(a);
+    byType.set(key, list);
+  }
+  // 고정 순서: 주식 → [국가별 ETF 가나다순] → 원자재 → 코인
+  const etfKeys = [...byType.keys()]
+    .filter((k) => k.endsWith(" ETF"))
+    .sort((a, b) => {
+      // 미국 ETF 먼저, 그 다음 나머지 가나다순
+      if (a === "미국 ETF") return -1;
+      if (b === "미국 ETF") return 1;
+      return a.localeCompare(b, "ko");
+    });
+  const ordered: string[] = ["주식", ...etfKeys, "원자재", "코인"];
+  const known = ordered
+    .filter((t) => byType.has(t))
+    .map((t) => ({ type: t, slices: byType.get(t)! }));
+  const extra = [...byType.keys()]
+    .filter((t) => !ordered.includes(t))
+    .map((t) => ({ type: t, slices: byType.get(t)! }));
+  return [...known, ...extra];
+}
+
 /** allocation(종목별) + 현금 → 태그별 합산 슬라이스(비중 내림차순). */
 export function groupByTag(
   allocation: AllocationSlice[],
