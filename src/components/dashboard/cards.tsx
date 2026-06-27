@@ -149,12 +149,12 @@ export function HeroValuationCard({
         </Link>
       </div>
       {/* 통화 토글은 총자산 숫자 바로 옆 — 무엇이 바뀌는지 한눈에 */}
-      <div className="mt-1 flex items-center gap-2">
+      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
         <CountUp
           value={totalAssets}
           format="money"
           currency={currency}
-          className="text-4xl font-extrabold tracking-tight"
+          className="text-3xl font-extrabold tracking-tight sm:text-4xl"
         />
         <CurrencyToggle current={currency} variant="icon" />
       </div>

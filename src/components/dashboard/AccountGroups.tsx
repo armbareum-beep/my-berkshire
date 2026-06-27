@@ -78,14 +78,14 @@ export function AccountGroups({
                 {ACCOUNT_TYPE_LABEL[g.accountType]} · 자회사 {g.holdings.length}개
               </span>
             </span>
-            <span className="ml-auto flex shrink-0 items-center gap-2">
-              <span className="flex flex-col items-end">
-                <span className="font-semibold tabular-nums">
+            <span className="ml-auto flex min-w-0 shrink items-center gap-2">
+              <span className="flex min-w-0 flex-col items-end">
+                <span className="truncate font-semibold tabular-nums">
                   {money(g.value, currency)}
                 </span>
                 {g.changeRate !== null && (
                   <span
-                    className="text-sm font-medium tabular-nums"
+                    className="truncate text-sm font-medium tabular-nums"
                     style={{ color: changeColor(g.changeRate) }}
                   >
                     {signedMoneyShort(g.gain ?? 0, currency)} (
@@ -93,7 +93,7 @@ export function AccountGroups({
                   </span>
                 )}
               </span>
-              <span className="text-muted-foreground transition group-open:rotate-90">
+              <span className="shrink-0 text-muted-foreground transition group-open:rotate-90">
                 ›
               </span>
             </span>
