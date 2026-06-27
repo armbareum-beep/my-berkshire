@@ -82,7 +82,7 @@ export interface ManualAsset {
   id: string;
   name: string;
   kind: ManualAssetKind;
-  /** 현재 평가액(₩, 수기). */
+  /** 현재 평가액(₩, 수기). cap_rate 방식이면 applyCapRateValuation 후 덮어씌워진다. */
   currentValue: number;
   /** 취득가(₩) 또는 null. */
   acquiredPrice: number | null;
@@ -101,6 +101,10 @@ export interface ManualAsset {
   saleAt: string | null;
   /** 매도 부대비용(양도세·중개료 등 단일 합산, ₩) 또는 null. */
   saleCost: number | null;
+  /** 평가 방법: 'direct'=직접입력(기본), 'cap_rate'=수익률환원법. */
+  valuationMethod: "direct" | "cap_rate";
+  /** 환원율(소수, 0.04 = 4%). cap_rate 방식일 때만 의미 있음. */
+  capRate: number | null;
 }
 
 /** 부동산 사업부 임대수익 기록 — 자산별, events와 분리된 자체 원장. */
@@ -113,6 +117,42 @@ export interface ManualAssetIncome {
   amount: number;
   /** 임대 관련 비용(재산세·관리비 등 단일 합산, ₩). */
   cost: number;
+}
+
+/**
+ * 수익률환원법 추정 평가액 = 연간 순임대수익 / 환원율.
+ * 최근 12개월 수익 합산. 환원율 없거나 순익 0이면 null.
+ */
+export function capRateValue(
+  assetId: string,
+  incomes: ManualAssetIncome[],
+  capRate: number,
+  today: string,
+): number | null {
+  if (capRate <= 0) return null;
+  const cutoff = new Date(today);
+  cutoff.setFullYear(cutoff.getFullYear() - 1);
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
+  const annualNet = incomes
+    .filter((i) => i.assetId === assetId && i.date >= cutoffStr)
+    .reduce((s, i) => s + i.amount - i.cost, 0);
+  return annualNet > 0 ? Math.round(annualNet / capRate) : null;
+}
+
+/**
+ * cap_rate 방식 자산의 currentValue를 수익 역산값으로 덮어쓴 배열 반환.
+ * 순익 0·환원율 미설정이면 기존 직접입력값 유지(안전 폴백).
+ */
+export function applyCapRateValuation(
+  assets: ManualAsset[],
+  incomes: ManualAssetIncome[],
+  today: string,
+): ManualAsset[] {
+  return assets.map((a) => {
+    if (a.valuationMethod !== "cap_rate" || !a.capRate) return a;
+    const computed = capRateValue(a.id, incomes, a.capRate, today);
+    return computed != null ? { ...a, currentValue: computed } : a;
+  });
 }
 
 /** 수기 자산 총액(₩) = Σ 현재 평가액. */

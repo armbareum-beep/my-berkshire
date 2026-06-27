@@ -17,6 +17,9 @@ import {
   MANUAL_ASSET_KIND_DESC,
   MANUAL_ASSET_KIND_EMOJI,
   MANUAL_ASSET_DIVISION,
+  ASSET_DIVISION_PRODUCES_INCOME,
+  assetDivision,
+  capRateValue,
   type ManualAsset,
   type ManualAssetKind,
 } from "@/lib/finance/realAssets";
@@ -60,12 +63,22 @@ export function ManualAssetForm({
     editing?.valuationSource ?? "",
   );
   const [valuedAt, setValuedAt] = useState(editing?.valuedAt ?? "");
+  const [valuationMethod, setValuationMethod] = useState<"direct" | "cap_rate">(
+    editing?.valuationMethod ?? "direct",
+  );
+  const [capRateInput, setCapRateInput] = useState(
+    editing?.capRate != null ? String(editing.capRate * 100) : "",
+  );
+
+  const producesIncome = kind != null && ASSET_DIVISION_PRODUCES_INCOME[assetDivision(kind)];
+  const isCapRate = valuationMethod === "cap_rate" && producesIncome;
 
   function buildInput(): ManualAssetInput {
+    const capRateDec = capRateInput.trim() === "" ? null : Number(capRateInput) / 100;
     return {
       name,
       kind: kind as ManualAssetKind,
-      currentValue: Number(currentValue) || 0,
+      currentValue: isCapRate ? 0 : Number(currentValue) || 0,
       acquiredPrice: acquiredPrice.trim() === "" ? null : Number(acquiredPrice),
       acquiredAt: acquiredAt || undefined,
       note: note || undefined,
@@ -73,6 +86,8 @@ export function ManualAssetForm({
         acquisitionCost.trim() === "" ? null : Number(acquisitionCost),
       valuationSource: valuationSource || undefined,
       valuedAt: valuedAt || undefined,
+      valuationMethod: isCapRate ? "cap_rate" : "direct",
+      capRate: isCapRate ? capRateDec : null,
     };
   }
 
@@ -102,6 +117,15 @@ export function ManualAssetForm({
   function submit() {
     if (!name.trim()) {
       toast.error("자산 이름을 입력하세요.");
+      return;
+    }
+    if (isCapRate) {
+      const rate = Number(capRateInput);
+      if (!(rate > 0)) {
+        toast.error("환원율(%)을 입력하세요. 예: 4.5");
+        return;
+      }
+      doSubmit();
       return;
     }
     const cur = Number(currentValue) || 0;
@@ -150,18 +174,70 @@ export function ManualAssetForm({
             />
           </div>
 
-      <div>
-        <NumberPadField
-          label="현재 평가액 (원)"
-          value={currentValue}
-          onChange={setCurrentValue}
-          prefix="₩"
-          placeholder="탭해서 평가액 입력"
-        />
-        <p className="mt-1 text-xs text-muted-foreground">
-          시세가 없어 직접 입력해요. 값이 바뀌면 여기서 수정하면 순자산에 반영돼요.
-        </p>
-      </div>
+      {producesIncome && (
+        <div>
+          <p className="mb-1 text-sm font-medium">평가 방법</p>
+          <div className="grid grid-cols-2 gap-2">
+            {(["direct", "cap_rate"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setValuationMethod(m)}
+                className={
+                  "rounded-xl px-3 py-2.5 text-sm font-semibold " +
+                  (valuationMethod === m
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-secondary text-secondary-foreground")
+                }
+              >
+                {m === "direct" ? "직접 입력" : "수익률환원법"}
+              </button>
+            ))}
+          </div>
+          {isCapRate && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              평가액 = 최근 12개월 순임대수익 ÷ 환원율
+            </p>
+          )}
+        </div>
+      )}
+
+      {isCapRate ? (
+        <div>
+          <label className="text-sm font-medium">환원율 (%)</label>
+          <div className="relative mt-1">
+            <input
+              type="number"
+              min="0.1"
+              max="20"
+              step="0.1"
+              value={capRateInput}
+              onChange={(e) => setCapRateInput(e.target.value)}
+              placeholder="예: 4.5"
+              className="h-11 w-full rounded-xl border border-input bg-card px-3 pr-8 text-base outline-none"
+            />
+            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+              %
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            임대수익 기록이 있어야 평가액이 계산돼요.
+          </p>
+        </div>
+      ) : (
+        <div>
+          <NumberPadField
+            label="현재 평가액 (원)"
+            value={currentValue}
+            onChange={setCurrentValue}
+            prefix="₩"
+            placeholder="탭해서 평가액 입력"
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            시세가 없어 직접 입력해요. 값이 바뀌면 여기서 수정하면 순자산에 반영돼요.
+          </p>
+        </div>
+      )}
 
       <div className="flex gap-3">
         <NumberPadField
