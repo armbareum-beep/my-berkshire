@@ -22,6 +22,7 @@ import {
   type Fundamentals,
 } from "./dart";
 import { getEtfStats } from "./etfStats";
+import { findCatalogItem } from "./catalog";
 import { loadSecurityMeta } from "../securities";
 import { isCrypto } from "../securities";
 import {
@@ -318,7 +319,8 @@ export async function computeLookThrough(
     Promise.all(
       etfs.map(async (c) => {
         try {
-          return await getEtfStats(c.slice.symbol);
+          const proxy = findCatalogItem(c.slice.symbol)?.yahooProxy;
+          return await getEtfStats(c.slice.symbol, proxy);
         } catch {
           return null;
         }
