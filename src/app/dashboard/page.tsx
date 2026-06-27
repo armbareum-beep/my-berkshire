@@ -19,6 +19,7 @@ import {
   computeRealEstateDivision,
   computeDivisions,
   realEstateFinancingCost,
+  applyCapRateValuation,
 } from "@/lib/finance/realAssets";
 import { loadFinancingReconciliations } from "@/lib/financingReconciliation";
 import { DivisionCard } from "@/components/networth/DivisionCard";
@@ -572,13 +573,14 @@ async function HeroValuationStreamed({
   /** 지난 접속 이후 손익(₩) + 수익률. null이면 어제 대비로 폴백. */
   sinceLastSeenKrw: { earned: number; pct: number | null } | null;
 }) {
-  const [liabilities, manualAssets, manualIncome, reconciliations] =
+  const [liabilities, manualAssetsRaw, manualIncome, reconciliations] =
     await Promise.all([
       liabilitiesPromise,
       manualAssetsPromise,
       manualAssetIncomePromise,
       reconciliationsPromise,
     ]);
+  const manualAssets = applyCapRateValuation(manualAssetsRaw, manualIncome, today);
   const debtKrw = totalLiabilities(liabilities);
   const totalAssetsKrw =
     result.currentValuation !== null
@@ -677,13 +679,14 @@ async function DivisionsStreamed({
   today: string;
   factorUSD: number;
 }) {
-  const [manualAssets, manualIncome, liabilities, reconciliations] =
+  const [manualAssetsRaw, manualIncome, liabilities, reconciliations] =
     await Promise.all([
       manualAssetsPromise,
       manualAssetIncomePromise,
       liabilitiesPromise,
       reconciliationsPromise,
     ]);
+  const manualAssets = applyCapRateValuation(manualAssetsRaw, manualIncome, today);
   const financing = realEstateFinancingCost({
     liabilities,
     reconciliations,

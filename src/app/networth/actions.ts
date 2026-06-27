@@ -132,7 +132,7 @@ export async function deleteLiability(id: string): Promise<Result> {
 export interface ManualAssetInput {
   name: string;
   kind: ManualAssetKind;
-  /** 현재 평가액(₩, 수기). */
+  /** 현재 평가액(₩, 수기). cap_rate 방식이면 저장하지 않아도 됨(표시용 0 허용). */
   currentValue: number;
   /** 취득가(₩) 또는 null/undefined. */
   acquiredPrice?: number | null;
@@ -145,6 +145,10 @@ export interface ManualAssetInput {
   valuationSource?: string;
   /** 평가 갱신일(YYYY-MM-DD) 또는 빈 문자열. */
   valuedAt?: string;
+  /** 평가 방법: 'direct'(기본) | 'cap_rate'(수익률환원법). */
+  valuationMethod?: "direct" | "cap_rate";
+  /** 환원율(소수, 0.04 = 4%). cap_rate 방식일 때만 의미 있음. */
+  capRate?: number | null;
 }
 
 function validateAsset(input: ManualAssetInput): string | null {
@@ -185,6 +189,8 @@ export async function addManualAsset(
     acquisition_cost: input.acquisitionCost ?? null,
     valuation_source: input.valuationSource?.trim() || null,
     valued_at: input.valuedAt || null,
+    valuation_method: input.valuationMethod ?? "direct",
+    cap_rate: input.capRate ?? null,
   });
   if (error) return { ok: false, error: error.message };
 
@@ -219,6 +225,8 @@ export async function updateManualAsset(
       acquisition_cost: input.acquisitionCost ?? null,
       valuation_source: input.valuationSource?.trim() || null,
       valued_at: input.valuedAt || null,
+      valuation_method: input.valuationMethod ?? "direct",
+      cap_rate: input.capRate ?? null,
     })
     .eq("id", id);
   if (error) return { ok: false, error: error.message };
