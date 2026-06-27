@@ -203,21 +203,30 @@ async function fetchFromYahoo(yahooSymbol: string): Promise<EtfStats | null> {
 }
 
 export async function getEtfStats(symbol: string, proxySymbol?: string): Promise<EtfStats | null> {
+  let directResult: EtfStats | null = null;
   for (const candidate of toYahooCandidates(symbol)) {
     try {
       const result = await fetchFromYahoo(candidate);
-      if (result) return result;
+      if (result?.equityHoldings.per != null) return result; // PER 있으면 확정
+      if (result && !directResult) directResult = result;   // PER 없어도 일단 보관
     } catch {
       // 다음 후보 시도
     }
   }
-  // 한국 ETF는 Yahoo가 구성데이터를 미제공 → 동일 지수 미국 ETF(proxy)로 대리 조회
+  // 한국 ETF는 Yahoo가 PER·구성데이터를 미제공 → 동일 지수 미국 ETF(proxy)로 보완.
+  // directResult가 있어도 PER이 없으면 proxy를 시도해 equityHoldings를 덮어씀.
   if (proxySymbol) {
     try {
-      return await fetchFromYahoo(proxySymbol);
+      const proxy = await fetchFromYahoo(proxySymbol);
+      if (proxy) {
+        // holdings·sectors는 직접 조회 결과 우선, equityHoldings(PER·PBR 등)는 proxy 사용.
+        return directResult
+          ? { ...directResult, equityHoldings: proxy.equityHoldings }
+          : proxy;
+      }
     } catch {
-      return null;
+      // ignore
     }
   }
-  return null;
+  return directResult;
 }
