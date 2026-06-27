@@ -137,6 +137,8 @@ interface AggItem {
   kind: "candidate" | "us_pending" | "etf_included" | "etf_no_per" | "etf_pending" | "no_earnings";
   fund: Fundamentals | null; // candidate 만(없으면 no_disclosure)
   etfPer?: number; // etf_included 만 — Yahoo equityHoldings.per
+  etfPbr?: number | null; // etf_included 만 — Yahoo equityHoldings.pbr
+  etfRoe?: number | null; // etf_included 만 — Yahoo equityHoldings.roe
 }
 
 /**
@@ -173,10 +175,11 @@ function aggregate(
       value: it.value,
     } as LookThroughLeg;
 
-    // ETF — PER 있으면 귀속 순이익(보유 시장가치 ÷ PER)만 합산. 나머지 재무항목은 없음.
+    // ETF — PER 있으면 귀속 순이익(보유 시장가치 ÷ PER) 합산. PBR 있으면 implied equity도 합산.
     if (it.kind === "etf_included" && it.etfPer != null && it.etfPer > 0) {
       const netIncomeMine = it.value / it.etfPer;
       sum.netIncome += netIncomeMine;
+      if (it.etfPbr != null && it.etfPbr > 0) sum.equity += it.value / it.etfPbr;
       coveredValue += it.value;
       legs.push({
         ...base,
@@ -184,6 +187,8 @@ function aggregate(
         reason: "",
         netIncomeMine,
         per: it.etfPer,
+        pbr: it.etfPbr ?? null,
+        roe: it.etfRoe ?? null,
       });
       continue;
     }
@@ -331,13 +336,14 @@ export async function computeLookThrough(
   const fundOf = new Map<string, Fundamentals | null>(
     candidates.map((c, i) => [c.slice.symbol, funds[i]]),
   );
-  const etfPerOf = new Map<string, number | null>(
-    etfs.map((c, i) => [c.slice.symbol, etfResults[i]?.equityHoldings.per ?? null]),
+  const etfStatsOf = new Map(
+    etfs.map((c, i) => [c.slice.symbol, etfResults[i]?.equityHoldings ?? null]),
   );
 
   const items: AggItem[] = classified.map((c) => {
     if (c.kind === "etf_pending") {
-      const etfPer = etfPerOf.get(c.slice.symbol) ?? null;
+      const eq = etfStatsOf.get(c.slice.symbol) ?? null;
+      const etfPer = eq?.per ?? null;
       return {
         symbol: c.slice.symbol,
         name: c.slice.name,
@@ -347,6 +353,8 @@ export async function computeLookThrough(
         kind: etfPer != null && etfPer > 0 ? "etf_included" : "etf_no_per",
         fund: null,
         etfPer: etfPer ?? undefined,
+        etfPbr: eq?.pbr ?? null,
+        etfRoe: eq?.roe ?? null,
       };
     }
     return {
