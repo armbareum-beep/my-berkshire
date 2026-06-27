@@ -21,8 +21,6 @@ import {
   getLatestFundamentalSet,
   type Fundamentals,
 } from "./dart";
-import { getEtfStats } from "./etfStats";
-import { findCatalogItem } from "./catalog";
 import { loadSecurityMeta } from "../securities";
 import { isCrypto } from "../securities";
 import {
@@ -109,8 +107,8 @@ export interface LookThrough {
 const REASON: Record<Exclude<LegStatus, "included">, string> = {
   no_disclosure: "공시·발행주식수 없음",
   us_pending: "미국 — 펀더멘털 연동 예정",
-  etf_pending: "ETF — PER 데이터 없음",
-  etf_no_per: "ETF — PER 데이터 없음",
+  etf_pending: "ETF — 투시 대상 아님(패시브 지수)",
+  etf_no_per: "ETF — 투시 대상 아님(패시브 지수)",
   no_earnings: "이익이 없는 자산",
 };
 
@@ -134,11 +132,8 @@ interface AggItem {
   assetType: string;
   value: number; // 보유 시장가치(₩)
   quantity: number; // 내 보유수량
-  kind: "candidate" | "us_pending" | "etf_included" | "etf_no_per" | "etf_pending" | "no_earnings";
+  kind: "candidate" | "us_pending" | "etf_no_per" | "etf_pending" | "no_earnings";
   fund: Fundamentals | null; // candidate 만(없으면 no_disclosure)
-  etfPer?: number; // etf_included 만 — Yahoo equityHoldings.per
-  etfPbr?: number | null; // etf_included 만 — Yahoo equityHoldings.pbr
-  etfRoe?: number | null; // etf_included 만 — Yahoo equityHoldings.roe
 }
 
 /**
@@ -175,28 +170,8 @@ function aggregate(
       value: it.value,
     } as LookThroughLeg;
 
-    // ETF — PER 있으면 귀속 순이익(보유 시장가치 ÷ PER) 합산. PBR 있으면 implied equity도 합산.
-    if (it.kind === "etf_included" && it.etfPer != null && it.etfPer > 0) {
-      const netIncomeMine = it.value / it.etfPer;
-      sum.netIncome += netIncomeMine;
-      if (it.etfPbr != null && it.etfPbr > 0) sum.equity += it.value / it.etfPbr;
-      coveredValue += it.value;
-      legs.push({
-        ...base,
-        status: "included",
-        reason: "",
-        netIncomeMine,
-        per: it.etfPer,
-        pbr: it.etfPbr ?? null,
-        roe: it.etfRoe ?? null,
-      });
-      continue;
-    }
-
     if (it.kind !== "candidate") {
-      const status: Exclude<LegStatus, "included"> =
-        it.kind === "etf_included" ? "etf_no_per" : it.kind;
-      legs.push({ ...base, status, reason: REASON[status] });
+      legs.push({ ...base, status: it.kind, reason: REASON[it.kind] });
       continue;
     }
 
@@ -310,63 +285,29 @@ export async function computeLookThrough(
   });
 
   const candidates = classified.filter((c) => c.kind === "candidate");
-  const etfs = classified.filter((c) => c.kind === "etf_pending");
 
-  const [funds, etfResults] = await Promise.all([
-    Promise.all(
-      candidates.map(async (c) => {
-        if (basis === "fy")
-          return getFundamentals(c.slice.symbol, year, supabase);
-        const set = await getLatestFundamentalSet(c.slice.symbol, year, supabase);
-        return set.ttm ?? set.latestAnnual;
-      }),
-    ),
-    Promise.all(
-      etfs.map(async (c) => {
-        try {
-          const proxy = findCatalogItem(c.slice.symbol)?.yahooProxy;
-          return await getEtfStats(c.slice.symbol, proxy);
-        } catch {
-          return null;
-        }
-      }),
-    ),
-  ]);
+  const funds = await Promise.all(
+    candidates.map(async (c) => {
+      if (basis === "fy")
+        return getFundamentals(c.slice.symbol, year, supabase);
+      const set = await getLatestFundamentalSet(c.slice.symbol, year, supabase);
+      return set.ttm ?? set.latestAnnual;
+    }),
+  );
 
   const fundOf = new Map<string, Fundamentals | null>(
     candidates.map((c, i) => [c.slice.symbol, funds[i]]),
   );
-  const etfStatsOf = new Map(
-    etfs.map((c, i) => [c.slice.symbol, etfResults[i]?.equityHoldings ?? null]),
-  );
 
-  const items: AggItem[] = classified.map((c) => {
-    if (c.kind === "etf_pending") {
-      const eq = etfStatsOf.get(c.slice.symbol) ?? null;
-      const etfPer = eq?.per ?? null;
-      return {
-        symbol: c.slice.symbol,
-        name: c.slice.name,
-        assetType: c.assetType,
-        value: c.slice.value,
-        quantity: c.slice.quantity,
-        kind: etfPer != null && etfPer > 0 ? "etf_included" : "etf_no_per",
-        fund: null,
-        etfPer: etfPer ?? undefined,
-        etfPbr: eq?.pbr ?? null,
-        etfRoe: eq?.roe ?? null,
-      };
-    }
-    return {
-      symbol: c.slice.symbol,
-      name: c.slice.name,
-      assetType: c.assetType,
-      value: c.slice.value,
-      quantity: c.slice.quantity,
-      kind: c.kind,
-      fund: c.kind === "candidate" ? (fundOf.get(c.slice.symbol) ?? null) : null,
-    };
-  });
+  const items: AggItem[] = classified.map((c) => ({
+    symbol: c.slice.symbol,
+    name: c.slice.name,
+    assetType: c.assetType,
+    value: c.slice.value,
+    quantity: c.slice.quantity,
+    kind: c.kind === "etf_pending" ? "etf_no_per" : c.kind,
+    fund: c.kind === "candidate" ? (fundOf.get(c.slice.symbol) ?? null) : null,
+  }));
 
   return aggregate(items, invested, basis);
 }
