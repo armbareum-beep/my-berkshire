@@ -23,9 +23,11 @@ export function qtyUnit(symbol: string): string {
   return isCrypto(symbol) ? "개" : "주";
 }
 
-/** 종목코드 → 국가(자산배분 태그). 6자리=한국, 코인=기타, 그 외=미국. */
+/** 종목코드 → 국가(자산배분 태그). 카탈로그 underlyingCountry 우선, 없으면 6자리=한국/코인=기타/그외=미국. */
 export function countryOf(symbol: string): string {
   if (isCrypto(symbol)) return "기타";
+  const cat = findCatalogItem(symbol);
+  if (cat?.underlyingCountry) return cat.underlyingCountry;
   return /^\d{6}$/.test(symbol) ? "한국" : "미국";
 }
 

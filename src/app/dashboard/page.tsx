@@ -27,7 +27,7 @@ import { loadAccountGroups, type AccountGroup } from "@/lib/accounts";
 import { filterIncludedAccountGroups } from "@/lib/members";
 import { loadWatchlist } from "@/lib/watchlist";
 import { loadSecurityNames, loadSecurityMeta } from "@/lib/securities";
-import { groupAllocationByType } from "@/lib/allocation";
+import { groupAllocationByTypeWithEtfCountry } from "@/lib/allocation";
 import { quarterBounds } from "@/lib/finance/quarterClose";
 import { resolveHomeSignals, loadDismissed, type HomeSignal } from "@/lib/finance/homeSignal";
 import { computeCelebrations, mergeCelebrations } from "@/lib/celebration";
@@ -781,7 +781,7 @@ async function HoldingsStreamed({
             gain: h.gain === null ? null : h.gain * factorUSD,
           })),
         }));
-  const allocationGroups = groupAllocationByType(dataKRW.allocation, secMeta);
+  const allocationGroups = groupAllocationByTypeWithEtfCountry(dataKRW.allocation, secMeta);
 
   return (
     <div className="flex flex-col gap-4">
