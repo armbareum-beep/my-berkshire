@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getPortfolio } from "@/lib/portfolio";
 import { syncDividends } from "@/lib/dividends/sync";
 import { computeDashboard } from "@/lib/dashboard";
+import { getFxRateInfo } from "@/lib/finance/fx";
 import { computeBenchmark } from "@/lib/finance/benchmark";
 import { parsePlan, planProgress } from "@/lib/plan";
 import { getNextAction } from "@/lib/nextAction";
@@ -215,6 +216,8 @@ async function DashboardContent({
     portfolio.events,
     Number(holding.initial_valuation),
   );
+  const foreignCcys = Object.keys(pools).filter((c) => c !== "KRW");
+  const fxInfo = foreignCcys.length > 0 ? await getFxRateInfo(foreignCcys) : {};
   // 재방문 후크(토스식 알림 큐) — 공시·배당·리포트·관심종목 변동을 우선순위 1개씩.
   const heldSymbols = Object.keys(portfolio.positions).filter(
     (s) => portfolio.positions[s] > 0,
@@ -282,6 +285,7 @@ async function DashboardContent({
             cashWeight={dataKRW.cashWeight}
             currency="KRW"
             pools={pools}
+            fxInfo={fxInfo}
             footer={<CardAction href="/dividends" scroll={false}>배당 — 언제 얼마 받나</CardAction>}
           />
         }
@@ -291,6 +295,7 @@ async function DashboardContent({
             cashWeight={dataKRW.cashWeight}
             currency="USD"
             pools={pools}
+            fxInfo={fxInfo}
             footer={<CardAction href="/dividends" scroll={false}>배당 — 언제 얼마 받나</CardAction>}
           />
         }

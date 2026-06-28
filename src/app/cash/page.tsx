@@ -3,13 +3,13 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getPortfolio } from "@/lib/portfolio";
 import { companyCashPools } from "@/lib/finance/valuation";
-import { getFxToKrw } from "@/lib/finance/fx";
+import { getFxRateInfo } from "@/lib/finance/fx";
 import {
   CURRENCIES,
   currencyMeta,
   nativeMoney,
 } from "@/lib/finance/currencies";
-import { won, pct } from "@/lib/format";
+import { won, pct, changeColor } from "@/lib/format";
 import { CountUp } from "@/components/ui/CountUp";
 import { BackButton } from "@/components/BackButton";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
@@ -61,13 +61,13 @@ export async function CashContent({ tab }: { tab?: string }) {
   const codes = [
     ...new Set([...CURRENCIES.map((c) => c.code), ...Object.keys(pools)]),
   ];
-  const fx = await getFxToKrw(codes); // KRW=1, 실패 통화는 빠짐
+  const fxInfo = await getFxRateInfo(codes); // KRW=1, 실패 통화는 빠짐
 
   // 보유(잔액>0) 통화 → 현재 환율 ₩가치. ₩ 먼저, 그다음 ₩가치 큰 순.
   const held = Object.entries(pools)
     .filter(([, v]) => Math.abs(v) > 0.005)
     .map(([code, native]) => {
-      const rate = fx[code] ?? null;
+      const rate = fxInfo[code]?.rate ?? null;
       return { code, native, rate, krw: rate != null ? native * rate : null };
     })
     .sort((a, b) =>
@@ -120,7 +120,7 @@ export async function CashContent({ tab }: { tab?: string }) {
         <section className="rounded-2xl bg-card p-5 shadow-card">
           <ul className="flex flex-col gap-4">
             {CURRENCIES.filter((c) => c.code !== "KRW").map((c) => {
-              const rate = fx[c.code] ?? null;
+              const info = fxInfo[c.code] ?? null;
               return (
                 <li key={c.code}>
                   <Link
@@ -134,12 +134,22 @@ export async function CashContent({ tab }: { tab?: string }) {
                         {c.code}
                       </span>
                     </span>
-                    <span className="ml-auto text-sm font-bold tabular-nums">
-                      {rate != null
-                        ? `1 ${c.code} = ₩${rate.toLocaleString(undefined, {
-                            maximumFractionDigits: 2,
-                          })}`
-                        : "정보 없음"}
+                    <span className="ml-auto flex flex-col items-end">
+                      <span className="text-sm font-bold tabular-nums">
+                        {info != null
+                          ? `1 ${c.code} = ₩${info.rate.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+                          : "정보 없음"}
+                      </span>
+                      {info?.changeAbs != null && (
+                        <span
+                          className="text-xs tabular-nums"
+                          style={{ color: changeColor(info.changeAbs) }}
+                        >
+                          {info.changeAbs >= 0 ? "+" : ""}
+                          {info.changeAbs.toLocaleString(undefined, { maximumFractionDigits: 2 })}원
+                          {" "}({info.changePct != null ? (info.changePct >= 0 ? "+" : "") + pct(Math.abs(info.changePct)) : ""})
+                        </span>
+                      )}
                     </span>
                     <span className="text-muted-foreground">›</span>
                   </Link>
@@ -191,28 +201,43 @@ export async function CashContent({ tab }: { tab?: string }) {
             )}
           </section>
 
-          {/* 통화별 보유 상세(국기·네이티브·₩가치) */}
+          {/* 통화별 보유 상세(국기·네이티브·₩가치·변동) */}
           <section className="rounded-2xl bg-card p-5 shadow-card">
             <p className="mb-3 text-sm font-semibold">통화별 보유</p>
             <ul className="flex flex-col gap-4">
-              {held.map((h) => (
-                <li key={h.code} className="flex items-center gap-3">
-                  <Flag code={h.code} />
-                  <span className="flex flex-col">
-                    <span className="text-sm font-medium">
-                      {currencyMeta(h.code).name}
-                    </span>
-                    {h.code !== "KRW" && (
-                      <span className="text-xs text-muted-foreground tabular-nums">
-                        {h.krw != null ? won(h.krw) : "환율 정보 없음"}
+              {held.map((h) => {
+                const info = h.code !== "KRW" ? fxInfo[h.code] : undefined;
+                return (
+                  <li key={h.code} className="flex items-center gap-3">
+                    <Flag code={h.code} />
+                    <span className="flex flex-col">
+                      <span className="text-sm font-medium">
+                        {currencyMeta(h.code).name}
                       </span>
-                    )}
-                  </span>
-                  <span className="ml-auto font-bold tabular-nums">
-                    {nativeMoney(h.native, h.code)}
-                  </span>
-                </li>
-              ))}
+                      {h.code !== "KRW" && (
+                        <span className="text-xs text-muted-foreground tabular-nums">
+                          {h.krw != null ? won(h.krw) : "환율 정보 없음"}
+                        </span>
+                      )}
+                    </span>
+                    <span className="ml-auto flex flex-col items-end">
+                      <span className="font-bold tabular-nums">
+                        {nativeMoney(h.native, h.code)}
+                      </span>
+                      {info?.changeAbs != null && (
+                        <span
+                          className="text-xs tabular-nums"
+                          style={{ color: changeColor(info.changeAbs) }}
+                        >
+                          {info.changeAbs >= 0 ? "+" : ""}
+                          {info.changeAbs.toLocaleString(undefined, { maximumFractionDigits: 2 })}원
+                          {" "}({info.changePct != null ? (info.changePct >= 0 ? "+" : "") + pct(Math.abs(info.changePct)) : ""})
+                        </span>
+                      )}
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
           </section>
 
