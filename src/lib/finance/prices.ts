@@ -164,7 +164,8 @@ async function getPricesToss(symbols: string[]): Promise<PriceResult> {
         instrumentTypes[sym] = "EQUITY";
         anyOk = true;
       }
-    } catch {
+    } catch (e) {
+      console.error("[Toss] price fetch failed:", String(e));
       rest.push(...eligible); // 토스 실패 → 야후 폴백
     }
   }
