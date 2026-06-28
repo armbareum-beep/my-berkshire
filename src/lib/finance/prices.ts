@@ -156,6 +156,7 @@ async function getPricesToss(symbols: string[]): Promise<PriceResult> {
     try {
       const res = await tossFetch<TossPricesResponse>("/api/v1/prices", {
         params: { symbols: eligible.join(",") },
+        revalidate: 0,
       });
       for (const [sym, q] of Object.entries(normalizeTossPrices(res))) {
         prices[sym] = q.price;
