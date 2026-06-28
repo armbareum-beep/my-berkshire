@@ -126,15 +126,14 @@ export async function StockDetailContent({
   const today = todayKST();
   const fromDate = `${Number(today.slice(0, 4)) - 2}${today.slice(4)}`;
   const fromDisc = `${Number(today.slice(0, 4)) - 1}${today.slice(4)}`;
-  // 보유 종목은 포트폴리오 시세 사용, 미보유(연구·관심종목)는 직접 조회.
+  // portfolio.prices는 전체 보유 종목을 일괄 조회한 캐시 — 피드 소스 오류 시 오래된 값이 남을 수 있음.
+  // 종목 상세에서는 항상 신선 조회해 표시하고, 실패 시 portfolio 캐시를 폴백으로 사용.
   const heldPrice = portfolio.prices[symbol] ?? null;
 
-  // 종목 상세의 독립적인 외부 조회를 한 번에 병렬 — 시세(미보유 시)·관심종목·배당·공시·펀더멘털.
+  // 종목 상세의 독립적인 외부 조회를 한 번에 병렬 — 시세·관심종목·배당·공시·펀더멘털.
   const [priceFetch, watchSymbols, feed, disclosures, fundamentalSet, etfStats] =
     await Promise.all([
-      heldPrice == null
-        ? getKrwPrices([symbol])
-        : Promise.resolve(null),
+      getKrwPrices([symbol]),
       loadWatchlist(supabase, portfolio.holding.id),
       needsFundamentals
         ? getDividends([symbol], fromDate, today)
@@ -175,8 +174,7 @@ export async function StockDetailContent({
     ? { ...(baseStats ?? EMPTY_ETF_STATS), holdings: krxHoldings }
     : baseStats;
   const fundamentals = fundamentalSet.latestAnnual;
-  const price =
-    heldPrice ?? (priceFetch ? priceFetch.prices[symbol] ?? null : null);
+  const price = priceFetch?.prices[symbol] ?? heldPrice ?? null;
   const watched = watchSymbols.includes(symbol); // 관심종목 여부(미보유여도 별표)
 
   // 평균단가 = Σ(매수 수량×단가)/Σ(매수 수량) (활성 이벤트)
