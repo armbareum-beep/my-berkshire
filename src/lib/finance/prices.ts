@@ -164,8 +164,7 @@ async function getPricesToss(symbols: string[]): Promise<PriceResult> {
         instrumentTypes[sym] = "EQUITY";
         anyOk = true;
       }
-    } catch (e) {
-      console.error("[prices] Toss API failed, falling back to Yahoo:", e);
+    } catch {
       rest.push(...eligible); // 토스 실패 → 야후 폴백
     }
   }
