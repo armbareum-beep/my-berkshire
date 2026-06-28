@@ -70,8 +70,15 @@ export default async function GrowthPage() {
     secMeta,
   );
 
-  // 기업 등급 — 납입 원금(invested) 기준(평가액 아님).
-  const tier = companyTier(data.invested);
+  // 기업 등급 — 납입 원금 + 운용기간(가장 오래된 이벤트 날짜 기준) 이중 게이트.
+  const earliestDate =
+    portfolio.events.length > 0
+      ? portfolio.events.reduce((min, e) => (e.date < min ? e.date : min), portfolio.events[0].date)
+      : today;
+  const [ey, em] = earliestDate.split("-").map(Number);
+  const [ty, tm] = today.split("-").map(Number);
+  const monthsActive = Math.max(0, (ty - ey) * 12 + (tm - em));
+  const tier = companyTier(data.invested, monthsActive);
 
   // 분기 결산 스트릭 + 연차보고서 발행 여부
   const reportStreakN = reportStreak(
@@ -91,7 +98,7 @@ export default async function GrowthPage() {
       </div>
 
       {/* 기업 등급(헤드라인) */}
-      <CompanyTierCard tier={tier} invested={data.invested} />
+      <CompanyTierCard tier={tier} invested={data.invested} monthsActive={monthsActive} />
 
       {/* 내 지분 실적(현재 투시 펀더멘털) — DART N+1 으로 무거워 스트리밍 */}
       <Suspense fallback={<GrowthCardSkeleton />}>
