@@ -113,9 +113,9 @@ export function AccountRow({
               {ACCOUNT_TYPE_LABEL[account.accountType]} · 자회사 {holdingsCount}개
             </span>
           </span>
-          <span className="ml-auto flex min-w-0 shrink items-center gap-1">
+          <span className="ml-auto flex shrink-0 items-center gap-1">
             {accountValue != null && (
-              <span className="min-w-0 truncate font-semibold tabular-nums">
+              <span className="font-semibold tabular-nums whitespace-nowrap">
                 {money(accountValue, currency)}
               </span>
             )}
