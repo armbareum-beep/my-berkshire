@@ -24,7 +24,7 @@ import {
 import { loadFinancingReconciliations } from "@/lib/financingReconciliation";
 import { DivisionCard } from "@/components/networth/DivisionCard";
 import { companyCashPools } from "@/lib/finance/valuation";
-import { loadAccountGroups, type AccountGroup } from "@/lib/accounts";
+import { loadAccountGroups, flattenHoldings, type AccountGroup } from "@/lib/accounts";
 import { filterIncludedAccountGroups } from "@/lib/members";
 import { loadWatchlist } from "@/lib/watchlist";
 import { loadSecurityNames, loadSecurityMeta } from "@/lib/securities";
@@ -42,6 +42,7 @@ import { HomeSignalBanner } from "@/components/dashboard/HomeSignalBanner";
 import { ConsolidatedHoldings } from "@/components/dashboard/ConsolidatedHoldings";
 import { CurrencyProvider } from "@/components/dashboard/CurrencyProvider";
 import { CurrencyView } from "@/components/dashboard/CurrencyView";
+import { SectionCard } from "@/components/ui/SectionCard";
 import {
   HeroValuationCard,
   PriceUnavailableCard,
@@ -788,23 +789,24 @@ async function HoldingsStreamed({
 
   return (
     <div className="flex flex-col gap-4">
-      <CardShell
-        title="보유 계좌"
-        href="/holdings"
-        scroll={false}
-        footer={<CardAction href="/accounts">계좌 관리</CardAction>}
+      <SectionCard
+        title="보유 종목"
+        action={
+          <Link href="/holdings" scroll={false} className="text-sm text-muted-foreground transition active:opacity-70">
+            ›
+          </Link>
+        }
       >
         <CurrencyView
-          krw={<ConsolidatedHoldings groups={accountGroupsKRW} currency="KRW" />}
-          usd={<ConsolidatedHoldings groups={accountGroupsUSD} currency="USD" />}
+          krw={<ConsolidatedHoldings holdings={flattenHoldings(accountGroupsKRW)} currency="KRW" />}
+          usd={<ConsolidatedHoldings holdings={flattenHoldings(accountGroupsUSD)} currency="USD" />}
         />
-      </CardShell>
+      </SectionCard>
 
       {/* 보유계좌 → 주식 자산구성. 사업부·현금은 별도 하단 섹션(주식→사업부→현금 순). */}
       {dataKRW.priceAvailable && (
         <AllocationCard
           groups={allocationGroups}
-          footer={<CardAction href="/rebalance">목표비중 · 리밸런싱</CardAction>}
         />
       )}
     </div>

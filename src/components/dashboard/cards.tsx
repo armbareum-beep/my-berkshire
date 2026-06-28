@@ -530,7 +530,15 @@ export function AllocationCard({
 }) {
   if (groups.length === 0) return null;
   return (
-    <CardShell title="자산 구성" href="/allocation" footer={footer}>
+    <SectionCard
+      title="자산 구성"
+      action={
+        <Link href="/allocation" scroll={false} className="text-sm text-muted-foreground transition active:opacity-70">
+          ›
+        </Link>
+      }
+      footer={footer}
+    >
       <div className="flex flex-col">
         {groups.map((g, i) => {
           const totalShare = g.slices.reduce((s, a) => s + a.weight, 0);
@@ -616,7 +624,7 @@ export function AllocationCard({
           );
         })}
       </div>
-    </CardShell>
+    </SectionCard>
   );
 }
 
