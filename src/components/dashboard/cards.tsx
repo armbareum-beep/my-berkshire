@@ -445,6 +445,7 @@ export function CashCard({
   cashWeight,
   currency = "KRW",
   pools,
+  fxInfo,
   footer,
 }: {
   cash: number;
@@ -452,6 +453,8 @@ export function CashCard({
   currency?: Currency;
   /** 통화별 현금 풀(네이티브). 외화 잔액 있으면 분해 표시. */
   pools?: Record<string, number>;
+  /** 환율 + 전날대비 변동 정보. */
+  fxInfo?: Record<string, import("@/lib/finance/fx").FxRateInfo>;
   footer?: React.ReactNode;
 }) {
   // 잔액이 있는 통화만(₩ 먼저, 그다음 보유 외화). 외화가 있을 때만 행 리스트(토스식).
@@ -482,12 +485,23 @@ export function CashCard({
       {hasForeign && (
         <ul className="mt-4 flex flex-col gap-1 border-t border-border pt-3">
           {rows.map(([c, v]) => {
+            const info = c !== "KRW" ? fxInfo?.[c] : undefined;
             const inner = (
               <>
                 <Flag code={c} />
                 <span className="text-sm font-medium">{currencyMeta(c).name}</span>
-                <span className="ml-auto font-bold tabular-nums">
-                  {nativeMoney(v, c)}
+                <span className="ml-auto flex flex-col items-end">
+                  <span className="font-bold tabular-nums">{nativeMoney(v, c)}</span>
+                  {info?.changeAbs != null && (
+                    <span
+                      className="text-xs tabular-nums"
+                      style={{ color: changeColor(info.changeAbs) }}
+                    >
+                      {info.changeAbs >= 0 ? "+" : ""}
+                      {info.changeAbs.toLocaleString(undefined, { maximumFractionDigits: 2 })}원
+                      {" "}({info.changePct != null ? (info.changePct >= 0 ? "+" : "") + pct(Math.abs(info.changePct)) : ""})
+                    </span>
+                  )}
                 </span>
               </>
             );

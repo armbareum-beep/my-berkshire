@@ -89,3 +89,51 @@ export async function getFxToKrw(
 export async function getUsdKrw(): Promise<number | null> {
   return resolveRate("USD");
 }
+
+/** 환율 + 전날대비 변동 정보. */
+export interface FxRateInfo {
+  rate: number;
+  prev: number | null;
+  changeAbs: number | null;
+  changePct: number | null;
+}
+
+/** 야후에서 현재가 + 전일 종가(chartPreviousClose) 함께 취득. */
+async function fetchRateInfo(currency: string): Promise<FxRateInfo | null> {
+  if (currency === "KRW") return { rate: 1, prev: 1, changeAbs: 0, changePct: 0 };
+  try {
+    const res = await fetch(
+      `https://query1.finance.yahoo.com/v8/finance/chart/${currency}KRW=X?interval=1d&range=1d`,
+      { headers: { "User-Agent": "Mozilla/5.0" }, next: { revalidate: 10 } },
+    );
+    if (!res.ok) return null;
+    const json = await res.json();
+    const meta = json?.chart?.result?.[0]?.meta;
+    const rate: unknown = meta?.regularMarketPrice;
+    const prev: unknown = meta?.chartPreviousClose ?? meta?.previousClose;
+    if (typeof rate !== "number" || rate <= 0) return null;
+    const changeAbs = typeof prev === "number" ? rate - prev : null;
+    const changePct = typeof prev === "number" && prev > 0 ? (rate - prev) / prev : null;
+    return { rate, prev: typeof prev === "number" ? prev : null, changeAbs, changePct };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 통화 목록 → 환율 + 전날대비 변동 맵. 표시 전용(항상 야후 소스).
+ * 예: getFxRateInfo(["USD"]) → { USD: { rate: 1511, prev: 1508, changeAbs: 3.2, changePct: 0.0021 } }
+ */
+export async function getFxRateInfo(
+  currencies: string[],
+): Promise<Record<string, FxRateInfo>> {
+  const uniq = [...new Set(currencies)];
+  const out: Record<string, FxRateInfo> = { KRW: { rate: 1, prev: 1, changeAbs: 0, changePct: 0 } };
+  const results = await Promise.allSettled(
+    uniq.filter((c) => c !== "KRW").map((c) => fetchRateInfo(c).then((r) => [c, r] as const)),
+  );
+  for (const r of results) {
+    if (r.status === "fulfilled" && r.value[1] != null) out[r.value[0]] = r.value[1];
+  }
+  return out;
+}
