@@ -11,6 +11,7 @@ import { parsePlan, planProgress } from "@/lib/plan";
 import { loadLiabilities } from "@/lib/liabilities";
 import { totalLiabilities } from "@/lib/finance/liabilities";
 import { loadSecurityMeta } from "@/lib/securities";
+import { fetchKrxEtfTers } from "@/lib/finance/krxEtf";
 import { loadDismissed } from "@/lib/finance/homeSignal";
 import {
   quartersBetween,
@@ -27,6 +28,8 @@ import { StyleCard } from "@/components/dashboard/StyleCard";
 import { LookThroughCard } from "@/components/dashboard/LookThroughCard";
 import { TimelineCard } from "@/components/dashboard/cards";
 import { CompanyTierCard } from "@/components/growth/CompanyTierCard";
+import { EtfSnapshotCard } from "@/components/growth/EtfSnapshotCard";
+import { LockedCard } from "@/components/growth/LockedCard";
 
 /**
  * 성장 허브 — 경쟁이 아니라 *내 지주회사가 자라는* 싱글플레이.
@@ -55,6 +58,43 @@ export default async function GrowthPage() {
     ),
     loadDismissed(supabase, holding.id),
   ]);
+
+  // ETF vs 개별주 분류
+  const etfAllocations = data.allocation.filter(
+    (a) => secMeta[a.symbol]?.assetType === "ETF",
+  );
+  const hasEtf = etfAllocations.length > 0;
+  const hasStock = data.allocation.some(
+    (a) => secMeta[a.symbol]?.assetType !== "ETF",
+  );
+
+  // TER 조회 (ETF 보유 시만, 한국 ETF 6자리 코드 대상)
+  const terMap = hasEtf
+    ? await fetchKrxEtfTers(
+        etfAllocations.map((a) => a.symbol),
+        supabase,
+      )
+    : new Map<string, number>();
+
+  // ETF 슬라이스 + 가중평균 TER 계산
+  const etfSlices = etfAllocations.map((a) => ({
+    symbol: a.symbol,
+    name: secMeta[a.symbol]?.name ?? a.name,
+    weight: a.weight,
+    ter: terMap.get(a.symbol) ?? null,
+  }));
+  let weightedAvgTer: number | null = null;
+  {
+    let terWeightSum = 0;
+    let terSum = 0;
+    for (const s of etfSlices) {
+      if (s.ter !== null) {
+        terWeightSum += s.weight;
+        terSum += s.weight * s.ter;
+      }
+    }
+    if (terWeightSum > 0) weightedAvgTer = terSum / terWeightSum;
+  }
 
   // 규율 점수 입력: 부채(레버리지) + 자본배분 계획 준수율
   const plan = parsePlan(holding.active_plan);
@@ -100,19 +140,37 @@ export default async function GrowthPage() {
       {/* 기업 등급(헤드라인) */}
       <CompanyTierCard tier={tier} invested={data.invested} monthsActive={monthsActive} />
 
-      {/* 내 지분 실적(현재 투시 펀더멘털) — DART N+1 으로 무거워 스트리밍 */}
-      <Suspense fallback={<GrowthCardSkeleton />}>
-        <BusinessSnapshotStreamed
-          supabase={supabase}
-          enabled={data.priceAvailable && data.allocation.length > 0}
-          allocation={data.allocation}
-          invested={data.invested}
-          holdingId={holding.id}
-          portfolioRevision={holding.portfolio_revision}
-          asOfDate={today}
-          year={Number(today.slice(0, 4))}
+      {/* 내 지분 실적(현재 투시 펀더멘털) — 개별주 없으면 잠금 */}
+      {hasStock ? (
+        <Suspense fallback={<GrowthCardSkeleton />}>
+          <BusinessSnapshotStreamed
+            supabase={supabase}
+            enabled={data.priceAvailable && data.allocation.length > 0}
+            allocation={data.allocation}
+            invested={data.invested}
+            holdingId={holding.id}
+            portfolioRevision={holding.portfolio_revision}
+            asOfDate={today}
+            year={Number(today.slice(0, 4))}
+          />
+        </Suspense>
+      ) : (
+        <LockedCard
+          title="🏭 내 지분 실적"
+          description="개별주를 보유하면 열립니다"
         />
-      </Suspense>
+      )}
+
+      {/* ETF 포트폴리오 현황 — ETF 없으면 잠금 */}
+      {hasEtf ? (
+        <EtfSnapshotCard slices={etfSlices} weightedAvgTer={weightedAvgTer} />
+      ) : (
+        <LockedCard
+          title="📦 ETF 포트폴리오"
+          description="ETF를 보유하면 열립니다"
+          href="/etf-portfolio"
+        />
+      )}
 
       {/* 규율 점수 */}
       <StyleCard style={style} />
