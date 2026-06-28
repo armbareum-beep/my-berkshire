@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -35,11 +35,22 @@ export function LogoImage({
     setFailIdx(0);
   }
   const url = srcs[failIdx] ?? null;
+  const imgRef = useRef<HTMLImageElement>(null);
+  // SSR 후 hydration 전에 이미 error가 발생한 이미지를 감지해 다음 후보로 넘김.
+  // (onError는 hydrate 전 발생한 이벤트를 놓치므로 complete + naturalWidth로 재확인)
+  useEffect(() => {
+    const img = imgRef.current;
+    if (img && img.complete && img.naturalWidth === 0) {
+      setFailIdx((i) => i + 1);
+    }
+  }, [url]);
+
   if (!url) return <>{fallback}</>;
 
   return (
     // eslint-disable-next-line @next/next/no-img-element -- 작은 로고, 외부 로고/로컬 SVG라 next/image 불필요
     <img
+      ref={imgRef}
       src={url}
       alt={alt}
       // 회사 로고(fill)는 원을 꽉 채우고, 국기·favicon(inset)은 작게 내접해 잘림 방지.

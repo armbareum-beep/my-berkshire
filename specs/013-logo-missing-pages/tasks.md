@@ -46,6 +46,10 @@ Next.js 단일 앱. 소스는 리포 루트 `src/`, 정적 에셋은 `public/`.
 - [X] T003 `src/components/ui/Avatar.tsx` 리팩터 — 내부 `<img>`/failIdx/onError 로직을 `LogoImage`로
   위임(계약 C2, 동작 보존). `assetImage`의 `srcs/fit` 전달, `fallback`=기존 `brandLogoLabel` 이니셜+색
   배지 그대로. (depends T002)
+- [X] T003b SSR hydration 타이밍 버그 수정 — Next.js SSR 시 `.svg` 404가 hydrate 전 발생하면
+  `onError`를 놓쳐 깨진 이미지가 영구 잔류하던 문제. `LogoImage.tsx`에 `useRef`+`useEffect` 추가:
+  마운트 후 `img.complete && img.naturalWidth===0` 이면 다음 후보로 진행. 아울러
+  `assetImage.ts`의 `localLogos` 순서를 `.png`→`.svg`로 변경(대부분 로고가 `.png`라 첫 시도 성공률 향상).
 
 **Checkpoint**: 공용 폴백 프리미티브 준비 완료 — 증권사 배지가 같은 메커니즘을 재사용할 수 있음.
 

@@ -87,7 +87,7 @@ export function externalLogoSources(symbol: string): string[] {
  */
 function localLogos(symbol: string): string[] {
   const e = logoSlug(symbol);
-  return [`/logos/${e}.svg`, `/logos/${e}.png`];
+  return [`/logos/${e}.png`, `/logos/${e}.svg`];
 }
 
 /**
