@@ -39,12 +39,12 @@ async function fetchChart(y: string): Promise<{
   prevClose: number | null;
   currency: string;
   instrumentType: string;
+  marketTime: number;
 } | null> {
   const res = await fetch(
     `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(y)}?interval=1d&range=1d`,
     {
       headers: { "User-Agent": "Mozilla/5.0" },
-      // 10초 캐시 — 장중 자동갱신(15초)이 새 값을 받도록(매 요청 외부호출은 방지).
       next: { revalidate: 10 },
     },
   );
@@ -57,11 +57,13 @@ async function fetchChart(y: string): Promise<{
   const currency = typeof meta?.currency === "string" ? meta.currency : "KRW";
   const instrumentType =
     typeof meta?.instrumentType === "string" ? meta.instrumentType : "EQUITY";
+  const marketTime = typeof meta?.regularMarketTime === "number" ? meta.regularMarketTime : 0;
   return {
     price,
     prevClose: typeof prev === "number" ? prev : null,
     currency,
     instrumentType,
+    marketTime,
   };
 }
 
@@ -71,16 +73,20 @@ async function fetchOne(symbol: string): Promise<{
   currency: string;
   instrumentType: string;
 } | null> {
-  // KOSPI(.KS) 먼저, 실패 시 KOSDAQ(.KQ) 폴백. 첫 시도 성공이 대부분이라 추가 비용은 드물다.
-  for (const y of toYahooCandidates(symbol)) {
-    try {
-      const hit = await fetchChart(y);
-      if (hit) return hit;
-    } catch {
-      // 다음 후보 시도
-    }
+  const candidates = toYahooCandidates(symbol);
+  if (candidates.length === 1) {
+    // 미국 등 단일 후보
+    try { return await fetchChart(candidates[0]); } catch { return null; }
   }
-  return null;
+  // 국내 6자리: .KS / .KQ 병렬 조회 후 regularMarketTime 최신값 우선.
+  // KS 순차 시도 시 코스닥 종목이 KS 오래된 데이터에 걸려 잘못된 가격을 반환하는 문제 방지.
+  const results = await Promise.allSettled(candidates.map(fetchChart));
+  let best: Awaited<ReturnType<typeof fetchChart>> = null;
+  for (const r of results) {
+    if (r.status !== "fulfilled" || !r.value) continue;
+    if (!best || r.value.marketTime > best.marketTime) best = r.value;
+  }
+  return best;
 }
 
 /** KIS 시세 대상 심볼인가 — 국내 6자리 또는 미국 보통주/ETF 티커(지수·환율·코인 제외). */
