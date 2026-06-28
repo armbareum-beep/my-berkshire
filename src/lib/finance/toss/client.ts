@@ -83,9 +83,13 @@ export async function tossFetch<T>(
   const token = await tossToken();
   const url = new URL(`${base}${path}`);
   for (const [k, v] of Object.entries(opts.params)) url.searchParams.set(k, v);
+  const fetchOpts: RequestInit =
+    opts.revalidate === 0
+      ? { cache: "no-store" }
+      : { next: { revalidate: opts.revalidate ?? 10 } };
   const res = await fetch(url, {
     headers: { authorization: `Bearer ${token}` },
-    next: { revalidate: opts.revalidate ?? 10 },
+    ...fetchOpts,
   });
   if (!res.ok) throw new Error(`Toss ${path} HTTP ${res.status}`);
   return (await res.json()) as T;
