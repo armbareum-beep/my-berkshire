@@ -97,7 +97,7 @@ export function AccountRow({
         {/* 계좌 정보 영역 — 탭하면 계좌 상세(종목 목록)로. 수정 버튼은 링크 밖(중첩 방지). */}
         <Link
           href={`/accounts/${account.id}`}
-          className="flex flex-1 items-center gap-3 transition active:scale-[0.99]"
+          className="flex min-w-0 flex-1 items-center gap-3 transition active:scale-[0.99]"
         >
           {account.broker ? (
             <BrokerChip id={account.broker} />
