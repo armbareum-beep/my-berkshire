@@ -33,7 +33,9 @@ export function Sheet({
   // 이미 다른 시트가 떠 있는 중이면(=시트↔시트 이동) 진입 슬라이드 생략. 첫 마운트 시 1회 판정.
   const [skipEntry] = useState(() => activeSheetCount > 0);
   const closingRef = useRef(false);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startYRef = useRef<number | null>(null);
+  const dragYRef = useRef(0);
 
   // 포털 마운트 — SSR 에는 document 가 없으므로 클라이언트 마운트 후에만.
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -55,10 +57,19 @@ export function Sheet({
     };
   }, []);
 
+  // closeTimerRef 언마운트 시 정리
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    };
+  }, []);
+
   const close = useCallback(() => {
     if (closingRef.current) return;
     closingRef.current = true;
     router.back(); // 한 단계 뒤로(드릴다운 복귀 또는 배경으로). 별도 슬라이드 아웃 없음.
+    // navigation이 실패해도 500ms 후 재시도 허용 (closingRef 영구 잠금 방지)
+    closeTimerRef.current = setTimeout(() => { closingRef.current = false; }, 500);
   }, [router]);
 
   // ESC 닫기(접근성)
@@ -77,14 +88,18 @@ export function Sheet({
   function onTouchMove(e: React.TouchEvent) {
     if (startYRef.current == null) return;
     const delta = e.touches[0].clientY - startYRef.current;
-    if (delta > 0) setDragY(delta);
+    if (delta > 0) {
+      dragYRef.current = delta; // ref는 동기 즉시 반영 — onTouchEnd stale state 방지
+      setDragY(delta);
+    }
   }
   function onTouchEnd() {
-    if (dragY > SWIPE_CLOSE_PX) {
+    if (dragYRef.current > SWIPE_CLOSE_PX) {
       close();
     } else {
       setDragY(0);
     }
+    dragYRef.current = 0;
     startYRef.current = null;
   }
 
