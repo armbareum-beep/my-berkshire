@@ -323,8 +323,13 @@ export function BuyWizard({
 
   if (stage === "qty") {
     const priceNow = mode === "ledger" ? Number(addPrice) : (addMarket ?? 0);
-    // ledger 입력가는 네이티브(USD 종목은 ×환율로 ₩) — 챌린지/라이브의 addMarket 은 이미 ₩.
-    const priceKrwUnit = mode === "ledger" ? priceNow * addFx : priceNow;
+    // ledger 입력가: KRW 직접 입력이면 그대로, 네이티브(USD)이면 ×환율 → ₩. 챌린지/라이브는 addMarket 이 이미 ₩.
+    const priceKrwUnit =
+      mode === "ledger"
+        ? isKrwInputMode
+          ? priceNow // 이미 ₩
+          : priceNow * addFx // 네이티브(예: $) → ₩
+        : priceNow;
     return shell(
       "몇 주 살까요?",
       adding
