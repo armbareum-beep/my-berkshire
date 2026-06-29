@@ -210,6 +210,13 @@ export default async function AllocationDetailPage({
                   >
                     {c.label} ›
                   </Link>
+                ) : tag === "country" && c.label !== "현금" ? (
+                  <Link
+                    href={`/allocation/country?only=${encodeURIComponent(c.label)}`}
+                    className="text-sm font-semibold"
+                  >
+                    {c.label} ›
+                  </Link>
                 ) : (
                   <p className="text-sm font-semibold">{c.label}</p>
                 )}
