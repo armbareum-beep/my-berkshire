@@ -30,6 +30,7 @@ interface CategoryItem {
   quantity: number;
   changeRate: number | null;
   assetType: string;
+  country: string;
 }
 interface Category {
   label: string;
@@ -79,7 +80,7 @@ export default async function AllocationDetailPage({
     const label = tagLabel(meta[a.symbol], cfg.key);
     const cat = map.get(label) ?? { label, value: 0, weight: 0, items: [] };
     cat.value += a.value;
-    cat.items.push({ symbol: a.symbol, name: a.name, value: a.value, avgCost: a.avgCost, quantity: a.quantity, changeRate: a.changeRate, assetType: meta[a.symbol]?.assetType ?? "주식" });
+    cat.items.push({ symbol: a.symbol, name: a.name, value: a.value, avgCost: a.avgCost, quantity: a.quantity, changeRate: a.changeRate, assetType: meta[a.symbol]?.assetType ?? "주식", country: meta[a.symbol]?.country ?? "기타" });
     map.set(label, cat);
   }
   // 현금은 국가·유형에만 슬라이스로(섹터엔 현금 개념 없음).
@@ -195,6 +196,12 @@ export default async function AllocationDetailPage({
               ) : tag === "country" ? (
                 // 국가별 뷰: 주식/ETF 서브그룹
                 <ItemsByType items={c.items} catValue={c.value} currency={data.currency} />
+              ) : tag === "type" && c.label === "주식" ? (
+                // 유형별-주식: 국가별 서브그룹 (한국/미국/기타)
+                <ItemsByCountry items={c.items} catValue={c.value} currency={data.currency} />
+              ) : tag === "type" && c.label === "ETF" ? (
+                // 유형별-ETF: 국가별 mini 요약 + country 배지
+                <EtfItemsWithCountry items={c.items} catValue={c.value} currency={data.currency} />
               ) : (
                 <ul className="flex flex-col gap-1">
                   {c.items.map((it) => {
@@ -236,6 +243,108 @@ export default async function AllocationDetailPage({
         </>
       )}
     </main>
+  );
+}
+
+type CurrencyType = import("@/lib/format").Currency;
+
+function ItemRow({ it, catValue, currency }: { it: CategoryItem; catValue: number; currency: CurrencyType }) {
+  const gain = it.avgCost > 0 ? it.value - it.avgCost * it.quantity : null;
+  return (
+    <StockRow
+      symbol={it.symbol}
+      name={it.name}
+      href={`/stocks/${it.symbol}`}
+      sub={pct(catValue > 0 ? it.value / catValue : 0)}
+      right={
+        <span className="ml-auto flex flex-col items-end">
+          <span className="font-semibold tabular-nums">{money(it.value, currency)}</span>
+          {gain !== null && it.changeRate !== null && (
+            <span className="text-sm font-medium tabular-nums" style={{ color: changeColor(it.changeRate) }}>
+              {signedMoneyShort(gain, currency)} {signedPct(it.changeRate)}
+            </span>
+          )}
+        </span>
+      }
+    />
+  );
+}
+
+/** 유형별-주식 전용: 국가별 서브그룹(한국/미국/기타)으로 표시. */
+function ItemsByCountry({ items, catValue, currency }: { items: CategoryItem[]; catValue: number; currency: CurrencyType }) {
+  const byCountry = new Map<string, CategoryItem[]>();
+  for (const it of items) {
+    const c = it.country;
+    byCountry.set(c, [...(byCountry.get(c) ?? []), it]);
+  }
+  const groups = [...byCountry.entries()].sort(
+    (a, b) => b[1].reduce((s, x) => s + x.value, 0) - a[1].reduce((s, x) => s + x.value, 0)
+  );
+  return (
+    <div className="flex flex-col gap-3">
+      {groups.map(([country, its]) => (
+        <div key={country}>
+          {groups.length > 1 && (
+            <p className="mb-1 text-xs font-semibold text-muted-foreground">
+              {country} · {its.length}종목
+            </p>
+          )}
+          <ul className="flex flex-col gap-1">
+            {its.map((it) => <li key={it.symbol}><ItemRow it={it} catValue={catValue} currency={currency} /></li>)}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** 유형별-ETF 전용: 국가별 mini 요약 + 각 StockRow에 country 배지. */
+function EtfItemsWithCountry({ items, catValue, currency }: { items: CategoryItem[]; catValue: number; currency: CurrencyType }) {
+  const byCountry = new Map<string, number>();
+  for (const it of items) byCountry.set(it.country, (byCountry.get(it.country) ?? 0) + it.value);
+  const total = items.reduce((s, x) => s + x.value, 0);
+  const countrySummary = [...byCountry.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([c, v]) => `${c} ${pct(total > 0 ? v / total : 0)}`)
+    .join(" · ");
+  return (
+    <div className="flex flex-col gap-2">
+      {countrySummary && (
+        <p className="text-xs text-muted-foreground">{countrySummary}</p>
+      )}
+      <ul className="flex flex-col gap-1">
+        {items.map((it) => {
+          const gain = it.avgCost > 0 ? it.value - it.avgCost * it.quantity : null;
+          return (
+            <li key={it.symbol}>
+              <StockRow
+                symbol={it.symbol}
+                name={it.name}
+                href={`/stocks/${it.symbol}`}
+                sub={
+                  <span className="flex items-center gap-1.5">
+                    <span>{pct(catValue > 0 ? it.value / catValue : 0)}</span>
+                    <span className="rounded-full bg-secondary px-1.5 py-0.5 text-xs text-muted-foreground">
+                      {it.country}
+                    </span>
+                  </span>
+                }
+                right={
+                  <span className="ml-auto flex flex-col items-end">
+                    <span className="font-semibold tabular-nums">{money(it.value, currency)}</span>
+                    {gain !== null && it.changeRate !== null && (
+                      <span className="text-sm font-medium tabular-nums" style={{ color: changeColor(it.changeRate) }}>
+                        {signedMoneyShort(gain, currency)} {signedPct(it.changeRate)}
+                      </span>
+                    )}
+                  </span>
+                }
+              />
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 
