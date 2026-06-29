@@ -20,11 +20,14 @@ import { cn } from "@/lib/utils";
  */
 export default async function SleeveAllocationPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ type: string }>;
+  searchParams: Promise<{ country?: string }>;
 }) {
-  const { type: raw } = await params;
+  const [{ type: raw }, sp] = await Promise.all([params, searchParams]);
   const type = decodeURIComponent(raw);
+  const countryFilter = sp.country ? decodeURIComponent(sp.country) : null;
 
   const supabase = await createClient();
   const {
@@ -52,9 +55,14 @@ export default async function SleeveAllocationPage({
   );
   if (inType.length === 0) notFound();
 
-  // 유형 안에서 100% 기준으로 정규화.
-  const sleeveValue = inType.reduce((s, a) => s + a.value, 0);
-  const items = inType
+  // ?country= 파라미터로 특정 국가만 필터 (주식 국가별 카드에서 이동 시)
+  const filtered = countryFilter
+    ? inType.filter((a) => (meta[a.symbol]?.country ?? "기타") === countryFilter)
+    : inType;
+
+  // 유형 안에서 100% 기준으로 정규화 (국가 필터 적용 후 기준).
+  const sleeveValue = filtered.reduce((s, a) => s + a.value, 0);
+  const items = filtered
     .map((a) => ({
       label: a.name,
       symbol: a.symbol as string | undefined,
@@ -100,9 +108,13 @@ export default async function SleeveAllocationPage({
           ))}
         </nav>
       )}
-      <h1 className="text-2xl font-extrabold tracking-tight">{type} 구성</h1>
+      <h1 className="text-2xl font-extrabold tracking-tight">
+        {countryFilter ? `${countryFilter} ${type}` : type} 구성
+      </h1>
       <p className="text-sm text-muted-foreground">
-        {type} 안에서의 종목별 비중입니다(이 유형만 해서 100% 기준).
+        {countryFilter
+          ? `${countryFilter} ${type} 안에서의 종목별 비중입니다.`
+          : `${type} 안에서의 종목별 비중입니다(이 유형만 해서 100% 기준).`}
       </p>
 
       {/* 도넛 + 범례 */}

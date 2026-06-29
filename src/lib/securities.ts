@@ -23,12 +23,24 @@ export function qtyUnit(symbol: string): string {
   return isCrypto(symbol) ? "개" : "주";
 }
 
-/** 종목코드 → 국가(자산배분 태그). 카탈로그 underlyingCountry 우선, 없으면 6자리=한국/코인=기타/그외=미국. */
-export function countryOf(symbol: string): string {
+/** 통화코드 → 국가 태그. 개별 주식 국가 판별 폴백용. */
+const CCY_TO_COUNTRY: Record<string, string> = {
+  USD: "미국", JPY: "일본", EUR: "유럽", HKD: "홍콩",
+  GBP: "영국", CNY: "중국", AUD: "호주", CAD: "캐나다", INR: "인도",
+};
+
+/**
+ * 종목코드 → 국가(자산배분 태그).
+ * 우선순위: catalog.underlyingCountry → 6자리=한국 → 통화 추론 → "기타".
+ * currency 는 Yahoo 조회 시 확보된 네이티브 통화(KRW/USD/JPY 등).
+ */
+export function countryOf(symbol: string, currency?: string | null): string {
   if (isCrypto(symbol)) return "기타";
   const cat = findCatalogItem(symbol);
   if (cat?.underlyingCountry) return cat.underlyingCountry;
-  return /^\d{6}$/.test(symbol) ? "한국" : "미국";
+  if (/^\d{6}$/.test(symbol)) return "한국";
+  if (currency && CCY_TO_COUNTRY[currency]) return CCY_TO_COUNTRY[currency];
+  return "기타";
 }
 
 /** 유형 라벨 — 카탈로그 명시 유형(원자재·코인·ETF) 우선 → 코인 → ETF → 주식. */
@@ -81,7 +93,7 @@ export async function upsertSecurities(
     name: s.name,
     exchange: s.exchange ?? null,
     currency: s.currency ?? "KRW",
-    country: countryOf(s.symbol), // 자산배분 국가 태그(코드로 자동 판별)
+    country: countryOf(s.symbol, s.currency), // 자산배분 국가 태그(통화 기반 추론)
     asset_type: assetTypeOf(s.instrumentType, s.symbol), // 유형 태그(주식/ETF/코인)
   }));
   await supabase
@@ -158,7 +170,7 @@ const loadSecurityMetaCached = cache(async function loadSecurityMetaCached(
       name: r?.name ?? findCatalogItem(s)?.name ?? s,
       // 카탈로그 underlyingCountry(ETF 추종국) → DB 적재값 → 코드 휴리스틱 순으로 우선.
       // DB에 stale "한국"이 저장된 KRX 상장 미국 ETF를 덮어쓰기 위해 카탈로그를 먼저 확인.
-      country: findCatalogItem(s)?.underlyingCountry ?? r?.country ?? countryOf(s),
+      country: findCatalogItem(s)?.underlyingCountry ?? r?.country ?? countryOf(s, r?.currency),
       assetType: r?.asset_type ?? assetTypeOf(null, s),
       currency: r?.currency ?? "KRW",
       sector: r?.sector ?? null,

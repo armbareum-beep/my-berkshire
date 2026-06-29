@@ -7,7 +7,7 @@ import { computeDashboard } from "@/lib/dashboard";
 import type { AllocationSlice } from "@/lib/dashboard";
 import { getPortfolio } from "@/lib/portfolio";
 import { loadSecurityMeta, backfillSectors } from "@/lib/securities";
-import { groupByTag, groupAllocationByType } from "@/lib/allocation";
+import { groupByTag, groupAllocationByType, groupTypeByCountry } from "@/lib/allocation";
 import type { Currency } from "@/lib/format";
 import { BackButton } from "@/components/BackButton";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
@@ -37,17 +37,25 @@ export default async function AllocationPage() {
   const byType = groupByTag(data.allocation, meta, data.cash, "assetType");
 
   // 유형 슬리브(주식/ETF/원자재/코인) — 각 유형 안에서 비중을 100%로 정규화.
-  const sleeves = groupAllocationByType(data.allocation, meta).map((g) => {
+  const typeGroups = groupAllocationByType(data.allocation, meta);
+  const sleeves = typeGroups.map((g) => {
     const sleeveValue = g.slices.reduce((s, a) => s + a.value, 0);
     return {
       type: g.type,
       slices: g.slices.map((a) => ({
         label: a.name,
         value: a.value,
-        weight: sleeveValue > 0 ? a.value / sleeveValue : 0, // 유형 내 100%
+        weight: sleeveValue > 0 ? a.value / sleeveValue : 0,
       })),
     };
   });
+
+  // 주식 유형 → 국가별 서브카드 (한국 주식 구성 / 미국 주식 구성 / ...)
+  const stockByCountry = groupTypeByCountry(data.allocation, meta, "주식");
+
+  // ETF 유형 → 기초자산 국가별 비중 (미국 ETF 60% / 중국 ETF 30% ...)
+  const etfSlices = data.allocation.filter((a) => meta[a.symbol]?.assetType === "ETF");
+  const etfByCountry = groupByTag(etfSlices, meta, 0, "country");
 
   return (
     <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
@@ -85,17 +93,61 @@ export default async function AllocationPage() {
             currency={data.currency}
             href="/allocation/type"
           />
-          {/* 유형별 구성 — 각 유형 안에서 종목 비중 100%(2단계). 도넛 상세로 이동. */}
-          {sleeves.map((s) => (
-            <BreakdownCard
-              key={s.type}
-              title={`${s.type} 구성`}
-              slices={s.slices}
-              currency={data.currency}
-              href={`/allocation/sleeve/${encodeURIComponent(s.type)}`}
-            />
-          ))}
-          {/* 국가별 */}
+          {/* 유형별 구성 — 주식은 국가별 서브카드, 나머지는 기존대로. */}
+          {sleeves.map((s) => {
+            if (s.type === "주식") {
+              // 주식: 국가별 카드로 분리 (한국 주식 구성 / 미국 주식 구성 / ...)
+              return stockByCountry.map((g) => {
+                const gValue = g.slices.reduce((sum, a) => sum + a.value, 0);
+                return (
+                  <BreakdownCard
+                    key={`주식-${g.type}`}
+                    title={`${g.type} 주식 구성`}
+                    slices={g.slices.map((a) => ({
+                      label: a.name,
+                      value: a.value,
+                      weight: gValue > 0 ? a.value / gValue : 0,
+                    }))}
+                    currency={data.currency}
+                    href={`/allocation/sleeve/${encodeURIComponent("주식")}?country=${encodeURIComponent(g.type)}`}
+                  />
+                );
+              });
+            }
+            if (s.type === "ETF") {
+              // ETF: 국가별 비중 카드 + 종목 구성 카드
+              return (
+                <>
+                  {etfByCountry.length > 0 && (
+                    <BreakdownCard
+                      key="ETF-국가별"
+                      title="ETF 국가별"
+                      slices={etfByCountry}
+                      currency={data.currency}
+                      href="/allocation/country"
+                    />
+                  )}
+                  <BreakdownCard
+                    key="ETF-구성"
+                    title="ETF 구성"
+                    slices={s.slices}
+                    currency={data.currency}
+                    href={`/allocation/sleeve/${encodeURIComponent("ETF")}`}
+                  />
+                </>
+              );
+            }
+            return (
+              <BreakdownCard
+                key={s.type}
+                title={`${s.type} 구성`}
+                slices={s.slices}
+                currency={data.currency}
+                href={`/allocation/sleeve/${encodeURIComponent(s.type)}`}
+              />
+            );
+          })}
+          {/* 국가별 (전체) */}
           <BreakdownCard
             title="국가별"
             slices={byCountry}

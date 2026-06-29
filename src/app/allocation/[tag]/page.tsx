@@ -29,6 +29,7 @@ interface CategoryItem {
   avgCost: number;
   quantity: number;
   changeRate: number | null;
+  assetType: string;
 }
 interface Category {
   label: string;
@@ -78,7 +79,7 @@ export default async function AllocationDetailPage({
     const label = tagLabel(meta[a.symbol], cfg.key);
     const cat = map.get(label) ?? { label, value: 0, weight: 0, items: [] };
     cat.value += a.value;
-    cat.items.push({ symbol: a.symbol, name: a.name, value: a.value, avgCost: a.avgCost, quantity: a.quantity, changeRate: a.changeRate });
+    cat.items.push({ symbol: a.symbol, name: a.name, value: a.value, avgCost: a.avgCost, quantity: a.quantity, changeRate: a.changeRate, assetType: meta[a.symbol]?.assetType ?? "주식" });
     map.set(label, cat);
   }
   // 현금은 국가·유형에만 슬라이스로(섹터엔 현금 개념 없음).
@@ -191,6 +192,9 @@ export default async function AllocationDetailPage({
                     현금 잔고입니다.
                   </p>
                 )
+              ) : tag === "country" ? (
+                // 국가별 뷰: 주식/ETF 서브그룹
+                <ItemsByType items={c.items} catValue={c.value} currency={data.currency} />
               ) : (
                 <ul className="flex flex-col gap-1">
                   {c.items.map((it) => {
@@ -232,5 +236,74 @@ export default async function AllocationDetailPage({
         </>
       )}
     </main>
+  );
+}
+
+/** 국가별 뷰 전용: 동일 국가 items를 자산유형(주식/ETF/원자재/코인)별 서브그룹으로 표시. */
+function ItemsByType({
+  items,
+  catValue,
+  currency,
+}: {
+  items: CategoryItem[];
+  catValue: number;
+  currency: import("@/lib/format").Currency;
+}) {
+  const TYPE_ORDER = ["주식", "ETF", "원자재", "코인"];
+  const byType = new Map<string, CategoryItem[]>();
+  for (const it of items) {
+    const t = it.assetType;
+    const list = byType.get(t) ?? [];
+    list.push(it);
+    byType.set(t, list);
+  }
+  const groups = TYPE_ORDER.filter((t) => byType.has(t))
+    .map((t) => ({ type: t, items: byType.get(t)! }));
+  // 순서에 없는 유형도 뒤에 추가
+  for (const [t, its] of byType.entries()) {
+    if (!TYPE_ORDER.includes(t)) groups.push({ type: t, items: its });
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {groups.map((g) => (
+        <div key={g.type}>
+          {groups.length > 1 && (
+            <p className="mb-1 text-xs font-semibold text-muted-foreground">{g.type}</p>
+          )}
+          <ul className="flex flex-col gap-1">
+            {g.items.map((it) => {
+              const gain = it.avgCost > 0 ? it.value - it.avgCost * it.quantity : null;
+              return (
+                <li key={it.symbol}>
+                  <StockRow
+                    symbol={it.symbol}
+                    name={it.name}
+                    href={`/stocks/${it.symbol}`}
+                    sub={pct(catValue > 0 ? it.value / catValue : 0)}
+                    right={
+                      <span className="ml-auto flex flex-col items-end">
+                        <span className="font-semibold tabular-nums">
+                          {money(it.value, currency)}
+                        </span>
+                        {gain !== null && it.changeRate !== null && (
+                          <span
+                            className="text-sm font-medium tabular-nums"
+                            style={{ color: changeColor(it.changeRate) }}
+                          >
+                            {signedMoneyShort(gain, currency)}{" "}
+                            {signedPct(it.changeRate)}
+                          </span>
+                        )}
+                      </span>
+                    }
+                  />
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
+    </div>
   );
 }
