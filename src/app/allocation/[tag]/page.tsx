@@ -47,7 +47,7 @@ export default async function AllocationDetailPage({
   searchParams: Promise<{ only?: string; tab?: string }>;
 }) {
   const [{ tag }, sp] = await Promise.all([params, searchParams]);
-  const onlyCountry = sp.only ? decodeURIComponent(sp.only) : null;
+  const onlyLabel = sp.only ? decodeURIComponent(sp.only) : null;
   const activeTab = sp.tab ? decodeURIComponent(sp.tab) : null;
   const cfg = TAGS[tag as keyof typeof TAGS];
   if (!cfg) notFound();
@@ -104,14 +104,14 @@ export default async function AllocationDetailPage({
     .sort((a, b) => b.value - a.value);
 
   // ?only=한국 → 해당 국가만 표시 (홈 카드 국가 탭에서 진입)
-  const categories = onlyCountry
-    ? allCategories.filter((c) => c.label === onlyCountry)
+  const categories = onlyLabel
+    ? allCategories.filter((c) => c.label === onlyLabel)
     : allCategories;
 
-  const pageTitle = onlyCountry ? `${onlyCountry} 자산` : cfg.title;
+  const pageTitle = onlyLabel ? `${onlyLabel} 자산` : cfg.title;
 
   // ?only= 단일국가 뷰: 탭별 항목을 미리 계산 (도넛·목록 공유)
-  const onlyItems = onlyCountry && categories[0] ? categories[0].items : null;
+  const onlyItems = onlyLabel && categories[0] ? categories[0].items : null;
   const onlyAssetTypes = onlyItems
     ? [...new Set(onlyItems.map((it) => it.assetType))].sort()
     : null;
@@ -133,7 +133,7 @@ export default async function AllocationDetailPage({
       <BottomTabBar />
       <BackButton />
       {/* 단일 국가 뷰에서는 탭 숨김 */}
-      {!onlyCountry && (
+      {!onlyLabel && (
         <nav className="flex gap-1 rounded-xl bg-secondary p-1">
           {(
             [
@@ -214,9 +214,9 @@ export default async function AllocationDetailPage({
                   >
                     {c.label} ›
                   </Link>
-                ) : tag === "country" ? (
+                ) : tag === "country" || tag === "sector" ? (
                   <Link
-                    href={`/allocation/country?only=${encodeURIComponent(c.label)}`}
+                    href={`/allocation/${tag}?only=${encodeURIComponent(c.label)}`}
                     className="text-sm font-semibold"
                   >
                     {c.label} ›
@@ -236,15 +236,24 @@ export default async function AllocationDetailPage({
                     현금 잔고입니다.
                   </p>
                 )
-              ) : tag === "country" && onlyCountry && tabItems && onlyAssetTypes ? (
-                // 국가 단일뷰: 페이지 레벨에서 미리 계산한 탭·종목 사용
+              ) : tag === "sector" && onlyLabel ? (
+                // 산업별 단일뷰: 평면 목록 (탭 없음)
+                <ul className="flex flex-col gap-1">
+                  {c.items.map((it) => (
+                    <li key={it.symbol}>
+                      <ItemRow it={it} catValue={c.value} currency={data.currency} />
+                    </li>
+                  ))}
+                </ul>
+              ) : tag === "country" && onlyLabel && tabItems && onlyAssetTypes ? (
+                // 국가 단일뷰: 주식/ETF 탭
                 <div className="flex flex-col gap-3">
                   {onlyAssetTypes.length > 1 && (
                     <nav className="flex gap-1 rounded-xl bg-secondary p-1">
                       {onlyAssetTypes.map((t) => (
                         <Link
                           key={t}
-                          href={`/allocation/country?only=${encodeURIComponent(onlyCountry)}&tab=${encodeURIComponent(t)}`}
+                          href={`/allocation/country?only=${encodeURIComponent(onlyLabel)}&tab=${encodeURIComponent(t)}`}
                           className={cn(
                             "flex-1 rounded-lg py-1.5 text-center text-sm font-semibold transition",
                             t === resolvedTab ? "bg-card text-foreground shadow-sm" : "text-muted-foreground",
