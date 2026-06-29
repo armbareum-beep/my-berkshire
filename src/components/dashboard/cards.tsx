@@ -535,7 +535,7 @@ export function CashCard({
  * 헤더 › → /allocation/type (전체 유형별 비중).
  */
 export function AllocationCard({ slices }: { slices: TagSlice[] }) {
-  const items = slices.filter((s) => s.label !== "현금");
+  const items = slices.filter((s) => s.label !== "현금" && s.label !== "기타");
   if (items.length === 0) return null;
   return (
     <SectionCard
