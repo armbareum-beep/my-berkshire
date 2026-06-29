@@ -264,6 +264,8 @@ export async function recordEvent(input: RecordInput): Promise<Result> {
     return { ok: false, error: "종목을 선택하세요." };
   if (needsQty && !(Number(input.quantity) > 0))
     return { ok: false, error: "수량을 입력하세요." };
+  // BRK/B → BRK-B (Yahoo Finance 형식 통일)
+  if (input.symbol) input = { ...input, symbol: input.symbol.replace(/\//g, "-") };
 
   // 가격·통화: challenge/live 매수·매도는 현재 시세(네이티브)로 강제. 외국 종목은 현재 환율로 ₩ 환산.
   //   기능통화 = KRW → 외국 주식/배당은 ₩로 환산해 장부 기록(현금도 ₩ 단일).
@@ -466,7 +468,9 @@ export async function recordBuys(input: {
   if ("error" in ctx) return { ok: false, error: ctx.error };
   const { supabase, holding } = ctx;
 
-  const items = input.items.filter((i) => i.symbol && Number(i.quantity) > 0);
+  const items = input.items
+    .filter((i) => i.symbol && Number(i.quantity) > 0)
+    .map((i) => ({ ...i, symbol: i.symbol.replace(/\//g, "-") }));
   if (items.length === 0) return { ok: false, error: "담은 종목이 없습니다." };
 
   const accountId = input.accountId ?? ctx.mainAccountId;

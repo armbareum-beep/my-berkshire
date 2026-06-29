@@ -31,7 +31,8 @@ export interface PriceResult {
  * 그 외(미국 등)는 그대로. 우리 내부 코드는 거래소 구분 없이 6자리만 저장하므로 둘 다 던져 본다.
  */
 function toYahooCandidates(symbol: string): string[] {
-  return /^\d{6}$/.test(symbol) ? [`${symbol}.KS`, `${symbol}.KQ`] : [symbol];
+  const s = symbol.replace(/\//g, "-"); // BRK/B → BRK-B (Yahoo 형식)
+  return /^\d{6}$/.test(s) ? [`${s}.KS`, `${s}.KQ`] : [s];
 }
 
 async function fetchChart(y: string): Promise<{
