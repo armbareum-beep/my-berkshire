@@ -203,14 +203,18 @@ export default async function AllocationDetailPage({
                   className="h-3 w-3 rounded-full"
                   style={{ backgroundColor: donutColor(i) }}
                 />
-                {tag === "type" && c.label !== "현금" ? (
+                {c.label === "현금" ? (
+                  <Link href="/cash" className="text-sm font-semibold">
+                    현금 ›
+                  </Link>
+                ) : tag === "type" ? (
                   <Link
                     href={`/allocation/sleeve/${encodeURIComponent(c.label)}`}
                     className="text-sm font-semibold"
                   >
                     {c.label} ›
                   </Link>
-                ) : tag === "country" && c.label !== "현금" ? (
+                ) : tag === "country" ? (
                   <Link
                     href={`/allocation/country?only=${encodeURIComponent(c.label)}`}
                     className="text-sm font-semibold"
