@@ -203,7 +203,7 @@ export default async function AllocationDetailPage({
                   className="h-3 w-3 rounded-full"
                   style={{ backgroundColor: donutColor(i) }}
                 />
-                {tag === "type" ? (
+                {tag === "type" && c.label !== "현금" ? (
                   <Link
                     href={`/allocation/sleeve/${encodeURIComponent(c.label)}`}
                     className="text-sm font-semibold"
