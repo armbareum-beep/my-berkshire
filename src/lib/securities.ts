@@ -170,7 +170,10 @@ const loadSecurityMetaCached = cache(async function loadSecurityMetaCached(
       name: r?.name ?? findCatalogItem(s)?.name ?? s,
       // 카탈로그 underlyingCountry(ETF 추종국) → DB 적재값 → 코드 휴리스틱 순으로 우선.
       // DB에 stale "한국"이 저장된 KRX 상장 미국 ETF를 덮어쓰기 위해 카탈로그를 먼저 확인.
-      country: findCatalogItem(s)?.underlyingCountry ?? r?.country ?? countryOf(s, r?.currency),
+      // DB에 "기타"가 저장된 경우 통화 기반으로 재추론(CCY_TO_COUNTRY 추가 전 적재된 stale값 무시).
+      country:
+        findCatalogItem(s)?.underlyingCountry ??
+        (r?.country && r.country !== "기타" ? r.country : countryOf(s, r?.currency)),
       assetType: r?.asset_type ?? assetTypeOf(null, s),
       currency: r?.currency ?? "KRW",
       sector: r?.sector ?? null,
