@@ -558,9 +558,9 @@ export function AllocationCard({
           const totalShare = g.slices.reduce((s, a) => s + a.weight, 0);
           const groupValue = g.slices.reduce((s, a) => s + a.value, 0);
 
-          // ETF 섹션: 개별 종목 대신 기초자산 국가별로 집계해서 표시.
-          const isEtf = g.type === "ETF";
-          const etfByCountry = isEtf
+          // 주식·ETF: 개별 종목 대신 국가별로 집계해서 표시.
+          const useCountryView = g.type === "주식" || g.type === "ETF";
+          const byCountry = useCountryView
             ? [...g.slices
                 .reduce((m, s) => {
                   const key = s.countryTag ?? "기타";
@@ -594,8 +594,8 @@ export function AllocationCard({
                 </span>
               </summary>
               <ul className="flex flex-col gap-2.5 pb-3">
-                {etfByCountry
-                  ? etfByCountry.map((c) => {
+                {byCountry
+                  ? byCountry.map((c) => {
                       const w = groupValue > 0 ? c.value / groupValue : 0;
                       return (
                         <li key={c.label}>

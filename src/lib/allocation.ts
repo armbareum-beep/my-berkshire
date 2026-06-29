@@ -68,8 +68,8 @@ export function groupAllocationByTypeWithEtfCountry(
     const m = meta[a.symbol];
     const assetType = m?.assetType ?? "주식";
     const list = byType.get(assetType) ?? [];
-    // ETF slice에 기초자산 국가 태그 첨부 — 카드에서 국가별 집계용.
-    list.push(assetType === "ETF" ? { ...a, countryTag: m?.country ?? "기타" } : a);
+    // 주식·ETF 모두 countryTag 첨부 — 카드에서 국가별 집계용.
+    list.push({ ...a, countryTag: m?.country ?? "기타" });
     byType.set(assetType, list);
   }
   // 고정 순서: 주식 → ETF → 원자재 → 코인
