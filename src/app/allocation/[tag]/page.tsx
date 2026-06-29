@@ -44,10 +44,11 @@ export default async function AllocationDetailPage({
   searchParams,
 }: {
   params: Promise<{ tag: string }>;
-  searchParams: Promise<{ only?: string }>;
+  searchParams: Promise<{ only?: string; tab?: string }>;
 }) {
   const [{ tag }, sp] = await Promise.all([params, searchParams]);
   const onlyCountry = sp.only ? decodeURIComponent(sp.only) : null;
+  const activeTab = sp.tab ? decodeURIComponent(sp.tab) : null;
   const cfg = TAGS[tag as keyof typeof TAGS];
   if (!cfg) notFound();
 
@@ -206,8 +207,41 @@ export default async function AllocationDetailPage({
                     현금 잔고입니다.
                   </p>
                 )
-              ) : tag === "country" ? (
-                // 국가별 뷰: 주식/ETF 서브그룹
+              ) : tag === "country" && onlyCountry ? (() => {
+                // 국가 단일뷰 (?only=한국): 주식/ETF 탭 분리
+                const assetTypes = [...new Set(c.items.map((it) => it.assetType))].sort();
+                const tab = activeTab && assetTypes.includes(activeTab) ? activeTab : assetTypes[0];
+                const tabItems = c.items.filter((it) => it.assetType === tab);
+                const tabValue = tabItems.reduce((s, it) => s + it.value, 0);
+                return (
+                  <div className="flex flex-col gap-3">
+                    {assetTypes.length > 1 && (
+                      <nav className="flex gap-1 rounded-xl bg-secondary p-1">
+                        {assetTypes.map((t) => (
+                          <Link
+                            key={t}
+                            href={`/allocation/country?only=${encodeURIComponent(onlyCountry)}&tab=${encodeURIComponent(t)}`}
+                            className={cn(
+                              "flex-1 rounded-lg py-1.5 text-center text-sm font-semibold transition",
+                              t === tab ? "bg-card text-foreground shadow-sm" : "text-muted-foreground",
+                            )}
+                          >
+                            {t}
+                          </Link>
+                        ))}
+                      </nav>
+                    )}
+                    <ul className="flex flex-col gap-1">
+                      {tabItems.map((it) => (
+                        <li key={it.symbol}>
+                          <ItemRow it={it} catValue={tabValue} currency={data.currency} />
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })() : tag === "country" ? (
+                // 국가별 전체 뷰: 주식/ETF 서브그룹
                 <ItemsByType items={c.items} catValue={c.value} currency={data.currency} />
               ) : tag === "type" && c.label === "주식" ? (
                 // 유형별-주식: 국가별 서브그룹 (한국/미국/기타)
