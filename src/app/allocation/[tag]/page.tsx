@@ -110,6 +110,24 @@ export default async function AllocationDetailPage({
 
   const pageTitle = onlyCountry ? `${onlyCountry} 자산` : cfg.title;
 
+  // ?only= 단일국가 뷰: 탭별 항목을 미리 계산 (도넛·목록 공유)
+  const onlyItems = onlyCountry && categories[0] ? categories[0].items : null;
+  const onlyAssetTypes = onlyItems
+    ? [...new Set(onlyItems.map((it) => it.assetType))].sort()
+    : null;
+  const resolvedTab =
+    onlyAssetTypes && activeTab && onlyAssetTypes.includes(activeTab)
+      ? activeTab
+      : onlyAssetTypes?.[0] ?? null;
+  const tabItems = onlyItems && resolvedTab
+    ? onlyItems.filter((it) => it.assetType === resolvedTab)
+    : null;
+  const tabValue = tabItems ? tabItems.reduce((s, it) => s + it.value, 0) : 0;
+  // 도넛용 슬라이스 — 단일국가 탭 뷰는 탭 내 종목, 그 외는 categories
+  const donutSlices = tabItems
+    ? tabItems.map((it) => ({ label: it.name, weight: tabValue > 0 ? it.value / tabValue : 0, value: it.value }))
+    : categories;
+
   return (
     <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
       <BottomTabBar />
@@ -149,15 +167,15 @@ export default async function AllocationDetailPage({
         <>
           {/* 도넛 + 범례 */}
           <section className="flex items-center gap-5 rounded-2xl bg-card p-5 shadow-card">
-            <Donut slices={categories} currency={data.currency} />
+            <Donut slices={donutSlices} currency={data.currency} />
             <ul className="flex flex-1 flex-col gap-2">
-              {categories.map((c, i) => (
+              {donutSlices.map((c, i) => (
                 <li key={c.label} className="flex items-center gap-2 text-sm">
                   <span
                     className="h-3 w-3 shrink-0 rounded-full"
                     style={{ backgroundColor: donutColor(i) }}
                   />
-                  <span className="font-medium">{c.label}</span>
+                  <span className="truncate font-medium">{c.label}</span>
                   <span className="ml-auto tabular-nums text-muted-foreground">
                     {pct(c.weight)}
                   </span>
@@ -207,40 +225,34 @@ export default async function AllocationDetailPage({
                     현금 잔고입니다.
                   </p>
                 )
-              ) : tag === "country" && onlyCountry ? (() => {
-                // 국가 단일뷰 (?only=한국): 주식/ETF 탭 분리
-                const assetTypes = [...new Set(c.items.map((it) => it.assetType))].sort();
-                const tab = activeTab && assetTypes.includes(activeTab) ? activeTab : assetTypes[0];
-                const tabItems = c.items.filter((it) => it.assetType === tab);
-                const tabValue = tabItems.reduce((s, it) => s + it.value, 0);
-                return (
-                  <div className="flex flex-col gap-3">
-                    {assetTypes.length > 1 && (
-                      <nav className="flex gap-1 rounded-xl bg-secondary p-1">
-                        {assetTypes.map((t) => (
-                          <Link
-                            key={t}
-                            href={`/allocation/country?only=${encodeURIComponent(onlyCountry)}&tab=${encodeURIComponent(t)}`}
-                            className={cn(
-                              "flex-1 rounded-lg py-1.5 text-center text-sm font-semibold transition",
-                              t === tab ? "bg-card text-foreground shadow-sm" : "text-muted-foreground",
-                            )}
-                          >
-                            {t}
-                          </Link>
-                        ))}
-                      </nav>
-                    )}
-                    <ul className="flex flex-col gap-1">
-                      {tabItems.map((it) => (
-                        <li key={it.symbol}>
-                          <ItemRow it={it} catValue={tabValue} currency={data.currency} />
-                        </li>
+              ) : tag === "country" && onlyCountry && tabItems && onlyAssetTypes ? (
+                // 국가 단일뷰: 페이지 레벨에서 미리 계산한 탭·종목 사용
+                <div className="flex flex-col gap-3">
+                  {onlyAssetTypes.length > 1 && (
+                    <nav className="flex gap-1 rounded-xl bg-secondary p-1">
+                      {onlyAssetTypes.map((t) => (
+                        <Link
+                          key={t}
+                          href={`/allocation/country?only=${encodeURIComponent(onlyCountry)}&tab=${encodeURIComponent(t)}`}
+                          className={cn(
+                            "flex-1 rounded-lg py-1.5 text-center text-sm font-semibold transition",
+                            t === resolvedTab ? "bg-card text-foreground shadow-sm" : "text-muted-foreground",
+                          )}
+                        >
+                          {t}
+                        </Link>
                       ))}
-                    </ul>
-                  </div>
-                );
-              })() : tag === "country" ? (
+                    </nav>
+                  )}
+                  <ul className="flex flex-col gap-1">
+                    {tabItems.map((it) => (
+                      <li key={it.symbol}>
+                        <ItemRow it={it} catValue={tabValue} currency={data.currency} />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : tag === "country" ? (
                 // 국가별 전체 뷰: 주식/ETF 서브그룹
                 <ItemsByType items={c.items} catValue={c.value} currency={data.currency} />
               ) : tag === "type" && c.label === "주식" ? (
