@@ -29,7 +29,7 @@ import { loadAccountGroups, flattenHoldings, type AccountGroup } from "@/lib/acc
 import { filterIncludedAccountGroups } from "@/lib/members";
 import { loadWatchlist } from "@/lib/watchlist";
 import { loadSecurityNames, loadSecurityMeta } from "@/lib/securities";
-import { groupAllocationByTypeWithEtfCountry } from "@/lib/allocation";
+import { groupByTag } from "@/lib/allocation";
 import { quarterBounds } from "@/lib/finance/quarterClose";
 import { resolveHomeSignals, loadDismissed, type HomeSignal } from "@/lib/finance/homeSignal";
 import { computeCelebrations, mergeCelebrations } from "@/lib/celebration";
@@ -790,7 +790,7 @@ async function HoldingsStreamed({
             gain: h.gain === null ? null : h.gain * factorUSD,
           })),
         }));
-  const allocationGroups = groupAllocationByTypeWithEtfCountry(dataKRW.allocation, secMeta);
+  const countrySlices = groupByTag(dataKRW.allocation, secMeta, 0, "country");
 
   return (
     <div className="flex flex-col gap-4">
@@ -808,11 +808,9 @@ async function HoldingsStreamed({
         />
       </SectionCard>
 
-      {/* 보유계좌 → 주식 자산구성. 사업부·현금은 별도 하단 섹션(주식→사업부→현금 순). */}
+      {/* 보유계좌 → 국가별 자산구성. 사업부·현금은 별도 하단 섹션. */}
       {dataKRW.priceAvailable && (
-        <AllocationCard
-          groups={allocationGroups}
-        />
+        <AllocationCard slices={countrySlices} />
       )}
     </div>
   );

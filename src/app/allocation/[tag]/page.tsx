@@ -41,10 +41,13 @@ interface Category {
 
 export default async function AllocationDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ tag: string }>;
+  searchParams: Promise<{ only?: string }>;
 }) {
-  const { tag } = await params;
+  const [{ tag }, sp] = await Promise.all([params, searchParams]);
+  const onlyCountry = sp.only ? decodeURIComponent(sp.only) : null;
   const cfg = TAGS[tag as keyof typeof TAGS];
   if (!cfg) notFound();
 
@@ -91,7 +94,7 @@ export default async function AllocationDetailPage({
   }
 
   const total = [...map.values()].reduce((s, c) => s + c.value, 0);
-  const categories = [...map.values()]
+  const allCategories = [...map.values()]
     .map((c) => ({
       ...c,
       weight: total > 0 ? c.value / total : 0,
@@ -99,33 +102,43 @@ export default async function AllocationDetailPage({
     }))
     .sort((a, b) => b.value - a.value);
 
+  // ?only=한국 → 해당 국가만 표시 (홈 카드 국가 탭에서 진입)
+  const categories = onlyCountry
+    ? allCategories.filter((c) => c.label === onlyCountry)
+    : allCategories;
+
+  const pageTitle = onlyCountry ? `${onlyCountry} 자산` : cfg.title;
+
   return (
     <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
       <BottomTabBar />
       <BackButton />
-      <nav className="flex gap-1 rounded-xl bg-secondary p-1">
-        {(
-          [
-            { label: "유형별", seg: "type" },
-            { label: "국가별", seg: "country" },
-            { label: "산업별", seg: "sector" },
-          ] as const
-        ).map((t) => (
-          <Link
-            key={t.seg}
-            href={`/allocation/${t.seg}`}
-            className={cn(
-              "flex-1 rounded-lg py-1.5 text-center text-sm font-semibold transition",
-              tag === t.seg
-                ? "bg-card text-foreground shadow-sm"
-                : "text-muted-foreground",
-            )}
-          >
-            {t.label}
-          </Link>
-        ))}
-      </nav>
-      <h1 className="text-2xl font-extrabold tracking-tight">{cfg.title}</h1>
+      {/* 단일 국가 뷰에서는 탭 숨김 */}
+      {!onlyCountry && (
+        <nav className="flex gap-1 rounded-xl bg-secondary p-1">
+          {(
+            [
+              { label: "유형별", seg: "type" },
+              { label: "국가별", seg: "country" },
+              { label: "산업별", seg: "sector" },
+            ] as const
+          ).map((t) => (
+            <Link
+              key={t.seg}
+              href={`/allocation/${t.seg}`}
+              className={cn(
+                "flex-1 rounded-lg py-1.5 text-center text-sm font-semibold transition",
+                tag === t.seg
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground",
+              )}
+            >
+              {t.label}
+            </Link>
+          ))}
+        </nav>
+      )}
+      <h1 className="text-2xl font-extrabold tracking-tight">{pageTitle}</h1>
 
       {categories.length === 0 ? (
         <div className="rounded-2xl bg-card p-6 text-center shadow-card">

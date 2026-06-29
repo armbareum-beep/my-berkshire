@@ -22,7 +22,7 @@ import type {
   TimelineItem,
 } from "@/lib/dashboard";
 import type { CompoundingStreak } from "@/lib/finance/compoundingStreak";
-import type { AllocationGroup } from "@/lib/allocation";
+import type { TagSlice } from "@/lib/allocation";
 import type { ReturnResult } from "@/lib/finance/returns";
 import type { BenchmarkResult } from "@/lib/finance/benchmark";
 
@@ -530,114 +530,43 @@ export function CashCard({
 }
 
 /**
- * 자산 구성 — 유형별 접이식 섹션(주식/ETF/원자재/코인). 계좌 카드와 동일하게 네이티브
- * `<details name>` 으로 한 번에 하나만 펼침(JS 없음), 첫 유형만 기본 펼침 → 길어지지 않음.
- * 각 유형 안에서 비중을 100%로 정규화("주식만 해서 100%"), 헤더엔 전체 대비 비중도 표시.
- * 현금은 별도 CashCard 가 전담.
+ * 자산 구성 — 국가별 비중 bar 목록. 현금 제외(CashCard 전담).
+ * 각 국가 탭 → /allocation/country?only=한국 (해당 국가 주식·ETF 목록).
+ * 헤더 › → /allocation/type (전체 유형별 비중).
  */
-export function AllocationCard({
-  groups,
-  footer,
-}: {
-  groups: AllocationGroup[];
-  footer?: React.ReactNode;
-}) {
-  if (groups.length === 0) return null;
+export function AllocationCard({ slices }: { slices: TagSlice[] }) {
+  const items = slices.filter((s) => s.label !== "현금");
+  if (items.length === 0) return null;
   return (
     <SectionCard
       title="자산 구성"
       action={
-        <Link href="/allocation" scroll={false} className="text-sm text-muted-foreground transition active:opacity-70">
+        <Link href="/allocation/type" scroll={false} className="text-sm text-muted-foreground transition active:opacity-70">
           ›
         </Link>
       }
-      footer={footer}
     >
-      <div className="flex flex-col">
-        {groups.map((g, i) => {
-          const totalShare = g.slices.reduce((s, a) => s + a.weight, 0);
-          const groupValue = g.slices.reduce((s, a) => s + a.value, 0);
-
-          // 주식·ETF: 개별 종목 대신 국가별로 집계해서 표시.
-          const useCountryView = g.type === "주식" || g.type === "ETF";
-          const byCountry = useCountryView
-            ? [...g.slices
-                .reduce((m, s) => {
-                  const key = s.countryTag ?? "기타";
-                  const e = m.get(key) ?? { value: 0, weight: 0 };
-                  e.value += s.value;
-                  e.weight += s.weight;
-                  m.set(key, e);
-                  return m;
-                }, new Map<string, { value: number; weight: number }>())
-                .entries()]
-                .map(([label, e]) => ({ label, ...e }))
-                .sort((a, b) => b.value - a.value)
-            : null;
-
-          return (
-            <details
-              key={g.type}
-              name="dash-alloc"
-              open={i === 0}
-              className={`group${i > 0 ? " border-t border-border" : ""}`}
+      <ul className="flex flex-col gap-2.5">
+        {items.map((s) => (
+          <li key={s.label}>
+            <Link
+              href={`/allocation/country?only=${encodeURIComponent(s.label)}`}
+              className="block active:opacity-70"
             >
-              <summary className="flex cursor-pointer list-none items-center gap-2 py-3 text-sm">
-                <span className="font-semibold">{g.type}</span>
-                <span className="ml-auto flex items-center gap-2">
-                  <span className="tabular-nums text-muted-foreground">
-                    전체의 {pct(totalShare)}
-                  </span>
-                  <span className="text-muted-foreground transition group-open:rotate-90">
-                    ›
-                  </span>
-                </span>
-              </summary>
-              <ul className="flex flex-col gap-2.5 pb-3">
-                {byCountry
-                  ? byCountry.map((c) => {
-                      const w = groupValue > 0 ? c.value / groupValue : 0;
-                      return (
-                        <li key={c.label}>
-                          <div className="flex items-center justify-between text-sm">
-                            <span className="font-medium">{c.label}</span>
-                            <span className="tabular-nums text-muted-foreground">
-                              {pct(w)}
-                            </span>
-                          </div>
-                          <div className="mt-1.5 h-1.5 w-full rounded-full bg-secondary">
-                            <div
-                              className="h-1.5 rounded-full bg-primary"
-                              style={{ width: `${Math.min(100, Math.round(w * 100))}%` }}
-                            />
-                          </div>
-                        </li>
-                      );
-                    })
-                  : g.slices.map((a) => {
-                      const w = groupValue > 0 ? a.value / groupValue : 0;
-                      return (
-                        <li key={a.symbol}>
-                          <div className="flex items-center justify-between text-sm">
-                            <span className="font-medium">{a.name}</span>
-                            <span className="tabular-nums text-muted-foreground">
-                              {pct(w)}
-                            </span>
-                          </div>
-                          <div className="mt-1.5 h-1.5 w-full rounded-full bg-secondary">
-                            <div
-                              className="h-1.5 rounded-full bg-primary"
-                              style={{ width: `${Math.min(100, Math.round(w * 100))}%` }}
-                            />
-                          </div>
-                        </li>
-                      );
-                    })}
-              </ul>
-            </details>
-          );
-        })}
-      </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-medium">{s.label}</span>
+                <span className="tabular-nums text-muted-foreground">{pct(s.weight)}</span>
+              </div>
+              <div className="mt-1.5 h-1.5 w-full rounded-full bg-secondary">
+                <div
+                  className="h-1.5 rounded-full bg-primary"
+                  style={{ width: `${Math.min(100, Math.round(s.weight * 100))}%` }}
+                />
+              </div>
+            </Link>
+          </li>
+        ))}
+      </ul>
     </SectionCard>
   );
 }
