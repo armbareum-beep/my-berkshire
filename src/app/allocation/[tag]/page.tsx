@@ -15,6 +15,7 @@ import { Donut } from "@/components/dashboard/Donut";
 import { donutColor } from "@/components/dashboard/donutPalette";
 import { money, pct, signedMoneyShort, signedPct, changeColor } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { CategoryDrawer, type DrawerCategory } from "@/components/allocation/CategoryDrawer";
 
 const TAGS = {
   country: { key: "country" as const, title: "국가별 자산배분" },
@@ -87,11 +88,19 @@ export default async function AllocationDetailPage({
     cat.items.push({ symbol: a.symbol, name: a.name, value: a.value, avgCost: a.avgCost, quantity: a.quantity, changeRate: a.changeRate, assetType: meta[a.symbol]?.assetType ?? "주식", country: meta[a.symbol]?.country ?? "기타" });
     map.set(label, cat);
   }
-  // 현금은 국가·유형에만 슬라이스로(섹터엔 현금 개념 없음).
-  if (data.cash > 0 && cfg.key !== "sector") {
+  // 현금 슬라이스 — 유형·국가·산업 모두 포함(산업은 현금 카테고리 추가).
+  if (data.cash > 0) {
     const cash = map.get("현금") ?? { label: "현금", value: 0, weight: 0, items: [] };
     cash.value += data.cash;
     map.set("현금", cash);
+  }
+
+  // 카테고리 정렬: 현금 최하단, 국가=기타 현금 바로 위, 산업=미분류 현금 바로 위.
+  function pinnedOrder(label: string): number {
+    if (label === "현금") return 3;
+    if (tag === "sector" && label === "미분류") return 2;
+    if (tag === "country" && label === "기타") return 1;
+    return 0;
   }
 
   const total = [...map.values()].reduce((s, c) => s + c.value, 0);
@@ -101,7 +110,12 @@ export default async function AllocationDetailPage({
       weight: total > 0 ? c.value / total : 0,
       items: c.items.sort((a, b) => b.value - a.value),
     }))
-    .sort((a, b) => b.value - a.value);
+    .sort((a, b) => {
+      const pa = pinnedOrder(a.label);
+      const pb = pinnedOrder(b.label);
+      if (pa !== pb) return pa - pb;
+      return b.value - a.value;
+    });
 
   // ?only=한국 → 해당 국가만 표시 (홈 카드 국가 탭에서 진입)
   const categories = onlyLabel
@@ -196,129 +210,104 @@ export default async function AllocationDetailPage({
           </Link>
 
           {/* 카테고리별 구성종목 */}
-          {categories.map((c, i) => (
-            <section key={c.label} className="rounded-2xl bg-card p-5 shadow-card">
-              <div className="mb-3 flex items-center gap-2">
-                <span
-                  className="h-3 w-3 rounded-full"
-                  style={{ backgroundColor: donutColor(i) }}
-                />
-                {c.label === "현금" ? (
-                  <Link href="/cash" className="text-sm font-semibold">
-                    현금 ›
-                  </Link>
-                ) : tag === "type" ? (
-                  <Link
-                    href={`/allocation/sleeve/${encodeURIComponent(c.label)}`}
-                    className="text-sm font-semibold"
-                  >
-                    {c.label} ›
-                  </Link>
-                ) : tag === "country" || tag === "sector" ? (
-                  <Link
-                    href={`/allocation/${tag}?only=${encodeURIComponent(c.label)}`}
-                    className="text-sm font-semibold"
-                  >
-                    {c.label} ›
-                  </Link>
-                ) : (
-                  <p className="text-sm font-semibold">{c.label}</p>
-                )}
-                <span className="ml-auto text-sm tabular-nums text-muted-foreground">
-                  {pct(c.weight)} · {money(c.value, data.currency)}
-                </span>
-              </div>
-              {c.items.length === 0 ? (
-                c.label === "현금" ? (
-                  <CashBreakdown pools={cashPools} />
-                ) : (
-                  <p className="py-1 text-sm text-muted-foreground">
-                    현금 잔고입니다.
-                  </p>
-                )
-              ) : tag === "sector" && onlyLabel ? (
-                // 산업별 단일뷰: 평면 목록 (탭 없음)
-                <ul className="flex flex-col gap-1">
-                  {c.items.map((it) => (
-                    <li key={it.symbol}>
-                      <ItemRow it={it} catValue={c.value} currency={data.currency} />
-                    </li>
-                  ))}
-                </ul>
-              ) : tag === "country" && onlyLabel && tabItems && onlyAssetTypes ? (
-                // 국가 단일뷰: 주식/ETF 탭
-                <div className="flex flex-col gap-3">
-                  {onlyAssetTypes.length > 1 && (
-                    <nav className="flex gap-1 rounded-xl bg-secondary p-1">
-                      {onlyAssetTypes.map((t) => (
-                        <Link
-                          key={t}
-                          href={`/allocation/country?only=${encodeURIComponent(onlyLabel)}&tab=${encodeURIComponent(t)}`}
-                          className={cn(
-                            "flex-1 rounded-lg py-1.5 text-center text-sm font-semibold transition",
-                            t === resolvedTab ? "bg-card text-foreground shadow-sm" : "text-muted-foreground",
-                          )}
-                        >
-                          {t}
-                        </Link>
-                      ))}
-                    </nav>
+          {!onlyLabel ? (
+            // 전체 뷰: 컴팩트 카드 → 탭 → 드랍시트
+            <CategoryDrawer
+              categories={categories as DrawerCategory[]}
+              tag={tag}
+              currency={data.currency}
+            />
+          ) : (
+            // ?only= 직접 URL 접근: 기존 확장 뷰 유지
+            categories.map((c, i) => (
+              <section key={c.label} className="rounded-2xl bg-card p-5 shadow-card">
+                <div className="mb-3 flex items-center gap-2">
+                  <span className="h-3 w-3 rounded-full" style={{ backgroundColor: donutColor(i) }} />
+                  {c.label === "현금" ? (
+                    <Link href="/cash" className="text-sm font-semibold">현금 ›</Link>
+                  ) : (
+                    <p className="text-sm font-semibold">{c.label}</p>
                   )}
+                  <span className="ml-auto text-sm tabular-nums text-muted-foreground">
+                    {pct(c.weight)} · {money(c.value, data.currency)}
+                  </span>
+                </div>
+                {c.items.length === 0 ? (
+                  c.label === "현금" ? (
+                    <CashBreakdown pools={cashPools} />
+                  ) : (
+                    <p className="py-1 text-sm text-muted-foreground">현금 잔고입니다.</p>
+                  )
+                ) : tag === "sector" && onlyLabel ? (
                   <ul className="flex flex-col gap-1">
-                    {tabItems.map((it) => (
+                    {c.items.map((it) => (
                       <li key={it.symbol}>
-                        <ItemRow it={it} catValue={tabValue} currency={data.currency} />
+                        <ItemRow it={it} catValue={c.value} currency={data.currency} />
                       </li>
                     ))}
                   </ul>
-                </div>
-              ) : tag === "country" ? (
-                // 국가별 전체 뷰: 주식/ETF 서브그룹
-                <ItemsByType items={c.items} catValue={c.value} currency={data.currency} />
-              ) : tag === "type" && c.label === "주식" ? (
-                // 유형별-주식: 국가별 서브그룹 (한국/미국/기타)
-                <ItemsByCountry items={c.items} catValue={c.value} currency={data.currency} />
-              ) : tag === "type" && c.label === "ETF" ? (
-                // 유형별-ETF: 국가별 mini 요약 + country 배지
-                <EtfItemsWithCountry items={c.items} catValue={c.value} currency={data.currency} />
-              ) : (
-                <ul className="flex flex-col gap-1">
-                  {c.items.map((it) => {
-                    const gain =
-                      it.avgCost > 0
-                        ? it.value - it.avgCost * it.quantity
-                        : null;
-                    return (
-                      <li key={it.symbol}>
-                        <StockRow
-                          symbol={it.symbol}
-                          name={it.name}
-                          href={`/stocks/${it.symbol}`}
-                          sub={`${pct(c.value > 0 ? it.value / c.value : 0)} of ${c.label}`}
-                          right={
-                            <span className="ml-auto flex flex-col items-end">
-                              <span className="font-semibold tabular-nums">
-                                {money(it.value, data.currency)}
+                ) : tag === "country" && onlyLabel && tabItems && onlyAssetTypes ? (
+                  <div className="flex flex-col gap-3">
+                    {onlyAssetTypes.length > 1 && (
+                      <nav className="flex gap-1 rounded-xl bg-secondary p-1">
+                        {onlyAssetTypes.map((t) => (
+                          <Link
+                            key={t}
+                            href={`/allocation/country?only=${encodeURIComponent(onlyLabel)}&tab=${encodeURIComponent(t)}`}
+                            className={cn(
+                              "flex-1 rounded-lg py-1.5 text-center text-sm font-semibold transition",
+                              t === resolvedTab ? "bg-card text-foreground shadow-sm" : "text-muted-foreground",
+                            )}
+                          >
+                            {t}
+                          </Link>
+                        ))}
+                      </nav>
+                    )}
+                    <ul className="flex flex-col gap-1">
+                      {tabItems.map((it) => (
+                        <li key={it.symbol}>
+                          <ItemRow it={it} catValue={tabValue} currency={data.currency} />
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : tag === "country" ? (
+                  <ItemsByType items={c.items} catValue={c.value} currency={data.currency} />
+                ) : tag === "type" && c.label === "주식" ? (
+                  <ItemsByCountry items={c.items} catValue={c.value} currency={data.currency} />
+                ) : tag === "type" && c.label === "ETF" ? (
+                  <EtfItemsWithCountry items={c.items} catValue={c.value} currency={data.currency} />
+                ) : (
+                  <ul className="flex flex-col gap-1">
+                    {c.items.map((it) => {
+                      const gain = it.avgCost > 0 ? it.value - it.avgCost * it.quantity : null;
+                      return (
+                        <li key={it.symbol}>
+                          <StockRow
+                            symbol={it.symbol}
+                            name={it.name}
+                            href={`/stocks/${it.symbol}`}
+                            sub={`${pct(c.value > 0 ? it.value / c.value : 0)} of ${c.label}`}
+                            right={
+                              <span className="ml-auto flex flex-col items-end">
+                                <span className="font-semibold tabular-nums">{money(it.value, data.currency)}</span>
+                                {gain !== null && it.changeRate !== null && (
+                                  <span className="text-sm font-medium tabular-nums" style={{ color: changeColor(it.changeRate) }}>
+                                    {signedMoneyShort(gain, data.currency)} {signedPct(it.changeRate)}
+                                  </span>
+                                )}
                               </span>
-                              {gain !== null && it.changeRate !== null && (
-                                <span
-                                  className="text-sm font-medium tabular-nums"
-                                  style={{ color: changeColor(it.changeRate) }}
-                                >
-                                  {signedMoneyShort(gain, data.currency)}{" "}
-                                  {signedPct(it.changeRate)}
-                                </span>
-                              )}
-                            </span>
-                          }
-                        />
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </section>
-          ))}
+                            }
+                          />
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </section>
+            ))
+          )}
         </>
       )}
     </main>

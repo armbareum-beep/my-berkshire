@@ -48,12 +48,12 @@ import {
   HeroValuationCard,
   PriceUnavailableCard,
   PerformanceCard,
-  AllocationCard,
   CashCard,
   CardShell,
   CardAction,
   RecentActivityCard,
 } from "@/components/dashboard/cards";
+import { AllocationCard } from "@/components/dashboard/AllocationCard";
 
 /**
  * CEO 대시보드 — 확장 가능한 카드 그리드.
@@ -792,6 +792,23 @@ async function HoldingsStreamed({
         }));
   const countrySlices = groupByTag(dataKRW.allocation, secMeta, 0, "country");
 
+  // 홈 카드 국가 드랍시트용 — 국가별 종목 목록
+  const itemsByCountry: Record<string, { symbol: string; name: string; value: number; avgCost: number; quantity: number; changeRate: number | null; assetType: string }[]> = {};
+  for (const a of dataKRW.allocation) {
+    const m = secMeta[a.symbol];
+    const country = m?.country ?? "기타";
+    if (!itemsByCountry[country]) itemsByCountry[country] = [];
+    itemsByCountry[country].push({
+      symbol: a.symbol,
+      name: a.name,
+      value: a.value,
+      avgCost: a.avgCost,
+      quantity: a.quantity,
+      changeRate: a.changeRate,
+      assetType: m?.assetType ?? "주식",
+    });
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <SectionCard
@@ -808,9 +825,9 @@ async function HoldingsStreamed({
         />
       </SectionCard>
 
-      {/* 보유계좌 → 국가별 자산구성. 사업부·현금은 별도 하단 섹션. */}
+      {/* 보유계좌 → 국가별 자산구성. 국가 누르면 드랍시트. */}
       {dataKRW.priceAvailable && (
-        <AllocationCard slices={countrySlices} />
+        <AllocationCard slices={countrySlices} itemsByCountry={itemsByCountry} currency={dataKRW.currency} />
       )}
     </div>
   );
