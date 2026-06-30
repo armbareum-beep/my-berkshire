@@ -40,12 +40,12 @@ function DonutSection({ items, total, currency }: { items: DrawerItem[]; total: 
   if (items.length === 0) return null;
   const slices = makeDonutSlices(items, total);
   return (
-    <section className="flex items-center gap-4 rounded-2xl bg-card p-4 shadow-card">
-      <Donut slices={slices} size={120} thickness={20} currency={currency} />
-      <ul className="flex flex-1 flex-col gap-1.5">
+    <section className="flex items-center gap-5 rounded-2xl bg-card p-5 shadow-card">
+      <Donut slices={slices} currency={currency} />
+      <ul className="flex flex-1 flex-col gap-2">
         {slices.slice(0, 5).map((s, i) => (
-          <li key={s.label} className="flex items-center gap-2 text-xs">
-            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: donutColor(i) }} />
+          <li key={s.label} className="flex items-center gap-2 text-sm">
+            <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: donutColor(i) }} />
             <span className="truncate font-medium">{s.label}</span>
             <span className="ml-auto tabular-nums text-muted-foreground">{pct(s.weight)}</span>
           </li>
