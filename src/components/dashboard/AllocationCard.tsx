@@ -101,7 +101,7 @@ export function AllocationCard({
           {donutSlices.length > 0 && (
             <section className="flex items-center gap-5 rounded-2xl bg-card p-5 shadow-card">
               <Donut slices={donutSlices} currency={currency} />
-              <ul className="flex flex-1 flex-col gap-2">
+              <ul className="flex min-w-0 flex-1 flex-col gap-2">
                 {donutSlices.slice(0, 5).map((s, i) => (
                   <li key={s.label} className="flex items-center gap-2 text-sm">
                     <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: donutColor(i) }} />

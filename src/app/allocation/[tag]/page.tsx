@@ -182,7 +182,7 @@ export default async function AllocationDetailPage({
           {/* 도넛 + 범례 */}
           <section className="flex items-center gap-5 rounded-2xl bg-card p-5 shadow-card">
             <Donut slices={donutSlices} currency={data.currency} />
-            <ul className="flex flex-1 flex-col gap-2">
+            <ul className="flex min-w-0 flex-1 flex-col gap-2">
               {donutSlices.map((c, i) => (
                 <li key={c.label} className="flex items-center gap-2 text-sm">
                   <span
