@@ -189,8 +189,8 @@ export default async function AllocationDetailPage({
                     className="h-3 w-3 shrink-0 rounded-full"
                     style={{ backgroundColor: donutColor(i) }}
                   />
-                  <span className="truncate font-medium">{c.label}</span>
-                  <span className="ml-auto tabular-nums text-muted-foreground">
+                  <span className="min-w-0 flex-1 truncate font-medium">{c.label}</span>
+                  <span className="shrink-0 tabular-nums text-muted-foreground">
                     {pct(c.weight)}
                   </span>
                 </li>

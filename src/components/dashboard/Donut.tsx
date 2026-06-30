@@ -137,12 +137,12 @@ export function Donut({
 
       {/* 가운데 라벨 — 호버/마지막 조각. 도넛 구멍 안이라 절대 안 잘림. */}
       <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
-        <span className="flex max-w-full items-center gap-1.5">
+        <span className="flex w-full items-center gap-1.5 overflow-hidden">
           <span
             className="size-2 shrink-0 rounded-full"
             style={{ background: shown.fill }}
           />
-          <span className="truncate text-xs font-medium text-muted-foreground">
+          <span className="min-w-0 truncate text-xs font-medium text-muted-foreground">
             {shown.label}
           </span>
         </span>

@@ -105,8 +105,8 @@ export function AllocationCard({
                 {donutSlices.slice(0, 5).map((s, i) => (
                   <li key={s.label} className="flex items-center gap-2 text-sm">
                     <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: donutColor(i) }} />
-                    <span className="truncate font-medium">{s.label}</span>
-                    <span className="ml-auto tabular-nums text-muted-foreground">{pct(s.weight)}</span>
+                    <span className="min-w-0 flex-1 truncate font-medium">{s.label}</span>
+                    <span className="shrink-0 tabular-nums text-muted-foreground">{pct(s.weight)}</span>
                   </li>
                 ))}
               </ul>
