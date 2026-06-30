@@ -49,11 +49,12 @@ function text(row: KrxRow, keys: string[]): string {
 }
 
 // ETF_TOT_FEE 는 퍼센트 문자열(0.010000 = 0.01%) — 100으로 나눠 소수 비율로 변환.
+// 빈 값=데이터 없음(null), "0.000000"=수수료 면제(0 허용).
 function parseTer(value: string): number | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
   const parsed = Number(trimmed);
-  if (!Number.isFinite(parsed) || parsed <= 0 || parsed >= 10) return null; // 10% 초과는 이상값
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed >= 10) return null; // 10% 초과는 이상값
   return parsed / 100;
 }
 
@@ -130,7 +131,7 @@ function normalizeRows(rows: KrxRow[], tradeDate: string, fetchedAt: string): Te
     const symbol = text(row, ["ISU_SRT_CD", "ISU_CD"]);
     const name = text(row, ["ISU_ABBRV", "ISU_NM", "ISU_ABBRV_NM"]);
     const ter = parseTer(text(row, ["ETF_TOT_FEE"]));
-    if (!/^\d{6}$/.test(symbol) || !name || ter == null || ter >= 1) continue;
+    if (!/^\d{6}$/.test(symbol) || !name || ter == null) continue;
     normalized.set(symbol, { symbol, name, ter, source_date: sourceDate, fetched_at: fetchedAt });
   }
 
@@ -140,6 +141,21 @@ function normalizeRows(rows: KrxRow[], tradeDate: string, fetchedAt: string): Te
     throw new Error(`No valid TER rows parsed. KRX fields: ${keys}\nSample row: ${sample}`);
   }
   return [...normalized.values()];
+}
+
+async function krxLogin(page: Page, interactive: boolean): Promise<void> {
+  // nProtect 키보드보안(npkencrypt="on") 때문에 비밀번호 자동 입력 불가.
+  // 세션 쿠키를 매주 갱신(registerKrxTerTask.ps1 — 매주 월요일 09:00)해 만료를 예방.
+  // 세션이 만료된 경우: KRX_INTERACTIVE=1 로 한 번만 수동 로그인하면 됨.
+  if (interactive) {
+    console.log("Sign in to KRX in the opened browser. Waiting up to 5 minutes...");
+    await page.waitForURL((url) => !url.href.includes("MDCCOMS001"), { timeout: 300_000 });
+    await page.context().storageState({ path: KRX_STORAGE_STATE });
+  } else {
+    throw new Error(
+      "KRX 세션 만료. 한 번만 수동 로그인하세요:\n  KRX_INTERACTIVE=1 npm run sync:krx-ter",
+    );
+  }
 }
 
 async function main() {
@@ -178,14 +194,7 @@ async function main() {
     }
     await page.waitForTimeout(1_500);
     if (page.url().includes("MDCCOMS001")) {
-      if (!interactive) {
-        throw new Error(
-          "KRX login is required. Run once with KRX_INTERACTIVE=1, then sign in in the opened browser.",
-        );
-      }
-      console.log("Sign in to KRX in the opened browser. Waiting up to 5 minutes...");
-      await page.waitForURL((url) => !url.href.includes("MDCCOMS001"), { timeout: 300_000 });
-      await context.storageState({ path: KRX_STORAGE_STATE });
+      await krxLogin(page, interactive);
       await page.goto(KRX_PAGE, { waitUntil: "networkidle", timeout: 60_000 });
     }
     if (process.env.DEBUG_KRX) {
