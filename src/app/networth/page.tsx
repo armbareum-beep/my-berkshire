@@ -19,6 +19,7 @@ import {
   totalManualAssets,
   computeDivisions,
   realEstateFinancingCost,
+  applyCapRateValuation,
   assetDivision,
 } from "@/lib/finance/realAssets";
 import { loadFinancingReconciliations } from "@/lib/financingReconciliation";
@@ -270,13 +271,14 @@ async function NetWorthSummaryStreamed({
   currency: ReturnType<typeof computeDashboard>["currency"];
   priceAvailable: boolean;
 }) {
-  const [manualAssets, manualIncome, liabilities, reconciliations] =
+  const [manualAssetsRaw, manualIncome, liabilities, reconciliations] =
     await Promise.all([
       manualAssetsPromise,
       manualAssetIncomePromise,
       liabilitiesPromise,
       reconciliationsPromise,
     ]);
+  const manualAssets = applyCapRateValuation(manualAssetsRaw, manualIncome, today);
   const manualTotalKrw = totalManualAssets(manualAssets);
   const assetsKrw = investmentKrw !== null ? investmentKrw + manualTotalKrw : null;
 
@@ -335,13 +337,14 @@ async function NetWorthDivisionsStreamed({
   factor: number;
   currency: ReturnType<typeof computeDashboard>["currency"];
 }) {
-  const [manualAssets, manualIncome, liabilities, reconciliations] =
+  const [manualAssetsRaw, manualIncome, liabilities, reconciliations] =
     await Promise.all([
       manualAssetsPromise,
       manualAssetIncomePromise,
       liabilitiesPromise,
       reconciliationsPromise,
     ]);
+  const manualAssets = applyCapRateValuation(manualAssetsRaw, manualIncome, today);
   const financing = realEstateFinancingCost({
     liabilities,
     reconciliations,

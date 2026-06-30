@@ -53,6 +53,8 @@ export function DivisionCard({
       <ul className="mt-2 flex flex-col border-t border-border pt-1">
         {assets.map((a) => {
           const sold = isSold(a);
+          // cap_rate 방식인데 수익 기록이 없어 아직 미계산(currentValue=0)인 경우 — gain/return 숨김.
+          const pendingCapRate = a.valuationMethod === "cap_rate" && !sold && a.currentValue === 0;
           const value = sold ? (a.salePrice ?? 0) : a.currentValue;
           const gain = sold ? saleGain(a) : unrealizedGain(a);
           const ret = assetReturn(a);
@@ -66,15 +68,18 @@ export function DivisionCard({
               </span>
               <span className="flex flex-col items-end">
                 <span className="font-semibold tabular-nums">
-                  {money(cv(value), currency)}
+                  {pendingCapRate ? "—" : money(cv(value), currency)}
                 </span>
-                {ret != null && (
+                {!pendingCapRate && ret != null && (
                   <span
                     className="text-sm font-medium tabular-nums"
                     style={{ color: changeColor(gain) }}
                   >
                     {signedMoney(cv(gain), currency)} ({signedPct(ret)})
                   </span>
+                )}
+                {pendingCapRate && (
+                  <span className="text-xs text-muted-foreground">임대 기록 필요</span>
                 )}
               </span>
             </li>

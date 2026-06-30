@@ -149,6 +149,8 @@ export interface ManualAssetInput {
   valuationMethod?: "direct" | "cap_rate";
   /** 환원율(소수, 0.04 = 4%). cap_rate 방식일 때만 의미 있음. */
   capRate?: number | null;
+  /** cap_rate 방식 등록 시 첫 임대수익을 함께 저장. */
+  initialIncome?: { date: string; amount: number; cost: number } | null;
 }
 
 function validateAsset(input: ManualAssetInput): string | null {
@@ -178,23 +180,40 @@ export async function addManualAsset(
   const holdingId = await getHoldingId(supabase);
   if (!holdingId) return { ok: false, error: "회사를 찾을 수 없습니다." };
 
-  const { error } = await supabase.from("manual_assets").insert({
-    holding_id: holdingId,
-    name: input.name.trim(),
-    kind: input.kind,
-    current_value: input.currentValue,
-    acquired_price: input.acquiredPrice ?? null,
-    acquired_at: input.acquiredAt || null,
-    note: input.note?.trim() || null,
-    acquisition_cost: input.acquisitionCost ?? null,
-    valuation_source: input.valuationSource?.trim() || null,
-    valued_at: input.valuedAt || null,
-    valuation_method: input.valuationMethod ?? "direct",
-    cap_rate: input.capRate ?? null,
-  });
+  const { data: inserted, error } = await supabase
+    .from("manual_assets")
+    .insert({
+      holding_id: holdingId,
+      name: input.name.trim(),
+      kind: input.kind,
+      current_value: input.currentValue,
+      acquired_price: input.acquiredPrice ?? null,
+      acquired_at: input.acquiredAt || null,
+      note: input.note?.trim() || null,
+      acquisition_cost: input.acquisitionCost ?? null,
+      valuation_source: input.valuationSource?.trim() || null,
+      valued_at: input.valuedAt || null,
+      valuation_method: input.valuationMethod ?? "direct",
+      cap_rate: input.capRate ?? null,
+    })
+    .select("id")
+    .single();
   if (error) return { ok: false, error: error.message };
 
+  if (input.initialIncome && inserted?.id) {
+    const inc = input.initialIncome;
+    const { error: incErr } = await supabase.from("manual_asset_income").insert({
+      holding_id: holdingId,
+      manual_asset_id: inserted.id,
+      date: inc.date,
+      amount: inc.amount,
+      cost: inc.cost,
+    });
+    if (incErr) return { ok: false, error: incErr.message };
+  }
+
   revalidatePath("/networth");
+  revalidatePath("/real-estate");
   revalidatePath("/dashboard");
   return { ok: true };
 }

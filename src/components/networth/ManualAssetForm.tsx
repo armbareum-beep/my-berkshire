@@ -69,12 +69,22 @@ export function ManualAssetForm({
   const [capRateInput, setCapRateInput] = useState(
     editing?.capRate != null ? String(editing.capRate * 100) : "",
   );
+  // 첫 임대수익(신규 cap_rate 등록 시에만 노출 — 수정 시 별도 임대 입력 사용)
+  const [incomeDate, setIncomeDate] = useState(today);
+  const [incomeAmount, setIncomeAmount] = useState("");
+  const [incomeCost, setIncomeCost] = useState("");
 
   const producesIncome = kind != null && ASSET_DIVISION_PRODUCES_INCOME[assetDivision(kind)];
   const isCapRate = valuationMethod === "cap_rate" && producesIncome;
+  const isNew = !editing;
 
   function buildInput(): ManualAssetInput {
     const capRateDec = capRateInput.trim() === "" ? null : Number(capRateInput) / 100;
+    const incAmt = Number(incomeAmount) || 0;
+    const initialIncome =
+      isNew && isCapRate && incAmt > 0 && incomeDate
+        ? { date: incomeDate, amount: incAmt, cost: Number(incomeCost) || 0 }
+        : null;
     return {
       name,
       kind: kind as ManualAssetKind,
@@ -88,6 +98,7 @@ export function ManualAssetForm({
       valuedAt: valuedAt || undefined,
       valuationMethod: isCapRate ? "cap_rate" : "direct",
       capRate: isCapRate ? capRateDec : null,
+      initialIncome,
     };
   }
 
@@ -203,27 +214,66 @@ export function ManualAssetForm({
       )}
 
       {isCapRate ? (
-        <div>
-          <label className="text-sm font-medium">환원율 (%)</label>
-          <div className="relative mt-1">
-            <input
-              type="number"
-              min="0.1"
-              max="20"
-              step="0.1"
-              value={capRateInput}
-              onChange={(e) => setCapRateInput(e.target.value)}
-              placeholder="예: 4.5"
-              className="h-11 w-full rounded-xl border border-input bg-card px-3 pr-8 text-base outline-none"
-            />
-            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-              %
-            </span>
+        <>
+          <div>
+            <label className="text-sm font-medium">환원율 (%)</label>
+            <div className="relative mt-1">
+              <input
+                type="number"
+                min="0.1"
+                max="20"
+                step="0.1"
+                value={capRateInput}
+                onChange={(e) => setCapRateInput(e.target.value)}
+                placeholder="예: 4.5"
+                className="h-11 w-full rounded-xl border border-input bg-card px-3 pr-8 text-base outline-none"
+              />
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                %
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              평가액 = 최근 12개월 순임대수익 ÷ 환원율
+            </p>
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">
-            임대수익 기록이 있어야 평가액이 계산돼요.
-          </p>
-        </div>
+
+          {isNew && (
+            <div className="rounded-xl border border-border p-3">
+              <p className="text-sm font-medium">첫 임대수익 기록 <span className="text-muted-foreground font-normal">(선택)</span></p>
+              <p className="mt-0.5 text-xs text-muted-foreground">입력하면 지금 바로 평가액이 계산돼요.</p>
+              <div className="mt-2 flex flex-col gap-2">
+                <div className="flex gap-2">
+                  <NumberPadField
+                    className="flex-1"
+                    label="임대수익 (원)"
+                    value={incomeAmount}
+                    onChange={setIncomeAmount}
+                    prefix="₩"
+                    placeholder="월 임대료 등"
+                  />
+                  <NumberPadField
+                    className="flex-1"
+                    label="비용 (원, 선택)"
+                    value={incomeCost}
+                    onChange={setIncomeCost}
+                    prefix="₩"
+                    placeholder="관리비·세금"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">받은 날</label>
+                  <Input
+                    type="date"
+                    max={today}
+                    value={incomeDate}
+                    onChange={(e) => setIncomeDate(e.target.value)}
+                    className="mt-1 h-11"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       ) : (
         <div>
           <NumberPadField

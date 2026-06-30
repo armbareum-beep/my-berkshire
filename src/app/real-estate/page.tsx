@@ -5,7 +5,7 @@ import { getPortfolio } from "@/lib/portfolio";
 import { loadManualAssets, loadManualAssetIncome } from "@/lib/realAssets";
 import { loadLiabilities } from "@/lib/liabilities";
 import { loadFinancingReconciliations } from "@/lib/financingReconciliation";
-import { realEstateFinancingCost, financingByAsset } from "@/lib/finance/realAssets";
+import { realEstateFinancingCost, financingByAsset, applyCapRateValuation } from "@/lib/finance/realAssets";
 import { todayKST } from "@/lib/date";
 import type { Currency } from "@/lib/format";
 import { BackButton } from "@/components/BackButton";
@@ -55,13 +55,14 @@ async function DivisionsContent({
   const currency: Currency = useUsd ? "USD" : "KRW";
   const today = todayKST();
 
-  const [manualAssets, manualIncome, liabilities, reconciliations] =
+  const [manualAssetsRaw, manualIncome, liabilities, reconciliations] =
     await Promise.all([
       loadManualAssets(supabase, portfolio.holding.id),
       loadManualAssetIncome(supabase, portfolio.holding.id),
       loadLiabilities(supabase, portfolio.holding.id),
       loadFinancingReconciliations(supabase, portfolio.holding.id),
     ]);
+  const manualAssets = applyCapRateValuation(manualAssetsRaw, manualIncome, today);
 
   // 부동산 사업부 금융비용(담보대출 추정 이자 + 보정) — 임대료에서 차감(spec 012).
   const financing = realEstateFinancingCost({
