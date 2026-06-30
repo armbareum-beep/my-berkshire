@@ -61,7 +61,7 @@ export const CATALOG: CatalogItem[] = [
   // CSI 300 — 기초자산=중국
   { symbol: "192090", name: "TIGER 차이나CSI300", assetType: "ETF", ter: 0.0019, trackedIndex: "CSI300", underlyingCountry: "중국" },
   { symbol: "204480", name: "TIGER 차이나CSI300레버리지(합성)", assetType: "ETF", ter: 0.0099, trackedIndex: "CSI300", underlyingCountry: "중국" },
-  { symbol: "283580", name: "KODEX 차이나CSI300", assetType: "ETF", ter: 0.0045, trackedIndex: "CSI300", underlyingCountry: "중국" },
+  { symbol: "283580", name: "KODEX 차이나CSI300", assetType: "ETF", ter: 0.0012, trackedIndex: "CSI300", underlyingCountry: "중국" },
   // 항셍테크 — 기초자산=중국(홍콩 거래)
   { symbol: "371160", name: "TIGER 차이나항셍테크", assetType: "ETF", ter: 0.0049, trackedIndex: "항셍테크", underlyingCountry: "중국" },
   { symbol: "372910", name: "KODEX 차이나항셍테크", assetType: "ETF", ter: 0.0045, trackedIndex: "항셍테크", underlyingCountry: "중국" },
