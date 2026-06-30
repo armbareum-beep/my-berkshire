@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Search, Building2, Plus, type LucideIcon } from "lucide-react";
+import { Home, Search, Building2, Plus, Trophy, type LucideIcon } from "lucide-react";
 
 /**
  * 하단 탭바 — **평시(resting) 화면에만**(대시보드·자산·챌린지·현금·자산배분·리밸런싱·계좌·종목 등).
@@ -18,6 +18,7 @@ const TABS: {
   { href: "/dashboard", label: "홈", icon: Home },
   { href: "/search", label: "검색", icon: Search },
   { href: "/transactions", label: "기록", action: true },
+  { href: "/ranking", label: "랭킹", icon: Trophy },
   { href: "/growth", label: "마이 버크셔", icon: Building2 },
 ];
 
