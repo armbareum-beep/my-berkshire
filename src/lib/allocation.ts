@@ -68,8 +68,8 @@ export function groupAllocationByTypeWithEtfCountry(
     const m = meta[a.symbol];
     const assetType = m?.assetType ?? "주식";
     const list = byType.get(assetType) ?? [];
-    // ETF slice에 기초자산 국가 태그 첨부 — 카드에서 국가별 집계용.
-    list.push(assetType === "ETF" ? { ...a, countryTag: m?.country ?? "기타" } : a);
+    // 주식·ETF 모두 countryTag 첨부 — 카드에서 국가별 집계용.
+    list.push({ ...a, countryTag: m?.country ?? "기타" });
     byType.set(assetType, list);
   }
   // 고정 순서: 주식 → ETF → 원자재 → 코인
@@ -81,6 +81,34 @@ export function groupAllocationByTypeWithEtfCountry(
     .filter((t) => !ASSET_TYPE_ORDER.includes(t as (typeof ASSET_TYPE_ORDER)[number]))
     .map((t) => ({ type: t, slices: byType.get(t)! }));
   return [...known, ...extra];
+}
+
+/**
+ * 특정 자산유형 안에서 국가별 AllocationGroup 반환.
+ * 예: assetType="주식" → [{ type:"한국", slices:[...] }, { type:"미국", slices:[...] }]
+ * 주식 구성 카드를 국가별로 분리 표시할 때 사용. 비중은 입력 그대로(전체 자산 대비).
+ */
+export function groupTypeByCountry(
+  allocation: AllocationSlice[],
+  meta: Record<string, SecurityRecord>,
+  assetType: string,
+): AllocationGroup[] {
+  const byCountry = new Map<string, AllocationSlice[]>();
+  for (const a of allocation) {
+    const m = meta[a.symbol];
+    if ((m?.assetType ?? "주식") !== assetType) continue;
+    const country = m?.country ?? "기타";
+    const list = byCountry.get(country) ?? [];
+    list.push(a);
+    byCountry.set(country, list);
+  }
+  return [...byCountry.entries()]
+    .map(([type, slices]) => ({ type, slices }))
+    .sort((a, b) => {
+      const va = a.slices.reduce((s, x) => s + x.value, 0);
+      const vb = b.slices.reduce((s, x) => s + x.value, 0);
+      return vb - va;
+    });
 }
 
 /** allocation(종목별) + 현금 → 태그별 합산 슬라이스(비중 내림차순). */

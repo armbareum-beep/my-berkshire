@@ -29,7 +29,7 @@ import { loadAccountGroups, flattenHoldings, type AccountGroup } from "@/lib/acc
 import { filterIncludedAccountGroups } from "@/lib/members";
 import { loadWatchlist } from "@/lib/watchlist";
 import { loadSecurityNames, loadSecurityMeta } from "@/lib/securities";
-import { groupAllocationByTypeWithEtfCountry } from "@/lib/allocation";
+import { groupByTag } from "@/lib/allocation";
 import { quarterBounds } from "@/lib/finance/quarterClose";
 import { resolveHomeSignals, loadDismissed, type HomeSignal } from "@/lib/finance/homeSignal";
 import { computeCelebrations, mergeCelebrations } from "@/lib/celebration";
@@ -48,12 +48,12 @@ import {
   HeroValuationCard,
   PriceUnavailableCard,
   PerformanceCard,
-  AllocationCard,
   CashCard,
   CardShell,
   CardAction,
   RecentActivityCard,
 } from "@/components/dashboard/cards";
+import { AllocationCard } from "@/components/dashboard/AllocationCard";
 
 /**
  * CEO 대시보드 — 확장 가능한 카드 그리드.
@@ -790,7 +790,24 @@ async function HoldingsStreamed({
             gain: h.gain === null ? null : h.gain * factorUSD,
           })),
         }));
-  const allocationGroups = groupAllocationByTypeWithEtfCountry(dataKRW.allocation, secMeta);
+  const countrySlices = groupByTag(dataKRW.allocation, secMeta, 0, "country");
+
+  // 홈 카드 국가 드랍시트용 — 국가별 종목 목록
+  const itemsByCountry: Record<string, { symbol: string; name: string; value: number; avgCost: number; quantity: number; changeRate: number | null; assetType: string }[]> = {};
+  for (const a of dataKRW.allocation) {
+    const m = secMeta[a.symbol];
+    const country = m?.country ?? "기타";
+    if (!itemsByCountry[country]) itemsByCountry[country] = [];
+    itemsByCountry[country].push({
+      symbol: a.symbol,
+      name: a.name,
+      value: a.value,
+      avgCost: a.avgCost,
+      quantity: a.quantity,
+      changeRate: a.changeRate,
+      assetType: m?.assetType ?? "주식",
+    });
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -808,11 +825,9 @@ async function HoldingsStreamed({
         />
       </SectionCard>
 
-      {/* 보유계좌 → 주식 자산구성. 사업부·현금은 별도 하단 섹션(주식→사업부→현금 순). */}
+      {/* 보유계좌 → 국가별 자산구성. 국가 누르면 드랍시트. */}
       {dataKRW.priceAvailable && (
-        <AllocationCard
-          groups={allocationGroups}
-        />
+        <AllocationCard slices={countrySlices} itemsByCountry={itemsByCountry} currency={dataKRW.currency} />
       )}
     </div>
   );
