@@ -3,6 +3,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { StockRow } from "@/components/ui/StockRow";
+import { Donut } from "@/components/dashboard/Donut";
 import { donutColor } from "@/components/dashboard/donutPalette";
 import { money, pct, signedMoneyShort, signedPct, changeColor, type Currency } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -24,6 +25,35 @@ export type DrawerCategory = {
   weight: number;
   items: DrawerItem[];
 };
+
+function makeDonutSlices(items: DrawerItem[], total: number) {
+  const sorted = [...items].sort((a, b) => b.value - a.value);
+  const top = sorted.slice(0, 8);
+  const restVal = sorted.slice(8).reduce((s, it) => s + it.value, 0);
+  return [
+    ...top.map((it) => ({ label: it.name, weight: total > 0 ? it.value / total : 0, value: it.value })),
+    ...(restVal > 0 ? [{ label: "기타", weight: total > 0 ? restVal / total : 0, value: restVal }] : []),
+  ];
+}
+
+function DonutSection({ items, total, currency }: { items: DrawerItem[]; total: number; currency: Currency }) {
+  if (items.length === 0) return null;
+  const slices = makeDonutSlices(items, total);
+  return (
+    <section className="flex items-center gap-4 rounded-2xl bg-card p-4 shadow-card">
+      <Donut slices={slices} size={120} thickness={20} currency={currency} />
+      <ul className="flex flex-1 flex-col gap-1.5">
+        {slices.slice(0, 5).map((s, i) => (
+          <li key={s.label} className="flex items-center gap-2 text-xs">
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: donutColor(i) }} />
+            <span className="truncate font-medium">{s.label}</span>
+            <span className="ml-auto tabular-nums text-muted-foreground">{pct(s.weight)}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
 
 function ItemList({ items, catValue, currency }: { items: DrawerItem[]; catValue: number; currency: Currency }) {
   return (
@@ -60,7 +90,7 @@ function SheetContent({ cat, tag, currency }: { cat: DrawerCategory; tag: string
 
   if (cat.label === "현금") {
     return (
-      <div className="flex flex-col gap-3 px-5 pb-8 pt-2">
+      <div className="flex flex-col gap-3 px-5 pb-8 pt-3">
         <p className="text-3xl font-bold tabular-nums">{money(cat.value, currency)}</p>
         <Link href="/cash" className="text-sm font-medium text-primary">현금 상세 보기 ›</Link>
       </div>
@@ -68,7 +98,7 @@ function SheetContent({ cat, tag, currency }: { cat: DrawerCategory; tag: string
   }
 
   if (cat.items.length === 0) {
-    return <div className="px-5 pb-8 pt-2 text-sm text-muted-foreground">내용이 없습니다.</div>;
+    return <div className="px-5 pb-8 pt-3 text-sm text-muted-foreground">내용이 없습니다.</div>;
   }
 
   // 국가별: 주식/ETF 서브탭
@@ -78,7 +108,8 @@ function SheetContent({ cat, tag, currency }: { cat: DrawerCategory; tag: string
     const displayItems = cat.items.filter((it) => it.assetType === resolved);
     const displayValue = displayItems.reduce((s, it) => s + it.value, 0);
     return (
-      <div className="flex flex-col gap-3 px-5 pb-8 pt-2">
+      <div className="flex flex-col gap-3 px-5 pb-8 pt-3">
+        <DonutSection items={displayItems} total={displayValue} currency={currency} />
         {assetTypes.length > 1 && (
           <nav className="flex gap-1 rounded-xl bg-secondary p-1">
             {assetTypes.map((t) => (
@@ -108,7 +139,8 @@ function SheetContent({ cat, tag, currency }: { cat: DrawerCategory; tag: string
       (a, b) => b[1].reduce((s, x) => s + x.value, 0) - a[1].reduce((s, x) => s + x.value, 0),
     );
     return (
-      <div className="flex flex-col gap-3 px-5 pb-8 pt-2">
+      <div className="flex flex-col gap-3 px-5 pb-8 pt-3">
+        <DonutSection items={cat.items} total={cat.value} currency={currency} />
         {groups.map(([country, its]) => (
           <div key={country}>
             {groups.length > 1 && (
@@ -131,7 +163,8 @@ function SheetContent({ cat, tag, currency }: { cat: DrawerCategory; tag: string
       .map(([c, v]) => `${c} ${pct(total > 0 ? v / total : 0)}`)
       .join(" · ");
     return (
-      <div className="flex flex-col gap-2 px-5 pb-8 pt-2">
+      <div className="flex flex-col gap-3 px-5 pb-8 pt-3">
+        <DonutSection items={cat.items} total={cat.value} currency={currency} />
         {countrySummary && <p className="text-xs text-muted-foreground">{countrySummary}</p>}
         <ul className="flex flex-col gap-1">
           {cat.items.map((it) => {
@@ -167,9 +200,10 @@ function SheetContent({ cat, tag, currency }: { cat: DrawerCategory; tag: string
     );
   }
 
-  // 기본(산업별 등): 평면 목록
+  // 기본 (산업별 등): 평면 목록
   return (
-    <div className="px-5 pb-8 pt-2">
+    <div className="flex flex-col gap-3 px-5 pb-8 pt-3">
+      <DonutSection items={cat.items} total={cat.value} currency={currency} />
       <ItemList items={cat.items} catValue={cat.value} currency={currency} />
     </div>
   );

@@ -4,6 +4,8 @@ import Link from "next/link";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { StockRow } from "@/components/ui/StockRow";
+import { Donut } from "@/components/dashboard/Donut";
+import { donutColor } from "@/components/dashboard/donutPalette";
 import { money, pct, signedMoneyShort, signedPct, changeColor, type Currency } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { TagSlice } from "@/lib/allocation";
@@ -47,6 +49,15 @@ export function AllocationCard({
   const displayItems = resolvedTab ? openItems.filter((it) => it.assetType === resolvedTab) : openItems;
   const displayValue = displayItems.reduce((s, it) => s + it.value, 0);
 
+  // 도넛 슬라이스 (탭 기준, 상위 8 + 기타)
+  const sortedItems = [...displayItems].sort((a, b) => b.value - a.value);
+  const topItems = sortedItems.slice(0, 8);
+  const restVal = sortedItems.slice(8).reduce((s, it) => s + it.value, 0);
+  const donutSlices = [
+    ...topItems.map((it) => ({ label: it.name, weight: displayValue > 0 ? it.value / displayValue : 0, value: it.value })),
+    ...(restVal > 0 ? [{ label: "기타", weight: displayValue > 0 ? restVal / displayValue : 0, value: restVal }] : []),
+  ];
+
   return (
     <>
       <SectionCard
@@ -85,7 +96,24 @@ export function AllocationCard({
         onClose={() => { setOpenCountry(null); setActiveTab(null); }}
         title={openCountry ?? undefined}
       >
-        <div className="flex flex-col gap-3 px-5 pb-8 pt-2">
+        <div className="flex flex-col gap-3 px-5 pb-8 pt-3">
+          {/* 도넛 */}
+          {donutSlices.length > 0 && (
+            <section className="flex items-center gap-4 rounded-2xl bg-card p-4 shadow-card">
+              <Donut slices={donutSlices} size={120} thickness={20} currency={currency} />
+              <ul className="flex flex-1 flex-col gap-1.5">
+                {donutSlices.slice(0, 5).map((s, i) => (
+                  <li key={s.label} className="flex items-center gap-2 text-xs">
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: donutColor(i) }} />
+                    <span className="truncate font-medium">{s.label}</span>
+                    <span className="ml-auto tabular-nums text-muted-foreground">{pct(s.weight)}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {/* 주식/ETF 서브탭 */}
           {assetTypes.length > 1 && (
             <nav className="flex gap-1 rounded-xl bg-secondary p-1">
               {assetTypes.map((t) => (
@@ -102,6 +130,8 @@ export function AllocationCard({
               ))}
             </nav>
           )}
+
+          {/* 종목 목록 */}
           <ul className="flex flex-col gap-1">
             {displayItems.map((it) => {
               const gain = it.avgCost > 0 ? it.value - it.avgCost * it.quantity : null;
