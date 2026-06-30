@@ -48,8 +48,10 @@ function text(row: KrxRow, keys: string[]): string {
 }
 
 function parsePercent(value: string): number | null {
-  const parsed = Number(value.replaceAll(",", "").replace("%", "").trim());
-  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  const trimmed = value.replaceAll(",", "").replace("%", "").trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
   return parsed / 100;
 }
 
@@ -114,14 +116,15 @@ function normalizeRows(rows: KrxRow[], tradeDate: string, fetchedAt: string): Te
   for (const row of rows) {
     const symbol = text(row, ["ISU_SRT_CD", "ISU_CD"]);
     const name = text(row, ["ISU_ABBRV", "ISU_NM", "ISU_ABBRV_NM"]);
-    const ter = parsePercent(text(row, ["FEE", "TER", "TOT_FEE"]));
+    const ter = parsePercent(text(row, ["TOT_EXEC_FEERT", "EXEC_FEERT", "FEE", "TER", "TOT_FEE"]));
     if (!/^\d{6}$/.test(symbol) || !name || ter == null || ter >= 1) continue;
     normalized.set(symbol, { symbol, name, ter, source_date: sourceDate, fetched_at: fetchedAt });
   }
 
   if (normalized.size === 0) {
     const keys = rows[0] ? Object.keys(rows[0]).join(", ") : "none";
-    throw new Error(`No valid TER rows parsed. KRX fields: ${keys}`);
+    const sample = rows[0] ? JSON.stringify(rows[0]) : "none";
+    throw new Error(`No valid TER rows parsed. KRX fields: ${keys}\nSample row: ${sample}`);
   }
   return [...normalized.values()];
 }
