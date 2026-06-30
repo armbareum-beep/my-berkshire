@@ -11,6 +11,7 @@ const KRX_PAGE =
   "https://data.krx.co.kr/contents/MDC/MDI/mdiLoader/index.cmd?menuId=MDC0201020501";
 const KRX_HOME = "https://data.krx.co.kr/contents/MDC/MAIN/main/index.cmd";
 const KRX_API = "/comm/bldAttendant/getJsonData.cmd";
+const KRX_TER_BLD = "dbms/MDC/STAT/standard/MDCSTAT05101";
 const KRX_STORAGE_STATE = resolve(process.env.KRX_STORAGE_STATE ?? ".krx-storage-state.json");
 const BATCH_SIZE = 500;
 const CHROME_USER_AGENT =
@@ -47,24 +48,36 @@ function text(row: KrxRow, keys: string[]): string {
   return "";
 }
 
-function parsePercent(value: string): number | null {
-  const trimmed = value.replaceAll(",", "").replace("%", "").trim();
+// ETF_TOT_FEE 는 퍼센트 문자열(0.010000 = 0.01%) — 100으로 나눠 소수 비율로 변환.
+function parseTer(value: string): number | null {
+  const trimmed = value.trim();
   if (!trimmed) return null;
   const parsed = Number(trimmed);
-  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  if (!Number.isFinite(parsed) || parsed <= 0 || parsed >= 10) return null; // 10% 초과는 이상값
   return parsed / 100;
 }
 
 async function requestKrx(page: Page, tradeDate: string): Promise<KrxRow[]> {
+  // strtDd: 1개월 전(성과지표 기간, TER에는 무관하나 필수 파라미터)
+  const strtDate = String(Number(tradeDate) - 100).padStart(8, "0"); // 단순 근사, 동작에 영향 없음
   const response = await page.evaluate(
-    async ({ api, tradeDate }) => {
+    async ({ api, tradeDate, strtDate, bld }) => {
       const body = new URLSearchParams({
-        bld: "dbms/MDC/STAT/standard/MDCSTAT04301",
+        bld,
         locale: "ko_KR",
-        trdDd: tradeDate,
-        share: "1",
-        money: "1",
-        csvxls_isNo: "false",
+        idxMktClssId2: "", inqCondTpCd1: "0", inqCondTpCd3: "0",
+        inqCondTpCd4: "0", inqCondTpCd2: "0", srchStrNm: "",
+        idxAsstClssId1: "00", idxMktClssId: "00", idxMktClssId3: "00",
+        idxMktClssId1: "00", countryBox2: "0", countryBox1: "",
+        idxAsstClssId2: "00", idxAsstClssId3: "00", taxTpCd: "0",
+        idxLvrgInvrsTpCd: "TT", asstcomId: "00000", gubun: "1",
+        trdDd: tradeDate, strtDd: strtDate, endDd: tradeDate,
+        inqCondTp1_Box1: "0", inqCondTp2_Box1: "0", inqCondTp3_Box1: "0",
+        inqCondTp4_Box1: "0", inqCondTpCd5: "0", inqCondTp1_Box2: "0",
+        inqCondTp3_Box2: "0", inqCondTp4_Box2: "0", inqCondTpCd6: "1",
+        sortMethdTpCd: "2", inqCondTp2_Box2: "0", inqCondTpCd7: "0",
+        inqCondTpCd8: "0", inqCondTpCd9: "0",
+        money: "3", csvxls_isNo: "false",
       });
       const result = await fetch(api, {
         method: "POST",
@@ -77,7 +90,7 @@ async function requestKrx(page: Page, tradeDate: string): Promise<KrxRow[]> {
       const payload = await result.text();
       return { status: result.status, payload };
     },
-    { api: KRX_API, tradeDate },
+    { api: KRX_API, tradeDate, strtDate, bld: KRX_TER_BLD },
   );
 
   if (response.status === 400 && response.payload.trim() === "LOGOUT") {
@@ -116,7 +129,7 @@ function normalizeRows(rows: KrxRow[], tradeDate: string, fetchedAt: string): Te
   for (const row of rows) {
     const symbol = text(row, ["ISU_SRT_CD", "ISU_CD"]);
     const name = text(row, ["ISU_ABBRV", "ISU_NM", "ISU_ABBRV_NM"]);
-    const ter = parsePercent(text(row, ["TOT_EXEC_FEERT", "EXEC_FEERT", "FEE", "TER", "TOT_FEE"]));
+    const ter = parseTer(text(row, ["ETF_TOT_FEE"]));
     if (!/^\d{6}$/.test(symbol) || !name || ter == null || ter >= 1) continue;
     normalized.set(symbol, { symbol, name, ter, source_date: sourceDate, fetched_at: fetchedAt });
   }
