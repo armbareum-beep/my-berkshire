@@ -80,10 +80,11 @@ export function ManualAssetForm({
 
   function buildInput(): ManualAssetInput {
     const capRateDec = capRateInput.trim() === "" ? null : Number(capRateInput) / 100;
-    const incAmt = Number(incomeAmount) || 0;
+    const monthlyAmt = Number(incomeAmount) || 0;
+    // 월임대료 × 12 = 연간 합산으로 저장. 환원법 분모는 연간 순수익이므로.
     const initialIncome =
-      isNew && isCapRate && incAmt > 0 && incomeDate
-        ? { date: incomeDate, amount: incAmt, cost: Number(incomeCost) || 0 }
+      isNew && isCapRate && monthlyAmt > 0 && incomeDate
+        ? { date: incomeDate, amount: monthlyAmt * 12, cost: (Number(incomeCost) || 0) * 12 }
         : null;
     return {
       name,
@@ -240,20 +241,20 @@ export function ManualAssetForm({
           {isNew && (
             <div className="rounded-xl border border-border p-3">
               <p className="text-sm font-medium">첫 임대수익 기록 <span className="text-muted-foreground font-normal">(선택)</span></p>
-              <p className="mt-0.5 text-xs text-muted-foreground">입력하면 지금 바로 평가액이 계산돼요.</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">월임대료 입력 → 연간(×12)으로 환산해 평가액을 바로 계산해요.</p>
               <div className="mt-2 flex flex-col gap-2">
                 <div className="flex gap-2">
                   <NumberPadField
                     className="flex-1"
-                    label="임대수익 (원)"
+                    label="월 임대료 (원)"
                     value={incomeAmount}
                     onChange={setIncomeAmount}
                     prefix="₩"
-                    placeholder="월 임대료 등"
+                    placeholder="예: 50만"
                   />
                   <NumberPadField
                     className="flex-1"
-                    label="비용 (원, 선택)"
+                    label="월 비용 (원, 선택)"
                     value={incomeCost}
                     onChange={setIncomeCost}
                     prefix="₩"
