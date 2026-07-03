@@ -29,6 +29,11 @@ import { unzipFiles } from "./zip";
 const KEY = process.env.OPENDART_API_KEY;
 const VIEWER = "https://dart.fss.or.kr/dsaf001/main.do?rcpNo=";
 
+/** 실패를 조용히 삼키지 않기 위한 로그 — 반환은 폴백(빈 값) 유지, 원인만 서버 로그에 남긴다. */
+function logDartError(where: string, e: unknown): void {
+  console.error(`[dart] ${where} 실패:`, e instanceof Error ? e.message : e);
+}
+
 /** 공시 해석 힌트 톤(색·뉘앙스). */
 export type HintTone = "warn" | "good" | "info";
 
@@ -161,7 +166,8 @@ export async function getBusinessSectionKR(stockCode: string): Promise<string | 
       if (section && (!longest || section.length > longest.length)) longest = section;
     }
     return longest;
-  } catch {
+  } catch (e) {
+    logDartError("사업 섹션 조회", e);
     return null;
   }
 }
@@ -198,7 +204,8 @@ async function fetchCorpCodeMap(): Promise<Map<string, string>> {
 
 function corpCodeMap(): Promise<Map<string, string>> {
   if (!_mapPromise) {
-    _mapPromise = fetchCorpCodeMap().catch(() => {
+    _mapPromise = fetchCorpCodeMap().catch((e) => {
+      logDartError("corp_code 매핑 다운로드", e);
       _mapPromise = null; // 실패 시 다음 호출에서 재시도
       return new Map<string, string>();
     });
@@ -226,7 +233,8 @@ export async function getIndutyCodeKR(
     if (json?.status !== "000") return null;
     const code = String(json.induty_code ?? "").trim();
     return code || null;
-  } catch {
+  } catch (e) {
+    logDartError("업종코드 조회", e);
     return null;
   }
 }
@@ -274,7 +282,8 @@ export async function getDisclosures(
       if (out.length >= limit) break;
     }
     return out;
-  } catch {
+  } catch (e) {
+    logDartError(`공시 조회(${stockCode})`, e);
     return [];
   }
 }
@@ -352,7 +361,8 @@ export async function getDisclosurePage(
       totalPages: Number(json.total_page) || 0,
       total: Number(json.total_count) || 0,
     };
-  } catch {
+  } catch (e) {
+    logDartError(`공시 페이지 조회(${stockCode})`, e);
     return empty;
   }
 }
@@ -435,7 +445,8 @@ async function fetchShares(
       parseAmt(common?.istc_totqy) ?? parseAmt(common?.isu_stock_totqy);
     const treasury = parseCount(common?.tesstk_co) ?? 0;
     return issued != null && issued > treasury ? issued - treasury : issued;
-  } catch {
+  } catch (e) {
+    logDartError("발행주식수 조회", e);
     return null;
   }
 }
@@ -573,8 +584,8 @@ export async function getFundamentals(
           return sorted[0].data as unknown as Fundamentals;
         }
       }
-    } catch {
-      // 캐시 에러 시 계속 진행
+    } catch (e) {
+      logDartError("펀더멘털 캐시 읽기", e); // 캐시 에러 시 계속 진행
     }
   }
 
@@ -618,13 +629,14 @@ export async function getFundamentals(
             fs_div: bestResult.fsDiv === "CFS" ? "연결" : "개별",
             data: fund as unknown as Json,
           }, { onConflict: "symbol,year,fs_div" });
-      } catch {
-        // 캐시 쓰기 실패 시 무시
+      } catch (e) {
+        logDartError("펀더멘털 캐시 쓰기", e); // 폴백: 캐시 없이 계속
       }
     }
 
     return fund;
-  } catch {
+  } catch (e) {
+    logDartError(`펀더멘털 조회(${stockCode})`, e);
     return null;
   }
 }
@@ -665,8 +677,8 @@ export async function getFundamentalsSeries(
           cachedMap.set(row.year, row.data as unknown as Fundamentals);
         }
       }
-    } catch {
-      // 캐시 에러 무시
+    } catch (e) {
+      logDartError("펀더멘털 시리즈 캐시 읽기", e); // 캐시 에러 시 계속 진행
     }
   }
 
@@ -738,8 +750,8 @@ export async function getFundamentalsSeries(
                 fs_div: fsDiv === "CFS" ? "연결" : "개별",
                 data: fund as unknown as Json,
               }, { onConflict: "symbol,year,fs_div" });
-          } catch {
-            // 캐시 쓰기 실패 시 무시
+          } catch (e) {
+            logDartError("펀더멘털 시리즈 캐시 쓰기", e); // 폴백: 캐시 없이 계속
           }
         }
         return fund;
@@ -757,7 +769,8 @@ export async function getFundamentalsSeries(
       }
     }
     return out;
-  } catch {
+  } catch (e) {
+    logDartError(`펀더멘털 시리즈 조회(${stockCode})`, e);
     return [];
   }
 }

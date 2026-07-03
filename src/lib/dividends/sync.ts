@@ -149,6 +149,10 @@ export async function syncDividends(
 
   if (inserts.length === 0) return { created: 0 };
   const { error } = await supabase.from("events").insert(inserts);
-  if (error) return { created: 0 };
+  if (error) {
+    // "생성할 게 없음"과 구분해 실패를 로그에 남긴다 — 조용히 삼키면 배당 누락을 알 수 없다.
+    console.error(`[dividends] insert failed (${inserts.length}건):`, error.message);
+    return { created: 0 };
+  }
   return { created: inserts.length };
 }
