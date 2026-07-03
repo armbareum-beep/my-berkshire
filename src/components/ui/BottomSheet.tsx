@@ -1,15 +1,10 @@
 "use client";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
+import { useMounted } from "./useMounted";
 
 const SWIPE_CLOSE_PX = 100;
-
-// 하이드레이션 완료 여부 — 포털은 서버 렌더 불가라 클라이언트 확정 후에만 그린다.
-const emptySubscribe = () => () => {};
-function useMounted(): boolean {
-  return useSyncExternalStore(emptySubscribe, () => true, () => false);
-}
 
 /**
  * 드랍시트 — 클라이언트 상태 기반(URL 변경 없음).

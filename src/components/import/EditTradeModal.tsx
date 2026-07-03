@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Trash2 } from "lucide-react";
+import { Trash2, X } from "lucide-react";
 import { updateTradeEvent, deleteEvent } from "@/app/transactions/actions";
 import { isCrypto } from "@/lib/securities";
 import { nativeMoney } from "@/lib/finance/currencies";
 import { Avatar } from "@/components/ui/Avatar";
+import { useMounted } from "@/components/ui/useMounted";
 import type { YearTrade } from "./QuickEntryForm";
 
 /**
@@ -24,12 +26,27 @@ export function EditTradeModal({
   onClose: () => void;
 }) {
   const router = useRouter();
+  const mounted = useMounted();
   const [pending, start] = useTransition();
   const [qty, setQty] = useState(String(trade.quantity));
   const [price, setPrice] = useState(String(trade.priceNative));
   const [date, setDate] = useState(trade.date);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // 열려있는 동안 body 스크롤 락 + ESC 닫기(BottomSheet와 동일 패턴)
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
 
   const qtyN = Number(qty);
   const priceN = Number(price);
@@ -72,7 +89,9 @@ export function EditTradeModal({
   const fieldClass =
     "h-12 w-full rounded-xl border border-input bg-card px-3 text-base outline-none focus:border-primary";
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center"
       onClick={onClose}
@@ -96,10 +115,10 @@ export function EditTradeModal({
           <button
             type="button"
             onClick={onClose}
-            className="ml-auto shrink-0 text-muted-foreground"
+            className="touch-target ml-auto shrink-0 text-muted-foreground"
             aria-label="닫기"
           >
-            ✕
+            <X size={18} />
           </button>
         </div>
 
@@ -192,6 +211,7 @@ export function EditTradeModal({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
+import { useMounted } from "@/components/ui/useMounted";
 import { Keypad, formatNumber, grouped } from "@/components/ui/Keypad";
 
 /**
@@ -31,8 +33,30 @@ export function NumberPad({
   title?: string;
   hint?: React.ReactNode;
 }) {
-  return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end">
+  const mounted = useMounted();
+
+  // 열려있을 때 body 스크롤 락(BottomSheet와 동일 패턴 — prev 저장/복원으로 중첩 안전)
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
+  // ESC 닫기
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  if (!mounted) return null;
+
+  return createPortal(
+    <div role="dialog" aria-modal="true" aria-label={title ?? "숫자 입력"} className="fixed inset-0 z-50 flex flex-col justify-end">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} aria-hidden />
       <div className="relative mx-auto w-full max-w-[480px] rounded-t-3xl bg-card px-5 pb-8 pt-4 shadow-card-lg">
         <div className="mx-auto mb-2 h-1.5 w-9 rounded-full bg-border" />
@@ -54,7 +78,8 @@ export function NumberPad({
           확인
         </button>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { BarChart3 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import { BarChart3, Info, X } from "lucide-react";
 import { METRIC_INFO } from "@/lib/metricInfo";
+import { useMounted } from "@/components/ui/useMounted";
 
 /**
  * 기본지표 한 칸 — 탭하면 교육 모달(설명 + 회사 맥락). 설명이 있는 지표만 탭 가능(ⓘ).
@@ -22,6 +24,22 @@ export function Metric({
 }) {
   const info = METRIC_INFO[k];
   const [open, setOpen] = useState(false);
+  const mounted = useMounted();
+
+  // 모달 열려있을 때만 스크롤 락 + ESC 닫기(트리거 버튼은 그대로 인라인)
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
 
   return (
     <>
@@ -33,13 +51,13 @@ export function Metric({
       >
         <span className="flex items-center gap-1 text-xs text-muted-foreground">
           {k}
-          {info && <span className="text-[10px] text-primary">ⓘ</span>}
+          {info && <Info size={11} className="text-primary" aria-hidden />}
         </span>
         <span className="text-lg font-extrabold tabular-nums">{v}</span>
         <span className="text-[11px] text-muted-foreground">{hint}</span>
       </button>
 
-      {open && info && (
+      {mounted && open && info && createPortal(
         <div
           className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center"
           onClick={() => setOpen(false)}
@@ -53,10 +71,10 @@ export function Metric({
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="shrink-0 text-muted-foreground"
+                className="touch-target shrink-0 text-muted-foreground"
                 aria-label="닫기"
               >
-                ✕
+                <X size={18} />
               </button>
             </div>
             <p className="mt-1 text-sm font-semibold tabular-nums text-primary">
@@ -76,7 +94,8 @@ export function Metric({
               교육용 설명 · 매수 추천 아님
             </p>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );

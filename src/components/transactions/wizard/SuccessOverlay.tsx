@@ -1,6 +1,8 @@
 "use client";
 
+import { createPortal } from "react-dom";
 import { Check } from "lucide-react";
+import { useMounted } from "@/components/ui/useMounted";
 
 /**
  * 체결 성공 오버레이(목업 거래 플로우) — 도장 ✓ 가 튕기며 찍히고, 메시지 + 계속.
@@ -15,7 +17,10 @@ export function SuccessOverlay({
   sub?: string;
   onContinue: () => void;
 }) {
-  return (
+  const mounted = useMounted();
+  if (!mounted) return null;
+
+  return createPortal(
     <div className="animate-fade-in fixed inset-0 z-50 flex flex-col items-center justify-center bg-background">
       <div className="flex w-full max-w-[480px] flex-col items-center gap-4 px-10 text-center">
       <span className="animate-stamp flex h-24 w-24 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_8px_24px_rgba(49,130,246,0.35)]">
@@ -31,6 +36,7 @@ export function SuccessOverlay({
         계속
       </button>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

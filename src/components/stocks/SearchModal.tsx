@@ -1,14 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { Plus, Star } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { SymbolAvatar } from "@/components/onboarding/SymbolPicker";
 import { searchSymbols, type SymbolSearchResult } from "@/lib/finance/search";
 import { toggleWatch } from "@/app/stocks/watchlistActions";
 import { PRESET_QUOTES, fxCodeFromSymbol } from "@/lib/finance/quotes";
 import { pct } from "@/lib/format";
+import { useMounted } from "@/components/ui/useMounted";
 
 /**
  * 종목 검색 모달 — 관심종목이 이미 메인이므로 검색은 오버레이로.
@@ -23,11 +26,33 @@ export function SearchModal({
   onClose: () => void;
 }) {
   const router = useRouter();
+  const mounted = useMounted();
   const [q, setQ] = useState("");
   const [results, setResults] = useState<SymbolSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [watched, setWatched] = useState<Set<string>>(new Set(initialWatched));
   const [dirty, setDirty] = useState(false);
+
+  function close() {
+    if (dirty) router.refresh();
+    onClose();
+  }
+
+  // 열려있는 동안 body 스크롤 락 + ESC 닫기(BottomSheet와 동일 패턴).
+  // 배경 스크롤 가능한 풀스크린이었던 기존 동작을 락으로 정정.
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      document.removeEventListener("keydown", onKey);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dirty]);
 
   useEffect(() => {
     const query = q.trim();
@@ -46,11 +71,6 @@ export function SearchModal({
       ctrl.abort();
     };
   }, [q]);
-
-  function close() {
-    if (dirty) router.refresh();
-    onClose();
-  }
 
   function star(item: SymbolSearchResult) {
     const was = watched.has(item.symbol);
@@ -80,7 +100,9 @@ export function SearchModal({
   const hasQuery = q.trim() !== "";
   const visibleResults = hasQuery ? results : [];
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
       <div className="flex items-center gap-2 border-b border-border p-4">
         <Input
@@ -93,7 +115,7 @@ export function SearchModal({
         <button
           type="button"
           onClick={close}
-          className="shrink-0 px-2 text-sm font-medium text-muted-foreground"
+          className="touch-target shrink-0 px-2 text-sm font-medium text-muted-foreground"
         >
           닫기
         </button>
@@ -121,8 +143,10 @@ export function SearchModal({
                         : "bg-secondary text-secondary-foreground"
                     }`}
                   >
-                    {on ? "★ " : "+ "}
-                    {p.name}
+                    <span className="inline-flex items-center gap-1">
+                      {on ? <Star size={12} fill="currentColor" /> : <Plus size={12} />}
+                      {p.name}
+                    </span>
                   </button>
                 );
               })}
@@ -187,16 +211,17 @@ export function SearchModal({
                   type="button"
                   onClick={() => star(item)}
                   aria-label={on ? "관심 해제" : "관심 추가"}
-                  className="shrink-0 px-2 text-2xl leading-none"
+                  className="touch-target shrink-0 px-2 leading-none"
                   style={{ color: on ? "var(--primary)" : "var(--muted-foreground)" }}
                 >
-                  {on ? "★" : "☆"}
+                  <Star size={22} fill={on ? "currentColor" : "none"} strokeWidth={1.75} aria-hidden />
                 </button>
               </li>
             );
           })}
         </ul>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
