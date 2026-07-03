@@ -262,13 +262,16 @@ html {
 .animate-page-in main:not([aria-busy]) > *:nth-child(n+11) { animation-delay: 600ms; }
 
 /* 시각 크기 불변, 히트박스만 최소 44px 확장(모바일 접근성) */
-.touch-target { position: relative; }
-.touch-target::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: max(100%, 44px);
-  height: max(100%, 44px);
-  transform: translate(-50%, -50%);
+/* components 레이어 사용: utilities 레이어 유틸(absolute 등)이 position을 덮어쓸 수 있도록 */
+@layer components {
+  .touch-target { position: relative; }
+  .touch-target::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
+  }
 }
