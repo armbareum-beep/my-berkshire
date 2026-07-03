@@ -1,5 +1,11 @@
 {
   "regions": [
     "icn1"
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/sync-kis-master",
+      "schedule": "30 23 * * *"
+    }
   ]
 }

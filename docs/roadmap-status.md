@@ -97,3 +97,16 @@
 | 한국 ETF TER | KRX 데이터 포털 JS 세션 필요 → 서버사이드 불가. [krxEtf.ts](../src/lib/finance/krxEtf.ts) 빈 맵 폴백. catalog.ts에 수동 등록된 ETF만 표시됨 | 자동화는 KRX Open API(openapi.krx.co.kr) 키 등록 또는 토스 API |
 | 시세 피드 | Yahoo v8/chart `fetchOne()` | [prices.ts](../src/lib/finance/prices.ts) `fetchOne` 교체점에 토스 구현 |
 | 종목 검색 | Yahoo search 프록시 | [api/search/route.ts](../src/app/api/search/route.ts) fetch 부분만 교체 |
+
+---
+
+## C4 — KIS 마스터 싱크 서버 cron 이관 (PC schtasks → Vercel)
+
+KIS 종목마스터 싱크는 fetch + 인메모리 zlib(파일시스템 불사용)이라 서버 이관이 가능한 유일한 싱크였다.
+코어를 [masterSync.ts](../src/lib/finance/kis/masterSync.ts)로 추출해 [cron 라우트](../src/app/api/cron/sync-kis-master/route.ts)와
+로컬 스크립트가 공유한다. KRX 3종(Playwright 세션)·로고(public/ 파일)는 이관 불가 — 여전히 PC 의존.
+
+전환 절차:
+1. Vercel 프로젝트 env에 `CRON_SECRET`(신규 랜덤 값 생성)·`SUPABASE_SERVICE_ROLE_KEY` 설정.
+2. 배포 후 `curl -H "Authorization: Bearer $CRON_SECRET" https://<domain>/api/cron/sync-kis-master` 수동 1회 실행 → 응답의 `rows`·`kr` 행수 확인.
+3. 1주 관찰(cron 로그·`kis_security_master.fetched_at` 갱신 확인) 후 PC schtasks의 KIS 마스터 태스크만 해제(KRX·로고 태스크는 유지).
