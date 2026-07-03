@@ -2,27 +2,28 @@ import { describe, it, expect } from "vitest";
 import { assetImage, externalLogoSources } from "./assetImage";
 
 describe("assetImage", () => {
-  // 회사/운용사 종목의 클라이언트 후보 = 로컬(svg·png) → 로고 프록시(/api/logo). 외부 소스는
+  // 회사/운용사 종목의 클라이언트 후보 = 로컬(png·svg) → 로고 프록시(/api/logo). 외부 소스는
   // 프록시가 서버에서 처리(externalLogoSources) — 광고차단 무력화·핫링크 방지.
-  it("한국 기업 코드 → 로컬(svg·png) 우선 + 로고 프록시", () => {
+  // 로컬은 png 우선 — sync:logos가 png로 저장하므로(수동 svg는 폴백).
+  it("한국 기업 코드 → 로컬(png·svg) 우선 + 로고 프록시", () => {
     const r = assetImage("005930", "삼성전자");
     expect(r.kind).toBe("company");
-    expect(r.srcs[0]).toBe("/logos/005930.svg");
-    expect(r.srcs[1]).toBe("/logos/005930.png");
+    expect(r.srcs[0]).toBe("/logos/005930.png");
+    expect(r.srcs[1]).toBe("/logos/005930.svg");
     expect(r.srcs[2]).toBe("/api/logo?symbol=005930");
   });
 
   it("미등록 한국 종목도 로컬→프록시 후보 제공", () => {
     const r = assetImage("999999", "이름없는상사");
     expect(r.kind).toBe("company");
-    expect(r.srcs[0]).toBe("/logos/999999.svg");
+    expect(r.srcs[0]).toBe("/logos/999999.png");
     expect(r.srcs).toContain("/api/logo?symbol=999999");
   });
 
   it("미국 티커 → 로컬 우선 + 프록시", () => {
     const r = assetImage("AAPL", "Apple");
     expect(r.kind).toBe("company");
-    expect(r.srcs[0]).toBe("/logos/AAPL.svg");
+    expect(r.srcs[0]).toBe("/logos/AAPL.png");
     expect(r.srcs).toContain("/api/logo?symbol=AAPL");
   });
 
@@ -30,7 +31,7 @@ describe("assetImage", () => {
     const r = assetImage("069500", "KODEX 200");
     expect(r.kind).toBe("manager");
     expect(r.fit).toBe("inset");
-    expect(r.srcs[0]).toBe("/logos/069500.svg");
+    expect(r.srcs[0]).toBe("/logos/069500.png");
     expect(r.srcs).toContain("/api/logo?symbol=069500");
   });
 
@@ -52,7 +53,7 @@ describe("assetImage", () => {
 
   it("BRK/A 슬래시 심볼 → 안전 슬러그(_) 로컬 경로", () => {
     const r = assetImage("BRK/A", "버크셔A");
-    expect(r.srcs[0]).toBe("/logos/BRK_A.svg");
+    expect(r.srcs[0]).toBe("/logos/BRK_A.png");
     expect(r.srcs).toContain("/api/logo?symbol=BRK%2FA");
   });
 

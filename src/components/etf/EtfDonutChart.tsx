@@ -75,12 +75,14 @@ export function EtfDonutChart({ datasets }: { datasets: ChartDatasets }) {
 
   const GAP = 0.015;
   const CX = 100, CY = 100, OR = 80, IR = 54;
-  let angle = 0;
+  // 시작각 = 앞선 조각들의 누적 비중(재할당 없이 순수 계산 — 조각 수가 적어 O(n²) 무방).
+  const starts = slices.map((_, i) =>
+    slices.slice(0, i).reduce((sum, p) => sum + p.weight * 2 * Math.PI, 0),
+  );
   const segments = slices.map((s, i) => {
     const span = Math.max(s.weight * 2 * Math.PI - GAP, 0.001);
-    const a0 = angle + GAP / 2;
+    const a0 = starts[i] + GAP / 2;
     const a1 = a0 + span;
-    angle += s.weight * 2 * Math.PI;
     return { ...s, path: arcPath(CX, CY, OR, IR, a0, a1), index: i };
   });
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Check, Lock, Trash2 } from "lucide-react";
 import {
@@ -180,12 +181,12 @@ export function PositionFidelity({
 
       {/* 수익률: 누적은 항상(평단 맞으면 정확), 연환산(XIRR)은 '언제 샀는지' 넣어야 정확 */}
       <div className="mb-3 rounded-xl bg-secondary/50 p-3">
-        <a href="/returns" className="flex items-center justify-between">
+        <Link href="/returns" className="flex items-center justify-between">
           <span className="text-sm font-semibold">누적수익률</span>
           <span className="text-base font-bold tabular-nums">
             {preview.cumulativeReturn != null ? signedPct(preview.cumulativeReturn) : "—"}
           </span>
-        </a>
+        </Link>
         <div className="mt-2 flex items-center justify-between border-t border-border pt-2">
           <span className="flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
             {!xirrReady && <Lock size={13} />} 연환산(XIRR)
