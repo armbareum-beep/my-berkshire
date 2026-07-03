@@ -94,7 +94,7 @@ async function scopeToIncludedMembers<T extends { account_id: string }>(
 
 /**
  * 활성 holding 의 이벤트를 모아 수익률·포지션을 계산한 스냅샷.
- * 시세는 목업(STEP 6에서 교체). 비즈니스 로직은 finance/ 모듈을 호출만 한다.
+ * 시세는 getKrwPrices 로 실연동(₩ 환산, FINANCE_SOURCE 로 yahoo/kis 분기). 비즈니스 로직은 finance/ 모듈을 호출만 한다.
  */
 export const getPortfolio = cache(async function getPortfolio(
   supabase: SupabaseClient<Database>,

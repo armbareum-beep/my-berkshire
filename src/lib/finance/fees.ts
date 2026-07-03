@@ -1,5 +1,5 @@
 /**
- * 수수료·세금 자동 추정 — STEP 4.
+ * 수수료·세금 자동 추정.
  * fee_and_tax 를 비우면 계좌 commission_rate + 계좌유형 세율(lib/config/tax)로 추정해 채운다.
  * 세율은 여기서 하드코딩하지 않고 tax config 를 호출만 한다.
  */

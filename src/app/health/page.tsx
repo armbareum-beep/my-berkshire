@@ -1,9 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 
 /**
- * STEP 0 헬스체크 — Supabase 연결 확인용.
+ * Supabase 연결 헬스체크.
  * auth 세션을 읽고, 프로젝트 auth health 엔드포인트로 도달 가능 여부를 확인한다.
- * (테이블은 STEP 1에서 생성하므로 여기선 auth 레이어만 검증)
+ * (여기선 auth 레이어만 검증)
  */
 export default async function HealthPage() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
