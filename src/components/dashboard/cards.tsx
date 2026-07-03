@@ -217,23 +217,27 @@ export function HeroValuationCard({
             {assetParts.map((p, i) => (
               <span key={p.label} className="inline-flex items-center gap-1.5">
                 <span className={`h-2 w-2 shrink-0 rounded-full ${partShade(i)}`} />
-                {p.label} {money(p.value, currency)}
+                {p.label} {money(p.value, currency)} ({pct(p.value / totalAssets)})
               </span>
             ))}
           </div>
 
-          {/* 재무상태표 — 총자산(위 헤드라인) − 부채 = 순자산. 부채 있을 때만. */}
+          {/* 재무상태표 — 총자산(위 헤드라인) − 부채 = 순자산. 부채 있을 때만. % = 총자산 대비. */}
           {debtPart && (
             <dl className="mt-3 flex flex-col gap-1 border-t border-border pt-3 text-sm tabular-nums">
               <div className="flex items-center justify-between">
                 <dt className="text-muted-foreground">− 부채</dt>
                 <dd className="font-medium">
                   {money(Math.abs(debtPart.value), currency)}
+                  {" "}<span className="font-normal text-muted-foreground">({pct(Math.abs(debtPart.value) / totalAssets)})</span>
                 </dd>
               </div>
               <div className="flex items-center justify-between border-t border-border pt-1 font-bold">
                 <dt>= 순자산</dt>
-                <dd>{money(netWorth, currency)}</dd>
+                <dd>
+                  {money(netWorth, currency)}
+                  {" "}<span className="font-normal text-muted-foreground">({pct(netWorth / totalAssets)})</span>
+                </dd>
               </div>
             </dl>
           )}
