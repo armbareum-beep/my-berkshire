@@ -25,7 +25,9 @@ const TABS: {
 export function BottomTabBar() {
   const pathname = usePathname();
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-10 mx-auto max-w-[480px] border-t border-border bg-card">
+    // pb는 세이프에어리어(노치·홈 인디케이터) 대응 — layout.tsx의 viewportFit:"cover" 없이는
+    // iOS에서 env(safe-area-inset-bottom)이 0으로 계산돼 무효화된다(둘이 한 세트).
+    <nav className="fixed inset-x-0 bottom-0 z-10 mx-auto max-w-[480px] border-t border-border bg-card pb-[env(safe-area-inset-bottom)]">
       <ul className="flex items-center">
         {TABS.map((t) => {
           if (t.action) {

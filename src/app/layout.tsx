@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { MarketAutoRefresh } from "@/components/MarketAutoRefresh";
@@ -6,6 +6,14 @@ import { MarketAutoRefresh } from "@/components/MarketAutoRefresh";
 export const metadata: Metadata = {
   title: "ENUF",
   description: "개인 투자 지주회사 운영 콘솔",
+};
+
+// viewportFit:"cover" — 노치/홈 인디케이터 기기에서 화면을 세이프에어리어 밖까지 채운다.
+// 하단 탭바의 env(safe-area-inset-bottom) 패딩(BottomTabBar.tsx)이 이 설정 없이는 iOS에서 0으로 계산된다.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
