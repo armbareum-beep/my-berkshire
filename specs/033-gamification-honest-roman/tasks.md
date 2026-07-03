@@ -104,8 +104,8 @@
 
 ## Phase 8: Polish & Cross-Cutting
 
-- [ ] T029 전체 게이트 — `npm run typecheck && npm run lint && npm test && npm run build` + quickstart.md 수동 검증표 전체 재수행
-- [ ] T030 [P] `docs/roadmap-status.md`에 033 완료 반영
+- [X] T029 전체 게이트 — `npm run typecheck && npm run lint && npm test && npm run build` + quickstart.md 수동 검증표 전체 재수행
+- [X] T030 [P] `docs/roadmap-status.md`에 033 완료 반영
 - [ ] T031 배포 — 마이그레이션 선적용 확인(quickstart 배포 순서) 후 main 머지·푸시는 **사용자 승인 후** 진행
 
 ---
