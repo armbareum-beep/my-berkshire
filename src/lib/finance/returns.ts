@@ -143,13 +143,15 @@ export function computeReturn(
   const cagrValue = cagr(holding, events, terminalValue, days);
 
   // 엣지 1: 설립 90일 미만 → 연환산 금지, 누적수익률만.
+  // 기다림이 결핍처럼 느껴지지 않도록 정적 안내 대신 D-day 카운트다운으로 보여준다.
   if (days < MIN_DAYS_FOR_ANNUALIZED) {
+    const remaining = Math.max(1, MIN_DAYS_FOR_ANNUALIZED - days);
     return {
       ...base,
       cumulativeReturn: cumulative,
       cagr: cagrValue,
       status: "cumulative_only",
-      message: "연환산 수익률은 설립 90일 후 공개됩니다.",
+      message: `연환산 수익률 공개까지 D-${remaining}`,
     };
   }
 

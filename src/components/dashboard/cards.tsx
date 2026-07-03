@@ -270,7 +270,11 @@ export function ReturnCard({
       </p>
       {!isXirr && (
         <p className="mt-2 text-sm text-muted-foreground">
-          {result.message ?? "연환산 수익률은 설립 90일 후 공개됩니다."}
+          {/* 엔진이 message를 항상 채우므로(returns.ts) 폴백은 거의 노출되지 않는다. */}
+          {result.message ??
+            (Number.isFinite(result.days)
+              ? `연환산 수익률 공개까지 D-${Math.max(1, 90 - result.days)}`
+              : "연환산 수익률은 설립 90일 후 공개됩니다.")}
         </p>
       )}
       {welcome && isXirr && (

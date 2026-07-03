@@ -85,7 +85,7 @@ describe("computeReturn — 엣지케이스", () => {
     const res = computeReturn(holding, [], { }, "2025-02-15"); // ~45일
     expect(res.status).toBe("cumulative_only");
     expect(res.xirr).toBeNull();
-    expect(res.message).toContain("90일");
+    expect(res.message).toContain("D-45"); // 90 - 45일 경과 = D-day 카운트다운
   });
 
   it("엣지 2: 설립 보유종목만(추가 이벤트 0건) → 2점 XIRR 계산됨", () => {
