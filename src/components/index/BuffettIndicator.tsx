@@ -51,7 +51,7 @@ export function BuffettIndicator({ data }: Props) {
     <section className="rounded-2xl bg-card p-5 shadow-card">
       <p className="mb-1 text-sm font-semibold">국가별 시총/GDP (버핏 인디케이터)</p>
       <p className="mb-4 text-xs text-muted-foreground">
-        100% 초과 = 시총이 GDP보다 큼 · 버핏이 "가장 좋아하는 밸류에이션 지표"
+        100% 초과 = 시총이 GDP보다 큼 · 버핏이 &ldquo;가장 좋아하는 밸류에이션 지표&rdquo;
       </p>
       <ResponsiveContainer width="100%" height={data.length * 44}>
         <BarChart

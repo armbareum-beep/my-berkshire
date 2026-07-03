@@ -1,9 +1,15 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 const SWIPE_CLOSE_PX = 100;
+
+// 하이드레이션 완료 여부 — 포털은 서버 렌더 불가라 클라이언트 확정 후에만 그린다.
+const emptySubscribe = () => () => {};
+function useMounted(): boolean {
+  return useSyncExternalStore(emptySubscribe, () => true, () => false);
+}
 
 /**
  * 드랍시트 — 클라이언트 상태 기반(URL 변경 없음).
@@ -20,12 +26,10 @@ export function BottomSheet({
   title?: string;
   children: React.ReactNode;
 }) {
-  const [mounted, setMounted] = useState(false);
+  const mounted = useMounted();
   const [dragY, setDragY] = useState(0);
   const startYRef = useRef<number | null>(null);
   const dragYRef = useRef(0);
-
-  useEffect(() => setMounted(true), []);
 
   // 열려있을 때 body 스크롤 락
   useEffect(() => {

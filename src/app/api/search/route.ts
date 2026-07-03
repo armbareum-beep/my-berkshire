@@ -64,12 +64,17 @@ export async function GET(request: NextRequest) {
   }));
 
   // KRX ETF 전체(871개) 검색 — etf_ter_cache에서 이름·코드 매칭
+  // PostgREST .or() 필터는 , ( ) 가 구문 구분자라 사용자 입력을 그대로 넣으면 깨진다.
+  // 예약문자·LIKE 와일드카드를 제거한 값만 필터에 사용한다.
+  const filterQ = q.replace(/[,()"'\\%_]/g, "");
   const supabaseForEtf = await createClient();
-  const { data: krxEtfs } = await supabaseForEtf
-    .from("etf_ter_cache")
-    .select("symbol, name, ter")
-    .or(`name.ilike.%${q}%,symbol.ilike.${q}%`)
-    .limit(15);
+  const { data: krxEtfs } = filterQ
+    ? await supabaseForEtf
+        .from("etf_ter_cache")
+        .select("symbol, name, ter")
+        .or(`name.ilike.%${filterQ}%,symbol.ilike.${filterQ}%`)
+        .limit(15)
+    : { data: [] };
   const seenLocal = new Set(local.map((l) => l.symbol));
   const krxResults: SymbolSearchResult[] = (krxEtfs ?? [])
     .filter((r) => !seenLocal.has(r.symbol))
