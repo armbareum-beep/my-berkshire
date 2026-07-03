@@ -10,6 +10,8 @@
  */
 import type { InvestmentEvent } from "./valuation";
 import { countryOf } from "../securities";
+import type { DrawdownEpisode } from "./drawdown";
+import { planCompletionDate, type RebalancePlan } from "../plan";
 
 export interface Milestone {
   date: string; // YYYY-MM-DD
@@ -28,15 +30,40 @@ const CAPITAL_MARKS: { amount: number; label: string }[] = [
 const earliest = (events: InvestmentEvent[]) =>
   [...events].sort((a, b) => (a.date < b.date ? -1 : 1))[0];
 
+const pad = (n: number) => String(n).padStart(2, "0");
+
 /**
  * 여정 마일스톤(설립·첫 매수는 호출부에서 별도 생성). 날짜 정렬은 호출부 책임.
+ *
+ * `today`·`archivedPlans` 는 소급 생성분(설립 N주년 전부·완수된 자본배분 계획)에 쓰인다.
+ * 둘 다 저장하지 않고 매 호출 시 재계산/재판정(헌장 V) — celebration.ts의 anniversary()는
+ * "가장 최근 지난 주년" 하나만 홈 배너용으로 계산하지만, 여기서는 연혁이라 지난 것 전부를 남긴다.
  */
 export function journeyMilestones(
   events: InvestmentEvent[],
   seed: { foundedAt: string; initialValuation: number },
   nameOf: (symbol: string) => string,
+  today: string,
+  archivedPlans: RebalancePlan[],
 ): Milestone[] {
   const out: Milestone[] = [];
+
+  // 설립 N주년 — 지난 것 전부(celebration.ts anniversary()와 동일한 월-일 사전식 비교 규칙).
+  const [fy, fm, fd] = seed.foundedAt.split("-").map(Number);
+  const ty = Number(today.slice(0, 4));
+  const md = `${pad(fm)}-${pad(fd)}`;
+  // 올해 기념일이 이미 지났으면 올해, 아직이면 작년 기념일까지가 "지난" 주년.
+  const annivYear = today >= `${ty}-${md}` ? ty : ty - 1;
+  const maxYears = annivYear - fy;
+  for (let n = 1; n <= maxYears; n++) {
+    out.push({ date: `${fy + n}-${md}`, label: `설립 ${n}주년` });
+  }
+
+  // 자본배분 계획 완수 — 아카이브된 계획 중 완수 판정(events에서 재판정)된 것만.
+  for (const plan of archivedPlans) {
+    const completedAt = planCompletionDate(plan, events);
+    if (completedAt) out.push({ date: completedAt, label: "자본배분 계획 완수" });
+  }
 
   // 첫 해외 기업 인수 — 글로벌 투자(중립 스타일)의 여정 표식.
   const firstOverseas = earliest(
@@ -91,4 +118,17 @@ export function journeyMilestones(
   }
 
   return out;
+}
+
+/**
+ * 드로다운 인내 마일스톤 — "통과"(passed)한 에피소드만 연혁에 남긴다.
+ * 미회복·도중 매도 에피소드는 어떤 표시도 만들지 않는다(정직 원칙, FR-005·FR-006).
+ */
+export function drawdownMilestones(episodes: DrawdownEpisode[]): Milestone[] {
+  return episodes
+    .filter((e) => e.passed)
+    .map((e) => ({
+      date: e.recoveryDate as string, // passed=true ⇒ recoveryDate≠null
+      label: `−${e.bucket}% 하락 구간을 매도 없이 통과`,
+    }));
 }

@@ -31,7 +31,7 @@ export default async function AnnualReportPage() {
         <BottomTabBar /><BackButton />
         <section className="mx-auto mt-12 w-full max-w-lg rounded-3xl bg-card p-8 text-center shadow-card">
           <p className="text-4xl">🔒</p>
-          <h1 className="mt-4 text-2xl font-extrabold">첫 연차보고서를 준비 중입니다</h1>
+          <h1 className="mt-4 text-2xl font-extrabold">회장님의 첫 연차보고서를 준비 중입니다</h1>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">1년의 기록을 채운 회사에만 발행됩니다. {eligibility.unlockDate}에 열려요.</p>
           <p className="mt-5 text-sm font-bold">발행까지 {eligibility.remainingDays}일</p>
         </section>

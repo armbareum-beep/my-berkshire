@@ -11,6 +11,7 @@ import {
 import { daysSince } from "./finance/xirr";
 import { findCatalogItem } from "./finance/catalog";
 import { journeyMilestones } from "./finance/milestones";
+import { parsePlan, type RebalancePlan } from "./plan";
 import {
   computeCompoundingStreak,
   type CompoundingStreak,
@@ -203,9 +204,21 @@ export function computeDashboard(
     const nm = firstBuy.symbol ? nameOf(firstBuy.symbol) : "";
     timeline.push({ date: firstBuy.date, label: `첫 매수 · ${nm}` });
   }
-  // 여정 마일스톤(첫 해외 인수·첫 배당·투입 자본 돌파) — 중립·통제 가능한 것만.
+  // 여정 마일스톤(첫 해외 인수·첫 배당·투입 자본 돌파·설립 N주년·계획 완수) — 중립·통제 가능한 것만.
+  // archived_plans는 방어적 파싱 — 배열이 아니거나 항목이 손상됐으면 []/스킵.
+  const archivedPlans: RebalancePlan[] = Array.isArray(holding.archived_plans)
+    ? (holding.archived_plans as unknown[])
+        .map((raw) => parsePlan(raw))
+        .filter((p): p is RebalancePlan => p !== null)
+    : [];
   timeline.push(
-    ...journeyMilestones(events, { foundedAt: holding.founded_at, initialValuation }, nameOf),
+    ...journeyMilestones(
+      events,
+      { foundedAt: holding.founded_at, initialValuation },
+      nameOf,
+      today,
+      archivedPlans,
+    ),
   );
   timeline.sort((a, b) => (a.date < b.date ? -1 : 1));
 

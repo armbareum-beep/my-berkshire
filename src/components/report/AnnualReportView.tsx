@@ -24,7 +24,7 @@ export function AnnualReportView({
       <header className="rounded-3xl bg-foreground p-7 text-background shadow-card print:rounded-none print:shadow-none">
         <p className="text-xs font-semibold uppercase tracking-[0.24em] opacity-65">ENUF Annual Report</p>
         <h1 className="mt-8 text-3xl font-extrabold tracking-tight">{companyName}</h1>
-        <p className="mt-1 text-sm opacity-70">{report.label} · 제{report.edition}기</p>
+        <p className="mt-1 text-sm opacity-70">회장님, {report.label} · 제{report.edition}기 결산을 보고드립니다</p>
         <div className="mt-10 flex items-end justify-between gap-4">
           <p className="text-xs opacity-60">설립 {foundedAt} · 보고기간 {report.start}—{report.end}</p>
           <PrintAnnualReportButton />
@@ -32,7 +32,7 @@ export function AnnualReportView({
       </header>
 
       <section className="rounded-2xl bg-card p-6 shadow-card print:shadow-none">
-        <p className="text-sm font-semibold">주주에게 보내는 숫자</p>
+        <p className="text-sm font-semibold">회장님께 보고드리는 숫자</p>
         <div className="mt-4 grid grid-cols-2 gap-5">
           <Metric label="1년 XIRR" value={report.xirr == null ? "—" : signedPct(report.xirr)} tone={report.xirr} />
           <Metric label="1년 누적 수익률" value={report.cumulative == null ? "—" : signedPct(report.cumulative)} tone={report.cumulative} />

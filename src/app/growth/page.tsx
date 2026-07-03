@@ -1,10 +1,13 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { ReceiptText } from "lucide-react";
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getPortfolio } from "@/lib/portfolio";
 import { computeDashboard } from "@/lib/dashboard";
+import { loadDrawdownEpisodes } from "@/lib/drawdownEpisodes";
+import { drawdownMilestones } from "@/lib/finance/milestones";
 import { computeStyle } from "@/lib/style";
 import { companyTier } from "@/lib/finance/companyTier";
 import { parsePlan, planProgress } from "@/lib/plan";
@@ -13,6 +16,7 @@ import { totalLiabilities } from "@/lib/finance/liabilities";
 import { loadSecurityMeta } from "@/lib/securities";
 import { fetchKrxEtfTers } from "@/lib/finance/krxEtf";
 import { loadDismissed } from "@/lib/finance/homeSignal";
+import { saveStyleSnapshot, toStyleHistorySnapshot } from "@/lib/styleHistory";
 import {
   quartersBetween,
   reviewedQuarters,
@@ -28,6 +32,7 @@ import { StyleCard } from "@/components/dashboard/StyleCard";
 import { LookThroughCard } from "@/components/dashboard/LookThroughCard";
 import { TimelineCard } from "@/components/dashboard/cards";
 import { CompanyTierCard } from "@/components/growth/CompanyTierCard";
+import { CompoundingStreakCard } from "@/components/growth/CompoundingStreakCard";
 import { EtfSnapshotCard } from "@/components/growth/EtfSnapshotCard";
 import { LockedCard } from "@/components/growth/LockedCard";
 
@@ -50,14 +55,27 @@ export default async function GrowthPage() {
   const today = todayKST();
   const data = computeDashboard(portfolio, "KRW");
 
-  const [liabilities, secMeta, dismissed] = await Promise.all([
+  const [liabilities, secMeta, dismissed, drawdownEpisodes] = await Promise.all([
     loadLiabilities(supabase, holding.id),
     loadSecurityMeta(
       supabase,
       data.allocation.map((a) => a.symbol),
     ),
     loadDismissed(supabase, holding.id),
+    loadDrawdownEpisodes({
+      supabase,
+      holdingId: holding.id,
+      portfolioRevision: holding.portfolio_revision,
+      foundedAt: holding.founded_at,
+      initialValuation: Number(holding.initial_valuation),
+      events: portfolio.events,
+      today,
+    }),
   ]);
+  // 드로다운 통과는 비동기 가격 시리즈가 필요해 computeDashboard(동기) 밖에서 merge.
+  const timeline = [...data.timeline, ...drawdownMilestones(drawdownEpisodes)].sort(
+    (a, b) => (a.date < b.date ? -1 : 1),
+  );
 
   // ETF vs 개별주 분류
   const etfAllocations = data.allocation.filter(
@@ -109,6 +127,18 @@ export default async function GrowthPage() {
     planRatio,
     secMeta,
   );
+  // /style 과 동일 배선 — 방문만으로 스냅샷이 쌓여 분기 경계에 갇히지 않고 등급 변화가 더 자주 기록된다.
+  if (!style.insufficient) {
+    const snapshot = toStyleHistorySnapshot(style, today);
+    after(() =>
+      saveStyleSnapshot(
+        supabase,
+        holding.id,
+        holding.portfolio_revision,
+        snapshot,
+      ),
+    );
+  }
 
   // 기업 등급 — 납입 원금 + 운용기간(가장 오래된 이벤트 날짜 기준) 이중 게이트.
   const earliestDate =
@@ -139,6 +169,9 @@ export default async function GrowthPage() {
 
       {/* 기업 등급(헤드라인) */}
       <CompanyTierCard tier={tier} invested={data.invested} monthsActive={monthsActive} />
+
+      {/* 복리 무중단 — 이미 계산된 data.compoundingStreak를 그대로 노출(새 계산 없음). */}
+      <CompoundingStreakCard streak={data.compoundingStreak} />
 
       {/* 내 지분 실적(현재 투시 펀더멘털) — 개별주 없으면 잠금 */}
       {hasStock ? (
@@ -214,8 +247,8 @@ export default async function GrowthPage() {
         </Link>
       </section>
 
-      {/* 마일스톤 타임라인(설립·첫 매수·첫 해외 인수·첫 배당·납입 자본 돌파) */}
-      {data.timeline.length > 0 && <TimelineCard timeline={data.timeline} />}
+      {/* 마일스톤 타임라인(설립·첫 매수·첫 해외 인수·첫 배당·납입 자본 돌파·드로다운 통과) */}
+      {timeline.length > 0 && <TimelineCard timeline={timeline} />}
     </main>
   );
 }

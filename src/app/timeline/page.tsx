@@ -7,9 +7,14 @@ import { TimelineCard } from "@/components/dashboard/cards";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { getPortfolio } from "@/lib/portfolio";
 import { computeDashboard } from "@/lib/dashboard";
+import { loadDrawdownEpisodes } from "@/lib/drawdownEpisodes";
+import { drawdownMilestones } from "@/lib/finance/milestones";
+import { todayKST } from "@/lib/date";
 
 /**
  * 회사 연혁 — 설립·첫 매수·여정 마일스톤(통제 가능한 서사). 활동 내역(/activity)과 분리.
+ * 드로다운 통과는 비동기 가격 시리즈가 필요해 computeDashboard(동기) 밖에서 페이지
+ * 레벨에 merge 한다(design-notes.md 기능1).
  */
 export default async function TimelinePage() {
   const supabase = await createClient();
@@ -20,7 +25,21 @@ export default async function TimelinePage() {
 
   const portfolio = await getPortfolio(supabase);
   if (!portfolio) redirect("/onboarding");
-  const timeline = computeDashboard(portfolio).timeline;
+  const { holding } = portfolio;
+
+  const drawdownEpisodes = await loadDrawdownEpisodes({
+    supabase,
+    holdingId: holding.id,
+    portfolioRevision: holding.portfolio_revision,
+    foundedAt: holding.founded_at,
+    initialValuation: Number(holding.initial_valuation),
+    events: portfolio.events,
+    today: todayKST(),
+  });
+  const timeline = [
+    ...computeDashboard(portfolio).timeline,
+    ...drawdownMilestones(drawdownEpisodes),
+  ].sort((a, b) => (a.date < b.date ? -1 : 1));
 
   return (
     <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">

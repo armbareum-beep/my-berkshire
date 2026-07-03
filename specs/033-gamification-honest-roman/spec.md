@@ -1,264 +1,149 @@
-# 033 — 게이미피케이션 강화: 드로다운 인내 · 연혁 영구화 · 등급업 축하
+# Feature Specification: 게이미피케이션 강화 — 드로다운 인내·연혁 영구화·등급업 축하
 
-## 배경
+**Feature Branch**: `033-gamification-honest-roman`
+**Created**: 2026-07-03
+**Status**: Draft
+**Input**: User description: "게이미피케이션 강화: 드로다운 인내 마일스톤, 축하의 연혁 영구화, 규율 등급업 축하"
 
-`docs/gamification-honest-roman-v1.md`(이 스펙의 헌법)가 명시한 **③ 정직한 축하**·**① 인내 streak**·**⑥ 서사 마일스톤**을 실제 코드로 착지시킨다. 이미 구현된 축하 정책(`src/lib/celebration.ts`)은 설립 N주년·계획 완수만 다루고 있어, 헌법이 §2·§4에서 못박은 "**드로다운을 안 팔고 통과 — 인내(통제 가능한 행동)를 축하**"가 아직 비어 있다. 하락장을 이탈 사유가 아니라 충성 사유로 뒤집는 유일한 장치이자 이 스펙의 기함이다.
+## User Scenarios & Testing *(mandatory)*
 
-나머지 3건(복리 무중단 노출·회장님 호칭·연혁 영구화/등급업)은 이미 계산되어 있거나 결정된 로직을 화면·카피·연혁에 "노출"하는 저비용 작업이다.
+### User Story 1 - 하락장을 버틴 인내를 인정받는다 (Priority: P1)
 
-## 목표
+시장이 크게 하락해 내 포트폴리오가 고점 대비 10% 넘게 빠졌다가 다시 회복됐다. 그 기간 동안 나는 한 주도 팔지 않았다. 앱은 이 "버팀"을 알아보고 — 회복된 뒤에 — 홈에서 축하해주고, 회사 연혁에 영구히 기록한다. 하락장이 앱을 끄는 이유가 아니라 내 인내가 기록되는 순간이 된다.
 
-1. **드로다운 인내 마일스톤 + 축하** — 신규 순수 엔진으로 하락→회복 에피소드를 판정, 매도 없이 통과했으면 연혁·홈 축하에 반영.
-2. **복리 무중단 카운터 홈(그로스) 노출** — 이미 계산된 `data.compoundingStreak`를 마이버크셔 허브에 상시 카드로 노출.
-3. **"회장님" 호칭 통일** — 리포트 계열 카피를 "주주"에서 "회장님"으로 정렬.
-4. **축하의 연혁 영구화 + 등급업 축하** — N주년·계획 완수를 연혁에 소급 영구 기록하고, 규율 등급 상승을 축하 신호로 배선.
+**Why this priority**: 이 앱의 게이미피케이션 헌법(정직한 로망)이 기함으로 지목한 기능. 빨간 화면을 숨기지 않는 앱에서 하락장을 충성 사유로 뒤집는 유일한 장치이며, "내일 또 열어볼 이유"의 정서적 핵심이다.
 
-전부 **신규 외부 의존 0**, 대부분 **신규 DB 테이블 0**(예외: 기능4의 `archived_plans` 컬럼 1개).
+**Independent Test**: 고점→하락(−10% 이상)→회복 이력과 무매도 기록을 가진 계정으로 홈과 연혁 화면을 열어, 축하 배너 1회 노출과 연혁 항목 생성을 확인하면 단독 검증 가능.
 
----
+**Acceptance Scenarios**:
 
-## 기능 1 — 드로다운 인내 마일스톤 + 축하 (기함)
-
-### 목적
-
-헌법 §2·§4: "이번 분기 −12%. 하지만 당신은 한 주도 팔지 않았습니다." 숫자(낙폭)는 정직하게 보이고, 그 위에 통제 가능했던 행동(안 팖)을 얹는다. 드로다운이 게이미피케이션 대상이 되는 **유일한 예외**(다른 모든 시장 결과는 `CELEBRATION_DENYLIST`로 금지)이며, 예외가 성립하는 이유는 축하 대상이 "낙폭"이 아니라 "그 구간 동안 팔지 않은 결정"이기 때문이다.
-
-### 데이터 소스 (신규 가격 fetch 0)
-
-`loadPortfolioValueSeries`가 이미 캐시해 둔 일별 ₩ 종가(`closes`)와 `events`를 재사용해, `buildValueSeries(seed, events, closes, today, maxPoints)`를 **maxPoints를 충분히 크게(다운샘플 없이 전체 해상도)** 주어 재호출한다. 종가는 스냅샷에서 이미 메모리에 있으므로 이 재호출은 순수 CPU 연산이며 네트워크 호출이 없다.
-
-### 알고리즘 — 흐름조정 TWR(Time-Weighted Return) 체인
-
-`ValuePoint { date, value, invested }`에서 `invested`의 일별 증분을 그날의 순자본흐름 `f_t`로 본다(증자·인출 포함, 매매·배당은 `invested`에 영향 없음 — `valueSeries.ts` 정의 그대로).
-
-```
-f_t = invested_t − invested_{t-1}
-r_t = (value_t − f_t − value_{t-1}) / value_{t-1}     // value_{t-1} > 0 일 때만
-index_t = index_{t-1} × (1 + r_t),  index_0 = 1
-```
-
-이렇게 하면 **인출만으로 생기는 가짜 드로다운**(자본을 빼서 `value`가 줄어드는 것)이 `r_t` 계산에서 상쇄되어 제거된다 — 증자 유입도 마찬가지로 "그날 갑자기 수익률이 급등"하는 왜곡을 없앤다.
-
-**초기 잔고 하한 가드**: `value_{t-1} < 10,000`(1만원)인 구간은 체인을 시작하지 않는다(0으로 나누기 방지 + 설립 직후 소액 구간의 % 왜곡 방지). 최초로 `value_{t-1} ≥ 10,000`이 되는 시점부터 `index` 체인을 시작한다.
-
-### 에피소드 판정
-
-`index_t` 시리즈에 러닝 피크 `peak_t = max(index_0..t)`를 유지하고 `drawdown_t = index_t / peak_t − 1`로 낙폭을 계산한다.
-
-- **시작(start)**: `drawdown_t`가 처음 −10%를 하회하는 시점. 그 직전 피크일을 `peakDate`로 기록.
-- **최심(trough)**: 시작 이후 `drawdown_t`가 최소가 되는 시점. `depth = min(drawdown_t)`.
-- **회복(recovery)**: 시작 이후 `index_t`가 다시 `peak_t`(시작 시점 피크값) 이상으로 돌아온 최초 시점. **오늘까지 회복하지 못했으면 `recoveryDate = null`**(미회복·진행 중).
-- **버킷 스냅**: `bucket = 10 × floor(|depth| × 100 / 10)`, 10~50 범위로 스냅(예: −23% → 20, −52% → 50 상한 — 50 초과 낙폭도 50으로 표기. 더 깊은 버킷은 두지 않는다, 극단 사례로 간주).
-- **통과(passed)**: `recoveryDate`가 존재하고, `[peakDate, recoveryDate]` 창 안에 **SELL 이벤트가 0건**일 때만 `true`. 하나라도 SELL이 있으면 그 에피소드는 축하·연혁 대상에서 제외(팔았으므로 "통과"가 아님).
-- 회복 이후 러닝 피크는 다시 그 지점부터 갱신되며, 이후 재차 −10% 하회 시 **새 에피소드**로 취급(다중 에피소드).
-- 한 에피소드당 마일스톤/축하는 **1건만**(도중에 여러 버킷을 지나도 최심 버킷 하나로 통합).
-
-### 신규 파일
-
-- `src/lib/finance/drawdown.ts` — 순수 엔진.
-  ```ts
-  export interface DrawdownEpisode {
-    peakDate: string;
-    startDate: string;
-    troughDate: string;
-    depth: number;              // 음수, 예: -0.234
-    bucket: number;              // 10|20|30|40|50
-    recoveryDate: string | null; // 미회복이면 null
-    passed: boolean;
-  }
-  export function computeDrawdownEpisodes(
-    points: ValuePoint[],
-    events: InvestmentEvent[],
-    minBalance = 10_000,
-  ): DrawdownEpisode[]
-  ```
-  + `drawdown.test.ts`.
-- `src/lib/drawdownEpisodes.ts` — 로더. `loadPortfolioValueSeries`가 반환한 `closes`(캐시)로 전체 해상도 `ValuePoint[]`를 재구성해 `computeDrawdownEpisodes`에 넘긴다. **새 `calculation_snapshots` kind 없음 — 매 호출 결정적 재계산.**
-
-### 연혁 연동
-
-`src/lib/finance/milestones.ts`에 추가:
-```ts
-export function drawdownMilestones(episodes: DrawdownEpisode[]): Milestone[]
-```
-`passed` 에피소드만, `date = recoveryDate`, `label = "−{bucket}% 하락 구간을 매도 없이 통과"`. `/timeline`(회사 연혁)과 `growth/page.tsx`의 `TimelineCard`에서 기존 `data.timeline`(동기 계산)과 **페이지 레벨에서 merge + 재정렬**한다 — 드로다운 판정은 비동기 가격 시리즈가 필요해 `computeDashboard` 내부(동기)에 넣을 수 없기 때문.
-
-### 축하 배선
-
-`celebration.ts`의 `CelebrationOpts`에 `drawdownPassages: { recoveryDate: string; bucket: number }[]` 추가(= 위 에피소드에서 `passed` 것만 뽑은 얕은 목록). `computeCelebrations` 내부에서 각 항목을:
-- key: `` `dd-pass:${recoveryDate}:${bucket}` ``
-- 창: 기존 `ANNIVERSARY_WINDOW_DAYS`와 동일하게 **14일**(회복일로부터)
-- 문구: 행동만 언급. 예 `"−{bucket}% 구간, 한 주도 팔지 않고 통과했어요"` (숫자를 부풀리거나 시장 톤을 넣지 않는다)
-- href: `/timeline`
-
-배선 위치: `dashboard/page.tsx`의 `HomeSignalsStreamed`(이미 Suspense 경계 안, `computeCelebrations` 호출부) — `loadDrawdownEpisodes`를 이 컴포넌트 안에서 호출해 `drawdownPassages`를 만들어 넘긴다.
-
-### 엣지케이스
-
-- **진행 중 미회복 에피소드**: 마일스톤·축하 없음. "진행 중" 표시 자체도 만들지 않는다(정직 원칙 — 아직 결과를 모르는 것을 미리 칭찬/경고하지 않음). 회복 시점에만 사후 인정.
-- **다중 에피소드**: 각각 독립 판정. 한 에피소드의 `passed` 여부가 다른 에피소드에 영향 없음.
-- **과거 시세 조정으로 에피소드가 미세 이동**: 종가 소스(`getDailyKrwCloses`)가 과거 값을 나중에 조정하면, 다음 재계산 때 에피소드 경계(시작일·최심일·버킷)가 살짝 달라질 수 있다 — **결정적 재계산의 수용된 특성**(저장하지 않으므로 항상 최신 데이터 기준 재판정).
-- **이벤트 소프트삭제 시 재판정**: 별도 처리 불필요 — `events`는 항상 `activeEventRows`로 소프트삭제(`deleted_at`)·취소(`reverses_event_id`) 필터링된 것만 흘러들어온다(기존 단일 진실원천). 삭제·정정 후 재방문 시 자동으로 재판정된다.
-- **에피소드 창 안 SELL 판정 범위**: `[peakDate, recoveryDate]`(양끝 포함) — 회복일 당일 매도도 통과 실격으로 본다(보수적 판정).
-
-### 검증 계획 (합성 시리즈 단위테스트)
-
-1. **V자 회복**: 피크 → −15% → 회복, 창 안 SELL 없음 → 에피소드 1건 `passed=true`, `bucket=10`.
-2. **도중 매도**: 피크 → −25% → 창 안에서 SELL → 회복 → `passed=false`(마일스톤·축하 없음).
-3. **인출로 인한 가짜 하락**: 큰 WITHDRAWAL 직후 `value` 급락하지만 흐름조정 `r_t`는 0에 가까움 → 에피소드 미발생(또는 −10% 미만).
-4. **미회복 진행 중**: 시리즈 끝(`today`)까지 회복 안 됨 → `recoveryDate=null`, 연혁·축하 0건.
-5. **다중 에피소드**: 두 번의 독립된 하락-회복 사이클, 하나는 `passed`, 하나는 도중 매도로 `not passed` → 정확히 1건만 마일스톤 생성.
-6. **초기 잔고 하한 가드**: 설립 직후 소액 구간(`value < 1만원`)에서 체인이 시작되지 않아 인위적 급등락이 없음을 확인.
+1. **Given** 고점 대비 −15%까지 하락했다가 고점을 회복한 포트폴리오, 그 구간에 매도 기록 없음, **When** 회복 후 14일 안에 홈을 열면, **Then** "−10% 구간, 한 주도 팔지 않고 통과했어요" 취지의 축하가 1회 나타나고 확인하면 다시 나타나지 않는다.
+2. **Given** 같은 상황, **When** 회사 연혁 화면을 열면, **Then** 회복일 자리에 "−10% 하락 구간을 매도 없이 통과" 항목이 영구히 보인다.
+3. **Given** 하락 구간 도중 매도가 1건이라도 있는 경우, **When** 회복 후 홈·연혁을 열면, **Then** 해당 구간에 대한 축하·기록이 전혀 없다.
+4. **Given** 아직 회복하지 못한 진행 중 하락, **When** 홈·연혁을 열면, **Then** 그 하락에 대한 어떤 표시(진행 중 안내 포함)도 없다 — 결과가 나오기 전에는 침묵한다.
+5. **Given** 큰 금액을 인출해서 잔고가 10% 넘게 줄어든 경우(시세 하락 아님), **When** 홈·연혁을 열면, **Then** 드로다운으로 취급되지 않는다.
 
 ---
 
-## 기능 2 — 복리 무중단 카운터 홈(그로스) 노출
+### User Story 2 - 축하가 증발하지 않고 회사 연혁에 쌓인다 (Priority: P2)
 
-### 구현
+설립 1주년 축하, 자본배분 계획 완수 축하를 받았지만 2주가 지나면 사라져버렸다. 이제 그 순간들이 회사 연혁에 날짜와 함께 영구히 남아, 몇 년 뒤에도 "우리 회사가 걸어온 길"로 다시 볼 수 있다.
 
-`src/components/growth/CompoundingStreakCard.tsx` 신규. `growth/page.tsx`가 이미 `computeDashboard`로 계산해 둔 `data.compoundingStreak`(`CompoundingStreak` 타입, `010-compounding-streak` 기 구현)를 그대로 받아 렌더링만 한다 — **새 계산 없음**. 배치는 `CompanyTierCard` 바로 아래(현재 growth 페이지에는 이 카드가 없다 — 신규 노출 지점).
+**Why this priority**: 연혁은 이 앱의 서사 수집 루프인데 현재 수집물이 늘지 않는다(첫 배당은 남고 계획 완수는 증발하는 비대칭). 축하의 가치를 일회성에서 자산으로 바꾼다.
 
-- 표시: "복리 무중단 N개월"(1개월 미만은 "N일"), 최근 추가 투입 시 🔥 보너스.
-- `/report`(분기 결산의 복리 무중단 상세)로 연결.
-- 빈 상태(자본 투입 이력 없음, `startDate === null`): 죄책감 유발 없는 중립 카피(기존 `EMPTY` 상태 규칙 §`compoundingStreak.ts` 준수).
+**Independent Test**: 1년 이상 운영된 계정과 완수된 리밸런싱 계획 이력으로 연혁 화면을 열어 "설립 N주년"·"자본배분 계획 완수" 항목이 각 날짜에 표시되는지 확인.
 
-### 가드레일
+**Acceptance Scenarios**:
 
-`src/lib/finance/compoundingStreak.ts`의 계산 로직과 현금흐름 부호 패턴은 **CFO 리포트 고도화와 함께 보류 중인 영역**(`cfo-report-deferred`) — **절대 무수정**. 이 기능은 이미 계산된 값을 화면에 얹는 것뿐이다.
-
----
-
-## 기능 3 — "회장님" 호칭 통일 (카피만)
-
-기존 "주주" 프레이밍을 지주회사 회장 로망(헌법 §3, ⑦)에 맞춰 "회장님"으로 정렬한다. **문구만 교체, 로직 무수정.**
-
-| 파일 | 현재 | 변경 |
-|---|---|---|
-| `src/app/report/ReportContent.tsx` | `<h1>{holding.name} 경영 리포트</h1>` 단독, 부제 없음 | `<h1>` 아래 "회장님" 호칭이 들어간 부제 1줄 추가(예: "회장님, 이번 분기 실적을 보고드립니다") |
-| `src/components/report/QuarterReportView.tsx` | 히어로 첫 줄 `{report.label} · 진행 중 ({report.days}일째)` | 같은 자리에 "회장님" 호칭을 포함한 인사 1줄로 교체(예: "회장님, {report.label} {report.days}일째 진행 중입니다") |
-| `src/components/report/AnnualReportView.tsx` | 섹션 제목 "주주에게 보내는 숫자" | "회장님께 보고드리는 숫자"로 교체. 헤더 소절(`{report.label} · 제{report.edition}기`)에도 회장님 톤 반영 검토 |
-| `src/app/annual-report/page.tsx` | 잠금 카드 "🔒 첫 연차보고서를 준비 중입니다" | "회장님" 호칭을 반영한 잠금 카피로 교체(예: "회장님의 첫 연차보고서를 준비 중입니다") |
-
-정확한 문구는 구현 시점의 톤 다듬기 재량이나, **"주주" 단어는 위 4개 지점에서 전부 제거**하고 "회장님"으로 대체하는 것이 판정 기준이다.
-
-### 가드레일
-
-`buildComment`/`cfoComment`(CFO 총평 생성 로직) — **무수정**. CFO 리포트 고도화는 별도 보류 영역(`cfo-report-deferred`)이며 이 기능은 정적 레이블·인사말 문구만 건드린다.
+1. **Given** 설립 후 2년이 지난 회사, **When** 연혁을 열면, **Then** "설립 1주년"·"설립 2주년"이 각 기념일 날짜로 표시된다.
+2. **Given** 목표 수량을 전부 채워 완수한 자본배분 계획이 있고 이후 새 계획을 시작(또는 기존 계획 삭제)한 상태, **When** 연혁을 열면, **Then** "자본배분 계획 완수"가 마지막 매수가 체결된 날짜로 표시된다.
+3. **Given** 완수하지 못하고 교체된 계획, **When** 연혁을 열면, **Then** 그 계획은 연혁에 나타나지 않는다.
 
 ---
 
-## 기능 4 — 축하의 연혁 영구화 + 등급업 축하 배선
+### User Story 3 - 규율 등급이 오르면 축하받는다 (Priority: P2)
 
-### (a) N주년 — 연혁 소급 생성
+저비용·저레버리지·계획 준수 같은 규율 점수가 쌓여 등급이 올랐다(예: "성장하는 투자가" → "규율 있는 장기투자가"). 다음에 홈을 열었을 때 등급 상승을 축하받는다. 수익률이 아니라 내 행동의 결과라서 떳떳하다.
 
-현재 `celebration.ts`의 `anniversary()`는 "가장 최근 지난 주년" **하나만** 계산해 홈 배너(14일 창)에 쓴다. 연혁(`/timeline`)에는 아직 하나도 안 남는다.
+**Why this priority**: 등급은 이미 존재하지만 정적 게이지로만 보인다. 상승 순간을 축하로 배선하면 진행 서사가 된다. 헌법 매트릭스가 "규율 점수 등급업 — 행동의 결과"로 승인한 항목.
 
-`journeyMilestones` 시그니처를 확장한다:
-```ts
-export function journeyMilestones(
-  events: InvestmentEvent[],
-  seed: { foundedAt: string; initialValuation: number },
-  nameOf: (symbol: string) => string,
-  today: string,
-  archivedPlans: RebalancePlan[],
-): Milestone[]
-```
-`today`를 기준으로 설립일부터 **지난 주년을 전부**(celebration.ts의 `anniversary()`와 동일한 월-일 비교 규칙 재사용) 순회하며 `{date: 주년일, label: "설립 N주년"}`을 push한다. **저장 불필요** — 매 호출 시 `foundedAt`·`today`에서 결정적으로 재생성.
+**Independent Test**: 등급이 직전 기록보다 오른 계정으로 홈을 열어 축하 1회 노출을 확인. 같은 분기 재방문 시 중복 없음 확인.
 
-### (a) 계획 완수 — 연혁 + 마이그레이션
+**Acceptance Scenarios**:
 
-**신규 마이그레이션 1건**: `holdings.archived_plans jsonb not null default '[]'` — 완료(또는 교체/취소)된 리밸런싱 계획을 최대 20개까지 보관하는 배열.
-
-`src/app/rebalance/actions.ts`의 `saveRebalancePlan`·`clearRebalancePlan`이 **`active_plan`을 덮어쓰거나 지우기 직전**, 현재 `active_plan`을 `parsePlan` + `planProgress`로 판정해 파싱에 성공하면(완수 여부와 무관하게) `archived_plans`에 append한다. 20개 초과 시 가장 오래된 것부터 제거(FIFO cap).
-
-`src/lib/plan.ts`에 추가:
-```ts
-export function planCompletionDate(
-  plan: RebalancePlan,
-  events: InvestmentEvent[],
-): string | null
-```
-각 leg별로 `events`(날짜순 BUY 누적)를 따라가며 `baseBought + shares`에 처음 도달한 날짜를 구하고, 모든 leg가 도달했으면 그중 **가장 늦은 날짜**(전부 체결된 시점)를 반환. 하나라도 미도달이면 `null`(미완수 상태로 아카이브된 계획).
-
-`journeyMilestones`가 `archivedPlans`를 순회하며 `planCompletionDate`가 `null`이 아닌 것만 `{date: completionDate, label: "자본배분 계획 완수"}`로 push. **완수일은 저장하지 않고 매번 `events`에서 재판정**(결정적).
-
-`database.types.ts`에 `holdings.archived_plans` 컬럼 반영(재생성).
-
-### (b) 등급업 — 축하 배선
-
-`src/lib/style.ts`에 등급 서열 export:
-```ts
-export function gradeRank(label: string): number
-// "과매매 주의" < "성장하는 투자가" < "규율 있는 장기투자가" < "자본배분의 달인"
-```
-
-`src/lib/styleHistory.ts`의 `StyleHistorySnapshot`에 옵셔널 필드 추가:
-```ts
-score?: number;
-gradeLabel?: string;
-```
-**`VERSION = "v1"` 그대로 유지**(v2로 올리면 기존 스냅샷과의 분기 비교가 끊긴다 — 옵셔널 필드 추가는 하위호환이라 버전업 불필요). `toStyleHistorySnapshot`이 `style.score`·`style.grade?.label`을 채워 넣도록 확장.
-
-신규 로더:
-```ts
-export async function loadLatestStyleSnapshot(
-  supabase: SupabaseClient<Database>,
-  holdingId: string,
-  before?: string, // as_of_date < before. 없으면 전체 최신 1건.
-): Promise<StyleHistorySnapshot | null>
-```
-`loadPreviousStyleSnapshot`(분기 시작 이전 커트라인 고정)과 달리 임의 커트라인으로 "최신 1건"을 가져오는 범용 조회.
-
-**배선**:
-- `growth/page.tsx`에도 `/style` 페이지와 동일한 `after(() => saveStyleSnapshot(...))` 패턴을 추가한다 — 방문만으로 스냅샷이 쌓여 분기 경계에 갇히지 않고 등급 변화가 더 자주 기록된다.
-- `dashboard/page.tsx`의 `HomeSignalsStreamed`에서 (컴퓨트 스타일 재계산 없이) `loadLatestStyleSnapshot`을 두 번 호출한다: 최신 1건(`latest`) → `latest.asOfDate` 이전 중 최신 1건(`previous`). 둘 다 `gradeLabel`이 있고 `gradeRank(latest.gradeLabel) > gradeRank(previous.gradeLabel)`이면 `computeCelebrations`에 `gradeUp: { label: latest.gradeLabel }`을 전달, `celebration.ts`가 key `` `grade-up:${quarterLabel}` ``(같은 분기엔 1회)로 축하를 만든다. **가벼운 DB 읽기 2건뿐, `computeStyle` 재계산 없음.**
-
-### 엣지케이스
-
-- **콜드스타트**: 과거(이 기능 배포 이전) 스냅샷엔 `gradeLabel`이 없다. `previous.gradeLabel`이 없으면 비교 불가 → **그 분기엔 등급업 신호를 만들지 않는다.** 이후 두 번째 스냅샷부터 정상 비교 시작. **의도된 동작**(추천 다음 작업 아님).
-- **완수했지만 아직 활성인 계획**: `archived_plans`는 계획이 새로 저장되거나 지워질 때만 채워진다. 완수된 계획이 여전히 `active_plan`으로 남아 있으면 사용자가 다음 계획을 시작하거나 지우기 전까지 연혁에 나타나지 않는다 — 설계상 허용된 지연.
-- **N주년 재계산**: 설립일·오늘 날짜만으로 결정적이라 저장 불일치 걱정 없음.
+1. **Given** 직전 기록된 등급보다 현재 등급이 높은 상태, **When** 마이버크셔(또는 스타일 화면)를 방문해 새 등급이 기록된 뒤 홈을 열면, **Then** "규율 등급이 올랐어요 — {새 등급}" 취지의 축하가 1회 나타난다.
+2. **Given** 같은 분기에 이미 등급업 축하를 확인함, **When** 홈을 다시 열면, **Then** 같은 축하가 반복되지 않는다.
+3. **Given** 등급 기록이 이번이 처음인 사용자(비교할 과거 기록 없음), **When** 홈을 열면, **Then** 등급업 축하가 나타나지 않는다(다음 기록부터 비교 시작).
 
 ---
 
-## 전역 가드레일 (스펙 전체에 적용)
+### User Story 4 - 복리 무중단 기록을 홈에서 매일 본다 (Priority: P3)
 
-- **`CELEBRATION_DENYLIST` 불변·불위반** — 평가액 상승·초록색 하루·XIRR 숫자·종목 급등은 이 스펙의 어떤 기능도 축하 트리거로 쓰지 않는다. 드로다운 인내조차 "낙폭"이 아니라 "안 판 결정"을 축하한다.
-- **스타일 중립** — 가치·성장 재단 금지. 등급업(4b)도 규율 점수(저비용·저레버리지·계획준수)만 반영하며 매매 스타일과 무관.
-- **보류 영역 불가침** — CFO 리포트 고도화(`cfoComment`/`buildComment`), 현금흐름 부호 패턴(`compoundingStreak.ts` 내부 로직) 무수정.
-- **XIRR·90일 게이트·랭킹(032) 채점 로직 불변** — 이 스펙은 새 엔진(드로다운) 추가와 기존 값 노출/연혁화일 뿐, 기존 채점 공식을 건드리지 않는다.
-- **신규 DB 테이블 없음** — 예외는 `holdings.archived_plans` 컬럼 1개뿐(기능4). 드로다운·N주년·등급업은 전부 결정적 재계산이거나 기존 `calculation_snapshots`(style-history) 재사용.
+소비성 인출 없이 복리를 지켜온 기간("복리 무중단 N개월")이 분기 리포트 깊숙한 곳이 아니라 마이버크셔 홈에 상시 보인다. 매일 조금씩 자라는 숫자라서, 아무 일 없는 날에도 앱을 열 이유가 된다.
 
----
+**Why this priority**: 이미 계산되는 값의 노출 위치만 바꾸는 저비용 작업이지만, 도박적 흥분 없이 매일 자라는 유일한 지표라 재방문 동기의 핵심이다.
 
-## DB 변경
+**Independent Test**: 자본 투입 이력이 있는 계정으로 마이버크셔 화면을 열어 "복리 무중단 N개월(또는 N일)" 카드가 보이고 분기 리포트의 동일 수치와 일치하는지 확인.
 
-| 마이그레이션 | 내용 |
-|---|---|
-| `supabase/migrations/20260703000000_holdings_archived_plans.sql` (신규) | `alter table holdings add column archived_plans jsonb not null default '[]'` |
+**Acceptance Scenarios**:
+
+1. **Given** 인출 없이 8개월 운영한 회사, **When** 마이버크셔를 열면, **Then** "복리 무중단 8개월" 카드가 보이고 탭하면 분기 리포트 상세로 이동한다.
+2. **Given** 자본 투입 이력이 없는 새 회사, **When** 마이버크셔를 열면, **Then** 죄책감을 유발하지 않는 중립 안내("첫 자본을 넣으면 복리 시계가 시작돼요" 취지)가 보인다.
+3. **Given** 동일 시점의 분기 리포트, **When** 두 화면의 수치를 비교하면, **Then** 항상 일치한다.
 
 ---
 
-## 파일 목록
+### User Story 5 - "회장님"으로 호명받는다 (Priority: P4)
 
-| 파일 | 변경 |
-|---|---|
-| `src/lib/finance/drawdown.ts` | 신규 — 드로다운 에피소드 엔진 |
-| `src/lib/finance/drawdown.test.ts` | 신규 |
-| `src/lib/drawdownEpisodes.ts` | 신규 — 로더(캐시된 종가 재사용, fetch 0) |
-| `src/lib/finance/milestones.ts` | 수정 — `drawdownMilestones`, `journeyMilestones` 시그니처 확장(today·archivedPlans) |
-| `src/lib/celebration.ts` | 수정 — `drawdownPassages`, `gradeUp` opts 추가 |
-| `src/lib/plan.ts` | 수정 — `planCompletionDate` 추가 |
-| `src/app/rebalance/actions.ts` | 수정 — `saveRebalancePlan`/`clearRebalancePlan`에 아카이브 로직 |
-| `src/lib/style.ts` | 수정 — `gradeRank` export |
-| `src/lib/styleHistory.ts` | 수정 — `score`/`gradeLabel` 옵셔널 필드, `loadLatestStyleSnapshot` 신설(VERSION "v1" 유지) |
-| `src/app/growth/page.tsx` | 수정 — `CompoundingStreakCard` 배치, 드로다운 연혁 merge, `after(saveStyleSnapshot)` 배선 |
-| `src/app/timeline/page.tsx` | 수정 — 드로다운·N주년·계획완수 연혁 merge |
-| `src/app/dashboard/page.tsx` | 수정 — `HomeSignalsStreamed`에 드로다운·등급업 축하 배선 |
-| `src/components/growth/CompoundingStreakCard.tsx` | 신규 |
-| `src/app/report/ReportContent.tsx` | 수정 — 카피만(회장님 부제) |
-| `src/components/report/QuarterReportView.tsx` | 수정 — 카피만(히어로 인사) |
-| `src/components/report/AnnualReportView.tsx` | 수정 — 카피만("주주"→"회장님") |
-| `src/app/annual-report/page.tsx` | 수정 — 카피만(잠금 문구) |
-| `supabase/migrations/20260703000000_holdings_archived_plans.sql` | 신규 |
-| `src/lib/supabase/database.types.ts` | 재생성 |
+분기 결산과 연차보고서가 나를 "주주"가 아니라 "회장님"으로 부른다. 온보딩에서 약속한 "당신은 CEO" 세계관이 이후 화면에서도 이어진다.
+
+**Why this priority**: 문구만 바꾸는 최저비용 작업이지만 버크셔 세계관의 정서(회장에게 보고하는 목소리)를 회수한다. 로직 변경이 전혀 없어 마지막 순위.
+
+**Independent Test**: 분기 결산·연차보고서 화면을 열어 "회장님" 호칭이 보이고 "주주" 표기가 남아있지 않은지 확인.
+
+**Acceptance Scenarios**:
+
+1. **Given** 분기 결산 화면, **When** 열면, **Then** "회장님" 호칭이 포함된 인사/부제가 보인다.
+2. **Given** 연차보고서 화면(발행됨/잠김 모두), **When** 열면, **Then** 기존 "주주에게 보내는 숫자" 등 "주주" 표기가 "회장님" 톤으로 대체돼 있다.
+
+---
+
+### Edge Cases
+
+- 하락이 아직 회복되지 않았으면? → 어떤 표시도 하지 않는다(진행 중 안내 금지 — 결과 전 침묵이 정직 원칙).
+- 하락-회복 사이클이 여러 번이면? → 각각 독립 판정. 통과한 것만 각 1건씩 기록.
+- 회복일 당일에 매도했으면? → 통과 실격(구간 양끝 포함, 보수적 판정).
+- 과거 시세 데이터가 나중에 조정되면? → 기록이 재계산되어 경계·깊이가 미세하게 달라질 수 있다 — 저장된 과거를 고집하지 않고 항상 최신 데이터 기준으로 정직하게 재판정(수용된 정책).
+- 거래를 취소·정정하면? → 다음 방문 시 자동 재판정(취소된 거래는 처음부터 없던 것으로).
+- 설립 직후 잔고가 아주 작을 때의 급등락은? → 최소 잔고(1만원) 전 구간은 판정에서 제외해 % 왜곡을 막는다.
+- 낙폭이 −50%보다 깊으면? → −50 구간으로 표기(그 아래 세분화 없음).
+- 완수한 계획이 아직 활성 계획으로 남아 있으면? → 다음 계획을 시작하거나 삭제하기 전까지 연혁에 나타나지 않는다(허용된 지연).
+- 등급 과거 기록에 등급 정보가 없으면(기능 도입 이전 기록)? → 그 회차는 비교를 건너뛴다. 이후 기록부터 정상 비교.
+
+## Requirements *(mandatory)*
+
+### Functional Requirements
+
+- **FR-001**: 시스템은 포트폴리오 가치가 직전 고점 대비 10% 이상 하락한 뒤 그 고점을 회복한 구간을 "드로다운 에피소드"로 식별해야 한다(깊이는 −10/−20/−30/−40/−50 10%p 구간으로 표기, −50 하한).
+- **FR-002**: 낙폭 판정은 입출금으로 인한 잔고 변동을 성과와 분리해야 한다 — 인출만으로 생긴 잔고 감소는 드로다운이 아니며, 증자 유입이 수익률 급등으로 보여서도 안 된다.
+- **FR-003**: 에피소드 구간(고점일~회복일, 양끝 포함)에 매도 기록이 0건일 때만 "통과"로 인정해야 한다.
+- **FR-004**: 통과한 에피소드는 회복일로부터 14일 동안 홈에서 1회성 축하로 노출하고, 사용자가 확인하면 다시 나타나지 않아야 한다. 축하 문구는 행동(팔지 않음)만 언급하고 시장 결과(수익·상승)를 축하해서는 안 된다.
+- **FR-005**: 통과한 에피소드는 회사 연혁에 "−N% 하락 구간을 매도 없이 통과" 항목으로 영구 표시되어야 한다(에피소드당 1건).
+- **FR-006**: 회복되지 않은 진행 중 하락에 대해서는 어떤 표시도 생성해서는 안 된다.
+- **FR-007**: 지나온 설립 주년(1주년, 2주년, …)이 모두 회사 연혁에 각 기념일 날짜로 표시되어야 한다.
+- **FR-008**: 완수된 자본배분 계획은 마지막 목표 매수가 체결된 날짜로 회사 연혁에 표시되어야 하며, 완수하지 못한 계획은 표시되지 않아야 한다. 이를 위해 교체·삭제되는 계획의 이력이 보존되어야 한다(최근 20개 한도).
+- **FR-009**: 규율 등급이 직전 기록 대비 상승하면 홈에서 1회성 축하를 노출해야 하며, 같은 분기에 중복 노출되지 않아야 한다. 비교할 과거 등급 기록이 없으면 축하를 생성하지 않는다.
+- **FR-010**: 복리 무중단 기간이 마이버크셔 화면에 상시 표시되어야 하고, 분기 리포트의 동일 지표와 항상 일치해야 하며, 상세(분기 리포트)로 이동할 수 있어야 한다. 기존 계산 규칙은 변경 금지.
+- **FR-011**: 분기 결산·연차보고서 계열 화면 4곳에서 사용자를 "회장님"으로 호명하고 "주주" 표기를 제거해야 한다. 문구 외 보고서 로직(CFO 코멘트 생성 등)은 변경 금지.
+- **FR-012**: 이 기능의 어떤 축하도 시장 결과(평가액 상승·수익률 수치·특정 종목 급등)를 트리거로 사용해서는 안 되며(기존 축하 금지목록 준수), 투자 스타일(가치/성장)을 재단하는 판정을 포함해서는 안 된다.
+- **FR-013**: 기존 잠금·채점 규칙 — 연환산 90일 게이트, 랭킹 채점, 복리 무중단 계산, CFO 코멘트 — 은 이 기능으로 인해 변경되어서는 안 된다.
+- **FR-014**: 드로다운·주년·계획완수 판정은 저장된 결과가 아니라 원천 기록(거래·시세·설립일)에서 언제든 동일하게 재계산 가능해야 한다(결정적 재계산).
+
+### Key Entities
+
+- **드로다운 에피소드**: 고점일·최심일·회복일(미회복이면 없음)·깊이 구간(−10~−50)·통과 여부로 구성되는 판정 결과. 저장되지 않고 원천 데이터에서 재계산된다.
+- **연혁 마일스톤**: 회사 연혁에 표시되는 날짜+제목 항목. 기존 항목(설립·첫 매수·첫 배당 등)에 드로다운 통과·설립 주년·계획 완수가 추가된다.
+- **보관된 자본배분 계획**: 교체·삭제 시점에 이력으로 남는 과거 계획(최근 20개). 완수일은 저장하지 않고 거래 기록에서 재판정한다.
+- **규율 등급 기록**: 기존 분기 스타일 기록에 점수·등급이 추가된 것. 등급업 비교의 기준.
+
+## Success Criteria *(mandatory)*
+
+### Measurable Outcomes
+
+- **SC-001**: −10% 이상 하락 후 회복하고 그 구간에 매도가 없던 사용자의 100%가 회복 후 첫 홈 방문에서 축하를 정확히 1회 받는다.
+- **SC-002**: 축하받은 모든 사건(드로다운 통과·주년·계획 완수)이 연혁에서 기간 제한 없이 다시 확인 가능하다 — 축하 소멸률 0%.
+- **SC-003**: 하락 구간에서 매도한 사용자, 인출로만 잔고가 줄어든 사용자에게 관련 축하·기록이 0건 생성된다.
+- **SC-004**: 등급이 오른 사용자는 분기당 정확히 1회 축하를 받고, 오르지 않은 사용자와 첫 기록 사용자는 0회 받는다.
+- **SC-005**: 마이버크셔의 복리 무중단 수치와 분기 리포트의 수치가 100% 일치한다.
+- **SC-006**: 홈 첫 화면 표시 시간이 기능 추가 전과 체감 동일하다(축하 판정이 첫 화면을 지연시키지 않는다).
+- **SC-007**: 대상 4개 보고서 화면에서 "주주" 표기 잔존 0건.
+
+## Assumptions
+
+- 일별 포트폴리오 가치 시계열은 기존 자산 추이 기능이 이미 보유·캐시하고 있어 재사용한다(신규 외부 데이터 수집 없음).
+- 매도 여부·계획 완수 여부는 기존 거래 기록만으로 판정 가능하다(취소·정정된 거래는 기존 규칙대로 제외된 상태로 유입).
+- 등급 기록은 기존 분기 스타일 스냅샷 인프라를 재사용하며, 과거 스냅샷과의 호환을 깨지 않는다.
+- 과거 시세가 사후 조정되면 드로다운 판정도 그에 따라 달라질 수 있다 — "저장된 과거"보다 "항상 정직한 재계산"을 우선한다는 제품 정책을 따른다.
+- 게이미피케이션 헌법 문서(docs/gamification-honest-roman-v1.md)의 금지 규칙(시장결과 축하 금지·스타일 중립)이 이 스펙의 상위 규범이다.
+- CFO 리포트 고도화·현금흐름 부호 패턴은 별도 보류 영역으로, 이 기능은 해당 영역을 수정하지 않는다.
+- 구현 설계(알고리즘·파일 단위 계획)는 동일 디렉토리의 design-notes.md에 선행 검토본이 있으며 /speckit.plan 단계의 입력으로 쓴다.

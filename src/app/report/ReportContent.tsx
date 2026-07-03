@@ -132,6 +132,9 @@ export async function ReportContent() {
       <h1 className="text-2xl font-extrabold tracking-tight">
         {portfolio.holding.name} 경영 리포트
       </h1>
+      <p className="mt-1 text-sm text-muted-foreground">
+        회장님, 이번 분기 실적을 보고드립니다
+      </p>
       <QuarterReportView
         report={report}
         netWorthKrw={netWorthKrw}
