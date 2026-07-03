@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getPortfolio } from "@/lib/portfolio";
 import { computeBenchmark } from "@/lib/finance/benchmark";
 import { computeRankingScore } from "@/lib/ranking";
+import { upsertRankingScore } from "@/lib/rankingSync";
 import { todayKST } from "@/lib/date";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
 import { ScoreCard } from "@/components/ranking/ScoreCard";
@@ -41,23 +42,8 @@ export default async function RankingPage() {
     today,
   );
 
-  // 현재 유저 점수 upsert
-  if (events.length > 0) {
-    await supabase.from("ranking_scores").upsert(
-      {
-        holding_id: holding.id,
-        holding_name: holding.name,
-        total_score: score.total,
-        holding_period_score: score.holdingPeriod,
-        contrarian_score: score.contrarian,
-        market_score: score.marketOutperformance,
-        diversification_score: score.diversification,
-        deposit_score: score.deposit,
-        computed_at: new Date().toISOString(),
-      },
-      { onConflict: "holding_id" },
-    );
-  }
+  // 현재 유저 점수 upsert — 표시 직전 갱신이므로 동기(await) 유지.
+  await upsertRankingScore(supabase, portfolio, benchmark, today);
 
   // 전체 리더보드 조회
   const { data: rows } = await supabase

@@ -84,7 +84,8 @@
 
 ## 추천 우선순위 (V1)
 1. (해소) ~~백분위 공유 카드~~ — 007에서 폐지, 032 규율 지표 랭킹으로 대체됨.
-2. 032 랭킹 후속 — `/dashboard` 방문 시 백그라운드 점수 upsert(현재 `/ranking` 방문 시만 갱신).
+2. (해소) 032 랭킹 후속 — `/dashboard` 방문 시 백그라운드 점수 upsert 완료. `rankingSync.ts`
+   추출(`/ranking`·`/dashboard` 공유) + dashboard `after()`로 스테일 갱신.
 
 ---
 

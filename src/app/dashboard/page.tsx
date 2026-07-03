@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getPortfolio } from "@/lib/portfolio";
 import { syncDividends } from "@/lib/dividends/sync";
+import { upsertRankingScore } from "@/lib/rankingSync";
 import { computeDashboard } from "@/lib/dashboard";
 import { getFxRateInfo } from "@/lib/finance/fx";
 import { computeBenchmark } from "@/lib/finance/benchmark";
@@ -167,6 +168,12 @@ async function DashboardContent({
     today,
     "KRW",
   );
+  // 랭킹 점수 백그라운드 갱신 — /ranking 방문 시에만 갱신되던 걸 대시보드 방문에도 태워
+  // 스테일 방지(032 후속). 응답을 막지 않고, 벤치마크는 이미 진행 중인 프라미스를 재사용.
+  after(async () => {
+    const benchmark = await benchmarkKRWPromise;
+    await upsertRankingScore(supabase, portfolio, benchmark, today);
+  });
   const benchmarkUSDPromise = computeBenchmark(
     benchSnapshot,
     portfolio.events,
