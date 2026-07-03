@@ -10,6 +10,7 @@
  */
 import type { InvestmentEvent } from "./valuation";
 import { countryOf } from "../securities";
+import type { DrawdownEpisode } from "./drawdown";
 
 export interface Milestone {
   date: string; // YYYY-MM-DD
@@ -91,4 +92,17 @@ export function journeyMilestones(
   }
 
   return out;
+}
+
+/**
+ * 드로다운 인내 마일스톤 — "통과"(passed)한 에피소드만 연혁에 남긴다.
+ * 미회복·도중 매도 에피소드는 어떤 표시도 만들지 않는다(정직 원칙, FR-005·FR-006).
+ */
+export function drawdownMilestones(episodes: DrawdownEpisode[]): Milestone[] {
+  return episodes
+    .filter((e) => e.passed)
+    .map((e) => ({
+      date: e.recoveryDate as string, // passed=true ⇒ recoveryDate≠null
+      label: `−${e.bucket}% 하락 구간을 매도 없이 통과`,
+    }));
 }

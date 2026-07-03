@@ -34,6 +34,8 @@ export interface CelebrationOpts {
   today: string;
   /** 자본배분 계획 완수 여부 + 계획 식별자(createdAt). 계획 없으면 null. */
   plan: { complete: boolean; createdAt: string } | null;
+  /** 드로다운 "통과"(매도 없이 회복) 에피소드만 — 미회복·도중 매도는 애초에 담지 않는다. */
+  drawdownPassages?: { recoveryDate: string; bucket: number }[];
   /** 확인(디스미스)된 신호 key — resolveHomeSignals 와 동일 집합. */
   dismissed: Set<string>;
 }
@@ -65,7 +67,8 @@ function anniversary(
  * 현재 트리거(추가 인프라 0):
  *  · 설립 N주년 — 시간·꾸준함(통제 가능). "버틴 것"을 축하(인내 프레이밍).
  *  · 자본배분 계획 완수 — 규율 이행(통제 가능).
- * (드로다운 통과·규율 등급업 등은 연혁/이력 인프라가 생기면 추가 — 스펙 §6.)
+ *  · 드로다운 통과 — 낙폭이 아니라 "그 구간 동안 팔지 않은 결정"(유일한 예외, 헌법 §2·§4).
+ * (규율 등급업 등은 이력 인프라가 생기면 추가 — 스펙 §6.)
  */
 export function computeCelebrations(opts: CelebrationOpts): HomeSignal[] {
   const out: HomeSignal[] = [];
@@ -95,6 +98,21 @@ export function computeCelebrations(opts: CelebrationOpts): HomeSignal[] {
       href: "/rebalance",
       tone: "good",
       at: opts.plan.createdAt,
+    });
+  }
+
+  // 3) 드로다운 통과 — 낙폭이 아니라 "안 판 결정"을 축하(유일한 예외, 헌법 §2·§4).
+  //    문구는 행동만 언급, 숫자를 부풀리거나 시장 톤을 넣지 않는다.
+  for (const dd of opts.drawdownPassages ?? []) {
+    const ago = daysSince(dd.recoveryDate, opts.today);
+    if (ago < 0 || ago > ANNIVERSARY_WINDOW_DAYS) continue;
+    out.push({
+      key: `dd-pass:${dd.recoveryDate}:${dd.bucket}`, // 에피소드별 1회
+      icon: "💪",
+      text: `−${dd.bucket}% 구간, 한 주도 팔지 않고 통과했어요`,
+      href: "/timeline",
+      tone: "good",
+      at: dd.recoveryDate,
     });
   }
 

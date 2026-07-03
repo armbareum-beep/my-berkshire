@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getPortfolio } from "@/lib/portfolio";
 import { computeDashboard } from "@/lib/dashboard";
+import { loadDrawdownEpisodes } from "@/lib/drawdownEpisodes";
+import { drawdownMilestones } from "@/lib/finance/milestones";
 import { computeStyle } from "@/lib/style";
 import { companyTier } from "@/lib/finance/companyTier";
 import { parsePlan, planProgress } from "@/lib/plan";
@@ -50,14 +52,27 @@ export default async function GrowthPage() {
   const today = todayKST();
   const data = computeDashboard(portfolio, "KRW");
 
-  const [liabilities, secMeta, dismissed] = await Promise.all([
+  const [liabilities, secMeta, dismissed, drawdownEpisodes] = await Promise.all([
     loadLiabilities(supabase, holding.id),
     loadSecurityMeta(
       supabase,
       data.allocation.map((a) => a.symbol),
     ),
     loadDismissed(supabase, holding.id),
+    loadDrawdownEpisodes({
+      supabase,
+      holdingId: holding.id,
+      portfolioRevision: holding.portfolio_revision,
+      foundedAt: holding.founded_at,
+      initialValuation: Number(holding.initial_valuation),
+      events: portfolio.events,
+      today,
+    }),
   ]);
+  // 드로다운 통과는 비동기 가격 시리즈가 필요해 computeDashboard(동기) 밖에서 merge.
+  const timeline = [...data.timeline, ...drawdownMilestones(drawdownEpisodes)].sort(
+    (a, b) => (a.date < b.date ? -1 : 1),
+  );
 
   // ETF vs 개별주 분류
   const etfAllocations = data.allocation.filter(
@@ -214,8 +229,8 @@ export default async function GrowthPage() {
         </Link>
       </section>
 
-      {/* 마일스톤 타임라인(설립·첫 매수·첫 해외 인수·첫 배당·납입 자본 돌파) */}
-      {data.timeline.length > 0 && <TimelineCard timeline={data.timeline} />}
+      {/* 마일스톤 타임라인(설립·첫 매수·첫 해외 인수·첫 배당·납입 자본 돌파·드로다운 통과) */}
+      {timeline.length > 0 && <TimelineCard timeline={timeline} />}
     </main>
   );
 }

@@ -34,6 +34,7 @@ import { groupByTag } from "@/lib/allocation";
 import { quarterBounds } from "@/lib/finance/quarterClose";
 import { resolveHomeSignals, loadDismissed, type HomeSignal } from "@/lib/finance/homeSignal";
 import { computeCelebrations, mergeCelebrations } from "@/lib/celebration";
+import { loadDrawdownEpisodes } from "@/lib/drawdownEpisodes";
 import { todayKST } from "@/lib/date";
 import { getPortfolioDisclosureFeed } from "@/lib/finance/disclosureFeed";
 import { signOut } from "@/app/auth/actions";
@@ -835,9 +836,18 @@ async function HomeSignalsStreamed({
   today: string;
   planProg: { complete: boolean; createdAt: string } | null;
 }) {
-  const [watchSymbols, dismissed] = await Promise.all([
+  const [watchSymbols, dismissed, drawdownEpisodes] = await Promise.all([
     watchSymbolsPromise,
     dismissedPromise,
+    loadDrawdownEpisodes({
+      supabase,
+      holdingId: portfolio.holding.id,
+      portfolioRevision: portfolio.holding.portfolio_revision,
+      foundedAt: portfolio.holding.founded_at,
+      initialValuation: Number(portfolio.holding.initial_valuation),
+      events: portfolio.events,
+      today,
+    }),
   ]);
   const watchNames = await loadSecurityNames(supabase, watchSymbols);
   const newsSignals = await resolveHomeSignals({
@@ -849,11 +859,16 @@ async function HomeSignalsStreamed({
     quarterLabel: quarterBounds(today).label,
     dismissed,
   });
+  // passed(매도 없이 회복) 에피소드만 축하 대상 — 미회복·도중 매도는 애초에 넘기지 않는다.
+  const drawdownPassages = drawdownEpisodes
+    .filter((e) => e.passed)
+    .map((e) => ({ recoveryDate: e.recoveryDate as string, bucket: e.bucket }));
   const celebrations = computeCelebrations({
     holdingName: portfolio.holding.name,
     foundedAt: portfolio.holding.founded_at,
     today,
     plan: planProg,
+    drawdownPassages,
     dismissed,
   });
   const signals = mergeCelebrations(newsSignals, celebrations);

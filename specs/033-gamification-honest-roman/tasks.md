@@ -16,7 +16,7 @@
 
 ## Phase 1: Setup
 
-- [ ] T001 기준선 게이트 그린 확인 — `npm run typecheck && npm run lint && npm test` (시작 전 실패가 있으면 이 스펙 밖 원인이므로 먼저 보고)
+- [X] T001 기준선 게이트 그린 확인 — `npm run typecheck && npm run lint && npm test` (시작 전 실패가 있으면 이 스펙 밖 원인이므로 먼저 보고)
 
 ## Phase 2: Foundational
 
@@ -30,15 +30,15 @@
 
 **Independent Test**: quickstart.md US1 행 — 합성 시리즈 단위테스트 6케이스 + 해당 이력 계정으로 홈 배너·/timeline 항목 확인.
 
-- [ ] T002 [P] [US1] 합성 시리즈 단위테스트 선작성(실패 확인) — V자 회복·도중 매도·인출 가짜하락·미회복·다중 에피소드·소액 가드 6케이스 in `src/lib/finance/drawdown.test.ts` (data-model.md §1 검증 규칙 기준)
-- [ ] T003 [US1] 드로다운 순수 엔진 구현 — 흐름조정 TWR 체인(research.md R1)·러닝 피크·에피소드 판정·버킷 스냅·`passed`(창 양끝 포함 SELL 0건), `computeDrawdownEpisodes(points, events, minBalance=10_000)` in `src/lib/finance/drawdown.ts` — T002 6케이스 전부 통과시킴
-- [ ] T004 [US1] 로더 구현 — `loadPortfolioValueSeries`의 캐시 `closes` 재사용, `buildValueSeries` 풀해상도(maxPoints 충분히 크게) 재구성 후 엔진 호출(신규 fetch 0, 저장 0) in `src/lib/drawdownEpisodes.ts`
-- [ ] T005 [P] [US1] `drawdownMilestones(episodes)` 헬퍼 추가 — passed만, date=recoveryDate, label="−{bucket}% 하락 구간을 매도 없이 통과" in `src/lib/finance/milestones.ts`
-- [ ] T006 [US1] `CelebrationOpts`에 `drawdownPassages` 추가 — key `dd-pass:{recoveryDate}:{bucket}`, 14일 창(기존 ANNIVERSARY_WINDOW_DAYS 재사용), 문구는 행동만("−{bucket}% 구간, 한 주도 팔지 않고 통과했어요"), href `/timeline` in `src/lib/celebration.ts`
-- [ ] T007 [US1] 연혁 병합 — 페이지 레벨에서 `data.timeline` + `drawdownMilestones` merge·날짜 정렬 in `src/app/timeline/page.tsx`
-- [ ] T008 [US1] 성장 허브 연혁 카드에도 동일 병합 in `src/app/growth/page.tsx`
-- [ ] T009 [US1] 홈 축하 배선 — `HomeSignalsStreamed`(Suspense 안)에서 `loadDrawdownEpisodes` 호출 → passed만 `drawdownPassages`로 전달 in `src/app/dashboard/page.tsx` (첫 페인트 비차단 유지, SC-006)
-- [ ] T010 [US1] 게이트(typecheck·lint·test) + quickstart US1 수동 검증 3행 수행·기록
+- [X] T002 [P] [US1] 합성 시리즈 단위테스트 선작성(실패 확인) — V자 회복·도중 매도·인출 가짜하락·미회복·다중 에피소드·소액 가드 6케이스 in `src/lib/finance/drawdown.test.ts` (data-model.md §1 검증 규칙 기준)
+- [X] T003 [US1] 드로다운 순수 엔진 구현 — 흐름조정 TWR 체인(research.md R1)·러닝 피크·에피소드 판정·버킷 스냅·`passed`(창 양끝 포함 SELL 0건), `computeDrawdownEpisodes(points, events, minBalance=10_000)` in `src/lib/finance/drawdown.ts` — T002 6케이스 전부 통과시킴
+- [X] T004 [US1] 로더 구현 — `loadPortfolioValueSeries`의 캐시 `closes` 재사용, `buildValueSeries` 풀해상도(maxPoints 충분히 크게) 재구성 후 엔진 호출(신규 fetch 0, 저장 0) in `src/lib/drawdownEpisodes.ts`
+- [X] T005 [P] [US1] `drawdownMilestones(episodes)` 헬퍼 추가 — passed만, date=recoveryDate, label="−{bucket}% 하락 구간을 매도 없이 통과" in `src/lib/finance/milestones.ts`
+- [X] T006 [US1] `CelebrationOpts`에 `drawdownPassages` 추가 — key `dd-pass:{recoveryDate}:{bucket}`, 14일 창(기존 ANNIVERSARY_WINDOW_DAYS 재사용), 문구는 행동만("−{bucket}% 구간, 한 주도 팔지 않고 통과했어요"), href `/timeline` in `src/lib/celebration.ts`
+- [X] T007 [US1] 연혁 병합 — 페이지 레벨에서 `data.timeline` + `drawdownMilestones` merge·날짜 정렬 in `src/app/timeline/page.tsx`
+- [X] T008 [US1] 성장 허브 연혁 카드에도 동일 병합 in `src/app/growth/page.tsx`
+- [X] T009 [US1] 홈 축하 배선 — `HomeSignalsStreamed`(Suspense 안)에서 `loadDrawdownEpisodes` 호출 → passed만 `drawdownPassages`로 전달 in `src/app/dashboard/page.tsx` (첫 페인트 비차단 유지, SC-006)
+- [X] T010 [US1] 게이트(typecheck·lint·test) + quickstart US1 수동 검증 3행 수행·기록
 
 **Checkpoint**: US1 단독으로 배포 가능한 MVP.
 
