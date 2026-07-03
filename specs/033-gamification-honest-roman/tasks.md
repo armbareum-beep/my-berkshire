@@ -96,9 +96,9 @@
 
 **Independent Test**: quickstart.md US5 행 — 화면 확인 + 대상 4파일 grep "주주" 0건.
 
-- [ ] T026 [P] [US5] 분기 결산 카피 — h1 아래 회장님 부제 1줄 in `src/app/report/ReportContent.tsx`, 히어로 인사 1줄 in `src/components/report/QuarterReportView.tsx` (design-notes 기능3 표 참조)
-- [ ] T027 [P] [US5] 연차보고서 카피 — "주주에게 보내는 숫자"→"회장님께 보고드리는 숫자"·헤더 소절 in `src/components/report/AnnualReportView.tsx`, 잠금 카피 in `src/app/annual-report/page.tsx`
-- [ ] T028 [US5] 검증 — 대상 4파일 `grep "주주"` 0건(SC-007) + /report·/annual-report(발행/잠김) 렌더 확인
+- [X] T026 [P] [US5] 분기 결산 카피 — h1 아래 회장님 부제 1줄 in `src/app/report/ReportContent.tsx`, 히어로 인사 1줄 in `src/components/report/QuarterReportView.tsx` (design-notes 기능3 표 참조)
+- [X] T027 [P] [US5] 연차보고서 카피 — "주주에게 보내는 숫자"→"회장님께 보고드리는 숫자"·헤더 소절 in `src/components/report/AnnualReportView.tsx`, 잠금 카피 in `src/app/annual-report/page.tsx`
+- [X] T028 [US5] 검증 — 대상 4파일 `grep "주주"` 0건(SC-007) + /report·/annual-report(발행/잠김) 렌더 확인
 
 ---
 

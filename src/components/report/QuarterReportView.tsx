@@ -66,7 +66,7 @@ export function QuarterReportView({
           </span>
         )}
         <p className="text-sm font-medium text-muted-foreground">
-          {report.label} · 진행 중 ({report.days}일째)
+          회장님, {report.label} {report.days}일째 진행 중입니다
         </p>
         <p className="mt-1 text-sm text-muted-foreground">분기 누적 수익률</p>
         {report.cumulative != null ? (
