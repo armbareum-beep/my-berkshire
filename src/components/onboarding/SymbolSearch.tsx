@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { SymbolAvatar } from "./SymbolPicker";
@@ -12,8 +12,53 @@ import { searchSymbols, type SymbolSearchResult } from "@/lib/finance/search";
 const FILTERS = ["전체", "주식", "ETF", "코인", "원자재"] as const;
 type Filter = (typeof FILTERS)[number];
 
+const RECENT_KEY = "symbol-recent-searches";
+const MAX_RECENT = 10;
+const EMPTY_RECENT: SymbolSearchResult[] = [];
+
+// localStorage를 외부 스토어로 바인딩(useSyncExternalStore) — SSR/첫 렌더는 빈 배열,
+// 하이드레이션 후 실제 값. 스냅샷은 raw 문자열 기준 캐시(매 렌더 새 배열 생성 방지).
+const recentListeners = new Set<() => void>();
+let recentCache = EMPTY_RECENT;
+let recentCacheRaw: string | null = null;
+
+function subscribeRecent(cb: () => void): () => void {
+  recentListeners.add(cb);
+  return () => recentListeners.delete(cb);
+}
+
+function getRecentSnapshot(): SymbolSearchResult[] {
+  const raw = localStorage.getItem(RECENT_KEY);
+  if (raw !== recentCacheRaw) {
+    recentCacheRaw = raw;
+    try {
+      recentCache = raw ? (JSON.parse(raw) as SymbolSearchResult[]) : EMPTY_RECENT;
+    } catch {
+      recentCache = EMPTY_RECENT;
+    }
+  }
+  return recentCache;
+}
+
+function getRecentServerSnapshot(): SymbolSearchResult[] {
+  return EMPTY_RECENT;
+}
+
+function pushRecent(item: SymbolSearchResult): void {
+  const next = [
+    item,
+    ...getRecentSnapshot().filter((r) => r.symbol !== item.symbol),
+  ].slice(0, MAX_RECENT);
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+  } catch {
+    return; // 저장 불가(프라이빗 모드 등)면 최근 검색 없이 진행
+  }
+  recentListeners.forEach((cb) => cb());
+}
+
 /**
- * 종목 검색 — 토스증권식. 빈 입력이면 추천(카탈로그), 입력하면 야후 검색(디바운스 300ms).
+ * 종목 검색 — 토스증권식. 빈 입력이면 최근 검색(없으면 추천), 입력하면 야후 검색(디바운스 300ms).
  * 결과에 자산유형 뱃지 + 유형 필터 칩. 시세 없는 자산(부동산·실물·대체)은 "직접 추가"로.
  * onSelect 는 기존 SymbolPicker 와 동일한 {symbol, name} 을 넘긴다(드롭인 교체).
  */
@@ -32,10 +77,14 @@ export function SymbolSearch({
   const [results, setResults] = useState<SymbolSearchResult[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<Filter>("전체");
+  const recent = useSyncExternalStore(
+    subscribeRecent,
+    getRecentSnapshot,
+    getRecentServerSnapshot,
+  );
 
   useEffect(() => {
     const query = q.trim();
-    // 빈 질의는 추천(카탈로그) 렌더로 처리 — 동기 setState 없이 그냥 종료.
     if (!query) return;
     const ctrl = new AbortController();
     const t = setTimeout(async () => {
@@ -52,9 +101,14 @@ export function SymbolSearch({
     };
   }, [q]);
 
-  const showCatalog = q.trim() === "";
-  // 추천(빈 검색)은 짧게 — 전체는 유형별 대표 1개씩(4개), 유형 필터는 그 유형 최대 4개.
-  // 길게 늘어놓으면 매수 버튼이 묻혀서. 더 많은 종목은 검색으로(입력=야후 검색).
+  const showRecent = q.trim() === "";
+  const typeOf = (it: SymbolSearchResult) => it.assetType ?? "주식";
+
+  const recentFiltered =
+    filter === "전체" ? recent : recent.filter((it) => typeOf(it) === filter);
+
+  // 최근 검색이 없으면(신규 사용자·해당 유형 기록 없음) 추천(카탈로그) 폴백.
+  // 추천은 짧게 — 전체는 유형별 대표 1개씩(4개), 유형 필터는 그 유형 최대 4개.
   const catalogItems: SymbolSearchResult[] = CATALOG.map((c) => ({
     symbol: c.symbol,
     name: c.name,
@@ -62,20 +116,27 @@ export function SymbolSearch({
     assetType: c.assetType ?? assetTypeOf(null, c.symbol),
     ter: c.ter,
   }));
-  const typeOf = (it: SymbolSearchResult) => it.assetType ?? "주식";
-  const recommended: SymbolSearchResult[] = (
-    ["주식", "ETF", "코인", "원자재"] as const
-  )
-    .map((t) => catalogItems.find((it) => typeOf(it) === t))
-    .filter((x): x is SymbolSearchResult => !!x);
+  const recommended: SymbolSearchResult[] =
+    filter === "전체"
+      ? (["주식", "ETF", "코인", "원자재"] as const)
+          .map((t) => catalogItems.find((it) => typeOf(it) === t))
+          .filter((x): x is SymbolSearchResult => !!x)
+      : catalogItems.filter((it) => typeOf(it) === filter).slice(0, 4);
 
-  const items: SymbolSearchResult[] = showCatalog
-    ? filter === "전체"
+  const showFallback = showRecent && recentFiltered.length === 0;
+
+  const items: SymbolSearchResult[] = showRecent
+    ? showFallback
       ? recommended
-      : catalogItems.filter((it) => typeOf(it) === filter).slice(0, 4)
+      : recentFiltered
     : filter === "전체"
       ? (results ?? [])
       : (results ?? []).filter((it) => typeOf(it) === filter);
+
+  function handleSelect(item: SymbolSearchResult) {
+    pushRecent(item);
+    onSelect({ symbol: item.symbol, name: item.name });
+  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -106,13 +167,15 @@ export function SymbolSearch({
         ))}
       </div>
 
-      {showCatalog && (
-        <p className="px-1 text-xs font-medium text-muted-foreground">추천</p>
+      {showRecent && (
+        <p className="px-1 text-xs font-medium text-muted-foreground">
+          {showFallback ? "추천" : "최근 검색"}
+        </p>
       )}
-      {!showCatalog && loading && (
+      {!showRecent && loading && (
         <p className="px-1 text-sm text-muted-foreground">검색 중…</p>
       )}
-      {!showCatalog && !loading && results !== null && results.length === 0 && (
+      {!showRecent && !loading && results !== null && results.length === 0 && (
         <p className="px-1 text-sm text-muted-foreground">
           검색 결과가 없습니다. 종목명이나 티커를 확인해 주세요.
         </p>
@@ -123,7 +186,7 @@ export function SymbolSearch({
           <li key={item.symbol}>
             <button
               type="button"
-              onClick={() => onSelect({ symbol: item.symbol, name: item.name })}
+              onClick={() => handleSelect(item)}
               className="flex w-full items-center gap-3 rounded-xl p-3 text-left transition active:scale-[0.99] hover:bg-secondary"
             >
               <SymbolAvatar name={item.name} symbol={item.symbol} />
