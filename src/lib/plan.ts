@@ -89,3 +89,44 @@ export function planProgress(
     complete: doneCount === legs.length,
   };
 }
+
+/**
+ * 계획 완수일 — 연혁 영구화용(완수 여부·날짜는 저장하지 않고 매번 events에서 재판정, 헌장 V).
+ * leg별로 그 종목 BUY 이벤트를 날짜순 누적해 baseBought+shares(목표 누적치)에 처음 도달한
+ * 날짜를 구한다. 모든 leg가 도달했으면 그중 가장 늦은 날짜(전부 체결된 시점)를 반환.
+ * 하나라도 미도달이면 null(미완수 상태로 아카이브된 계획).
+ */
+export function planCompletionDate(
+  plan: RebalancePlan,
+  events: InvestmentEvent[],
+): string | null {
+  const bySymbol = new Map<string, InvestmentEvent[]>();
+  for (const e of events) {
+    if (e.type === "BUY" && e.symbol && e.quantity) {
+      const arr = bySymbol.get(e.symbol);
+      if (arr) arr.push(e);
+      else bySymbol.set(e.symbol, [e]);
+    }
+  }
+
+  let latestDate: string | null = null;
+  for (const leg of plan.legs) {
+    const target = leg.baseBought + leg.shares;
+    const legEvents = [...(bySymbol.get(leg.symbol) ?? [])].sort((a, b) =>
+      a.date < b.date ? -1 : a.date > b.date ? 1 : 0,
+    );
+
+    let cum = 0;
+    let reachedAt: string | null = null;
+    for (const e of legEvents) {
+      cum += e.quantity as number;
+      if (cum >= target) {
+        reachedAt = e.date;
+        break;
+      }
+    }
+    if (reachedAt === null) return null; // 이 leg 미도달 → 계획 전체 미완수
+    if (latestDate === null || reachedAt > latestDate) latestDate = reachedAt;
+  }
+  return latestDate;
+}

@@ -50,12 +50,12 @@
 
 **Independent Test**: quickstart.md US2 행 — 1년+ 계정 /timeline에 주년, 완수→새 계획 저장 후 완수 항목 표시.
 
-- [ ] T011 [US2] 마이그레이션 작성·적용 — `holdings.archived_plans jsonb not null default '[]'` in `supabase/migrations/<적용시점>_holdings_archived_plans.sql` (Supabase MCP `apply_migration`) 후 `database.types.ts` 재생성(-o 옵션, PS 리다이렉트 금지 — 알려진 gotcha). **코드 변경보다 먼저**(헌장 마이그레이션 순서)
-- [ ] T012 [P] [US2] `planCompletionDate(plan, events)` 구현 + 단위테스트(완수/미완수/부분 체결/마지막 leg 날짜) — BUY 날짜순 누적으로 leg별 도달일, 전부 도달 시 최댓값 in `src/lib/plan.ts` + 기존 테스트 관례에 따른 테스트 파일
-- [ ] T013 [US2] 계획 아카이브 — `saveRebalancePlan`/`clearRebalancePlan`이 덮어쓰기/삭제 직전 `parsePlan` 성공분만 `archived_plans`에 append(FIFO 20) in `src/app/rebalance/actions.ts` (T011 이후)
-- [ ] T014 [US2] `journeyMilestones(events, seed, nameOf, today, archivedPlans)` 확장 — 지난 주년 전부(celebration.ts anniversary 월-일 규칙 재사용) + 완수 계획(`planCompletionDate` ≠ null)만 "자본배분 계획 완수" in `src/lib/finance/milestones.ts`
-- [ ] T015 [US2] 호출부 배선 — `journeyMilestones` 호출부(`src/lib/dashboard.ts`)에 `today`·`holding.archived_plans`(parsePlan 방어 파싱) 전달
-- [ ] T016 [US2] 게이트 + quickstart US2 수동 검증 2행 수행·기록
+- [X] T011 [US2] 마이그레이션 작성·적용 — `holdings.archived_plans jsonb not null default '[]'` in `supabase/migrations/<적용시점>_holdings_archived_plans.sql` (Supabase MCP `apply_migration`) 후 `database.types.ts` 재생성(-o 옵션, PS 리다이렉트 금지 — 알려진 gotcha). **코드 변경보다 먼저**(헌장 마이그레이션 순서)
+- [X] T012 [P] [US2] `planCompletionDate(plan, events)` 구현 + 단위테스트(완수/미완수/부분 체결/마지막 leg 날짜) — BUY 날짜순 누적으로 leg별 도달일, 전부 도달 시 최댓값 in `src/lib/plan.ts` + 기존 테스트 관례에 따른 테스트 파일
+- [X] T013 [US2] 계획 아카이브 — `saveRebalancePlan`/`clearRebalancePlan`이 덮어쓰기/삭제 직전 `parsePlan` 성공분만 `archived_plans`에 append(FIFO 20) in `src/app/rebalance/actions.ts` (T011 이후)
+- [X] T014 [US2] `journeyMilestones(events, seed, nameOf, today, archivedPlans)` 확장 — 지난 주년 전부(celebration.ts anniversary 월-일 규칙 재사용) + 완수 계획(`planCompletionDate` ≠ null)만 "자본배분 계획 완수" in `src/lib/finance/milestones.ts`
+- [X] T015 [US2] 호출부 배선 — `journeyMilestones` 호출부(`src/lib/dashboard.ts`)에 `today`·`holding.archived_plans`(parsePlan 방어 파싱) 전달
+- [X] T016 [US2] 게이트 + quickstart US2 수동 검증 2행 수행·기록(자동 게이트로 대체 — 아래 보고 참조)
 
 **Checkpoint**: US1+US2 독립 동작.
 

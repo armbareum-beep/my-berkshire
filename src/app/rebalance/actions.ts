@@ -4,11 +4,37 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { todayKST } from "@/lib/date";
 import { activeEventRows } from "@/lib/portfolio";
-import { cumulativeBought } from "@/lib/plan";
+import { cumulativeBought, parsePlan, type RebalancePlan } from "@/lib/plan";
 import type { InvestmentEvent } from "@/lib/finance/valuation";
 import { getActiveHolding } from "@/lib/holdings";
+import type { Json } from "@/lib/supabase/database.types";
 
 type Result = { ok: true } | { ok: false; error: string };
+
+/** 계획 아카이브 보관 한도(FIFO — 초과 시 가장 오래된 것부터 제거). */
+const ARCHIVED_PLANS_CAP = 20;
+
+/**
+ * 현재 active_plan을 아카이브 배열에 append(완수 여부와 무관, 손상 JSON은 방어적으로 스킵).
+ * 완수 여부·완수일은 저장하지 않는다(events에서 매번 재판정, 헌장 V) — 계획 원문만 보관.
+ * 오래된 순(append)이라 앞(가장 오래된 것)부터 잘라 20개 상한을 지킨다.
+ */
+function archivePlan(
+  currentArchived: unknown,
+  activePlanRaw: unknown,
+): RebalancePlan[] {
+  const archived: RebalancePlan[] = Array.isArray(currentArchived)
+    ? (currentArchived as unknown[])
+        .map((p) => parsePlan(p))
+        .filter((p): p is RebalancePlan => p !== null)
+    : [];
+  const parsed = parsePlan(activePlanRaw);
+  if (!parsed) return archived; // 활성 계획이 없거나 손상됨 — 아카이브할 것 없음
+  const next = [...archived, parsed];
+  return next.length > ARCHIVED_PLANS_CAP
+    ? next.slice(next.length - ARCHIVED_PLANS_CAP)
+    : next;
+}
 
 /**
  * 유형 내 종목 목표비중 저장(소수, 0~1). 키=심볼, **유형별 합=1** 의미(전체 대비 아님).
@@ -142,9 +168,12 @@ export async function saveRebalancePlan(
     })),
   };
 
+  // 새 계획으로 덮어쓰기 직전, 기존 활성 계획(있다면)을 연혁 보관용 아카이브에 append.
+  const archivedPlans = archivePlan(holding.archived_plans, holding.active_plan);
+
   const { error } = await supabase
     .from("holdings")
-    .update({ active_plan: plan })
+    .update({ active_plan: plan, archived_plans: archivedPlans as unknown as Json })
     .eq("id", holding.id);
   if (error) return { ok: false, error: error.message };
 
@@ -165,9 +194,12 @@ export async function clearRebalancePlan(): Promise<Result> {
   const holding = await getActiveHolding(supabase);
   if (!holding) return { ok: false, error: "회사를 찾을 수 없습니다." };
 
+  // 지우기 직전, 기존 활성 계획(있다면)을 연혁 보관용 아카이브에 append.
+  const archivedPlans = archivePlan(holding.archived_plans, holding.active_plan);
+
   const { error } = await supabase
     .from("holdings")
-    .update({ active_plan: null })
+    .update({ active_plan: null, archived_plans: archivedPlans as unknown as Json })
     .eq("id", holding.id);
   if (error) return { ok: false, error: error.message };
 

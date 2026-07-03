@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       accounts: {
@@ -316,6 +341,7 @@ export type Database = {
       holdings: {
         Row: {
           active_plan: Json | null
+          archived_plans: Json
           category_targets: Json
           completed_years: number[]
           created_at: string
@@ -332,6 +358,7 @@ export type Database = {
         }
         Insert: {
           active_plan?: Json | null
+          archived_plans?: Json
           category_targets?: Json
           completed_years?: number[]
           created_at?: string
@@ -348,6 +375,7 @@ export type Database = {
         }
         Update: {
           active_plan?: Json | null
+          archived_plans?: Json
           category_targets?: Json
           completed_years?: number[]
           created_at?: string
@@ -1046,6 +1074,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       account_type: ["GENERAL", "ISA", "PENSION", "OVERSEAS", "IRP"],
