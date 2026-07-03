@@ -84,9 +84,9 @@
 
 **Independent Test**: quickstart.md US4 행 — /growth 카드 수치 = /report 상세 수치 일치.
 
-- [ ] T023 [P] [US4] 카드 신규 — "복리 무중단 N개월"(1개월 미만 N일), 최근 투입 시 Flame 아이콘, `/report` 링크(scroll={false}), 빈 상태 중립 카피("첫 자본을 넣으면 복리 시계가 시작돼요" 취지) in `src/components/growth/CompoundingStreakCard.tsx`
-- [ ] T024 [US4] 배치 — `CompanyTierCard` 바로 아래, 기존 `data.compoundingStreak` prop 전달(새 계산 0) in `src/app/growth/page.tsx`
-- [ ] T025 [US4] 게이트 + /report 수치 일치 확인(SC-005)
+- [X] T023 [P] [US4] 카드 신규 — "복리 무중단 N개월"(1개월 미만 N일), 최근 투입 시 Flame 아이콘, `/report` 링크(scroll={false}), 빈 상태 중립 카피("첫 자본을 넣으면 복리 시계가 시작돼요" 취지) in `src/components/growth/CompoundingStreakCard.tsx`
+- [X] T024 [US4] 배치 — `CompanyTierCard` 바로 아래, 기존 `data.compoundingStreak` prop 전달(새 계산 0) in `src/app/growth/page.tsx`
+- [X] T025 [US4] 게이트 + /report 수치 일치 확인(SC-005)
 
 ---
 

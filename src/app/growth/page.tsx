@@ -32,6 +32,7 @@ import { StyleCard } from "@/components/dashboard/StyleCard";
 import { LookThroughCard } from "@/components/dashboard/LookThroughCard";
 import { TimelineCard } from "@/components/dashboard/cards";
 import { CompanyTierCard } from "@/components/growth/CompanyTierCard";
+import { CompoundingStreakCard } from "@/components/growth/CompoundingStreakCard";
 import { EtfSnapshotCard } from "@/components/growth/EtfSnapshotCard";
 import { LockedCard } from "@/components/growth/LockedCard";
 
@@ -168,6 +169,9 @@ export default async function GrowthPage() {
 
       {/* 기업 등급(헤드라인) */}
       <CompanyTierCard tier={tier} invested={data.invested} monthsActive={monthsActive} />
+
+      {/* 복리 무중단 — 이미 계산된 data.compoundingStreak를 그대로 노출(새 계산 없음). */}
+      <CompoundingStreakCard streak={data.compoundingStreak} />
 
       {/* 내 지분 실적(현재 투시 펀더멘털) — 개별주 없으면 잠금 */}
       {hasStock ? (
