@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { ReceiptText } from "lucide-react";
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getPortfolio } from "@/lib/portfolio";
@@ -15,6 +16,7 @@ import { totalLiabilities } from "@/lib/finance/liabilities";
 import { loadSecurityMeta } from "@/lib/securities";
 import { fetchKrxEtfTers } from "@/lib/finance/krxEtf";
 import { loadDismissed } from "@/lib/finance/homeSignal";
+import { saveStyleSnapshot, toStyleHistorySnapshot } from "@/lib/styleHistory";
 import {
   quartersBetween,
   reviewedQuarters,
@@ -124,6 +126,18 @@ export default async function GrowthPage() {
     planRatio,
     secMeta,
   );
+  // /style 과 동일 배선 — 방문만으로 스냅샷이 쌓여 분기 경계에 갇히지 않고 등급 변화가 더 자주 기록된다.
+  if (!style.insufficient) {
+    const snapshot = toStyleHistorySnapshot(style, today);
+    after(() =>
+      saveStyleSnapshot(
+        supabase,
+        holding.id,
+        holding.portfolio_revision,
+        snapshot,
+      ),
+    );
+  }
 
   // 기업 등급 — 납입 원금 + 운용기간(가장 오래된 이벤트 날짜 기준) 이중 게이트.
   const earliestDate =

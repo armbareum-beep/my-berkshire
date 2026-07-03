@@ -18,6 +18,10 @@ export interface StyleHistorySnapshot {
     score: number;
     available: boolean;
   }[];
+  /** 규율 점수(0~100). VERSION "v1" 유지를 위해 옵셔널 — 구 스냅샷엔 없음(콜드스타트). */
+  score?: number;
+  /** 등급 라벨(style.ts gradeOf 결과). 옵셔널 — 없으면 등급업 비교 대상에서 제외. */
+  gradeLabel?: string;
 }
 
 export function toStyleHistorySnapshot(
@@ -39,6 +43,8 @@ export function toStyleHistorySnapshot(
       score: dimension.score,
       available: dimension.available !== false,
     })),
+    score: style.score ?? undefined,
+    gradeLabel: style.grade?.label,
   };
 }
 
@@ -62,6 +68,34 @@ export async function loadPreviousStyleSnapshot(
     .eq("kind", KIND)
     .eq("parameters_hash", VERSION)
     .lt("as_of_date", currentQuarterStart(today))
+    .order("as_of_date", { ascending: false })
+    .order("computed_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!data) return null;
+  const snapshot = data.data as unknown as StyleHistorySnapshot;
+  return { ...snapshot, asOfDate: data.as_of_date };
+}
+
+/**
+ * 임의 커트라인 기준 최신 스냅샷 1건 — `loadPreviousStyleSnapshot`(분기 시작 고정)과 달리
+ * `before`를 자유롭게 받는다. 미지정이면 전체 최신 1건, 지정하면 그 이전 최신 1건(등급업 비교의 "직전" 조회용).
+ */
+export async function loadLatestStyleSnapshot(
+  supabase: SupabaseClient<Database>,
+  holdingId: string,
+  before?: string,
+): Promise<StyleHistorySnapshot | null> {
+  let query = supabase
+    .from("calculation_snapshots")
+    .select("data, as_of_date")
+    .eq("holding_id", holdingId)
+    .eq("kind", KIND)
+    .eq("parameters_hash", VERSION);
+  if (before !== undefined) {
+    query = query.lt("as_of_date", before);
+  }
+  const { data } = await query
     .order("as_of_date", { ascending: false })
     .order("computed_at", { ascending: false })
     .limit(1)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeStyle } from "./style";
+import { computeStyle, gradeRank } from "./style";
 import type { Portfolio } from "./portfolio";
 import type { DashboardData } from "./dashboard";
 import { todayKST } from "./date";
@@ -118,5 +118,18 @@ describe("computeStyle multi-axis", () => {
     expect(innovation?.available).toBe(false);
     expect(innovation?.display).toBe("분석 대기");
     expect(withoutSector.confidence?.score).toBeLessThan(style.confidence!.score);
+  });
+});
+
+describe("gradeRank", () => {
+  it("gradeOf 라벨 서열을 실제 문자열 기준으로 매긴다", () => {
+    expect(gradeRank("과매매 주의")).toBe(0);
+    expect(gradeRank("성장하는 투자가")).toBe(1);
+    expect(gradeRank("규율 있는 장기투자가")).toBe(2);
+    expect(gradeRank("자본배분의 달인")).toBe(3);
+  });
+
+  it("알 수 없는 라벨은 -1(비교 불가)", () => {
+    expect(gradeRank("존재하지 않는 등급")).toBe(-1);
   });
 });

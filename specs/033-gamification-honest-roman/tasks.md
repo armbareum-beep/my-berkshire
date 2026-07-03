@@ -67,12 +67,12 @@
 
 **Independent Test**: quickstart.md US3 행 — /growth 방문(스냅샷) 후 홈 배너 1회, 같은 분기 중복 없음.
 
-- [ ] T017 [P] [US3] `gradeRank(label)` export — 과매매 주의(0) < 성장하는 투자가(1) < 규율 있는 장기투자가(2) < 자본배분의 달인(3) in `src/lib/style.ts`
-- [ ] T018 [US3] 스냅샷 확장 — `StyleHistorySnapshot`에 옵셔널 `score`/`gradeLabel`(**VERSION "v1" 유지**), `toStyleHistorySnapshot` 채움, `loadLatestStyleSnapshot(supabase, holdingId, before?)` 신설 + 왕복·v1 하위호환 테스트 in `src/lib/styleHistory.ts` + `src/lib/styleHistory.test.ts`
-- [ ] T019 [US3] 성장 허브 방문 시 스냅샷 저장 — `/style`과 동일 `after(() => saveStyleSnapshot(...))` 배선 in `src/app/growth/page.tsx`
-- [ ] T020 [US3] `CelebrationOpts`에 `gradeUp: { label }` 추가 — key `grade-up:{quarterLabel}`(분기 1회), 문구 "규율 등급이 올랐어요 — {label}", href `/growth` in `src/lib/celebration.ts`
-- [ ] T021 [US3] 홈 등급업 감지 — `HomeSignalsStreamed`에서 `loadLatestStyleSnapshot` 2회(최신·그 이전) 비교, 둘 다 gradeLabel 존재 && rank 상승 시에만 `gradeUp` 전달(computeStyle 재계산 금지 — DB 읽기 2건) in `src/app/dashboard/page.tsx`
-- [ ] T022 [US3] 게이트 + quickstart US3 수동 검증·콜드스타트(과거 기록 무등급 → 무신호) 확인
+- [X] T017 [P] [US3] `gradeRank(label)` export — 과매매 주의(0) < 성장하는 투자가(1) < 규율 있는 장기투자가(2) < 자본배분의 달인(3) in `src/lib/style.ts`
+- [X] T018 [US3] 스냅샷 확장 — `StyleHistorySnapshot`에 옵셔널 `score`/`gradeLabel`(**VERSION "v1" 유지**), `toStyleHistorySnapshot` 채움, `loadLatestStyleSnapshot(supabase, holdingId, before?)` 신설 + 왕복·v1 하위호환 테스트 in `src/lib/styleHistory.ts` + `src/lib/styleHistory.test.ts`
+- [X] T019 [US3] 성장 허브 방문 시 스냅샷 저장 — `/style`과 동일 `after(() => saveStyleSnapshot(...))` 배선 in `src/app/growth/page.tsx`
+- [X] T020 [US3] `CelebrationOpts`에 `gradeUp: { label }` 추가 — key `grade-up:{quarterLabel}`(분기 1회), 문구 "규율 등급이 올랐어요 — {label}", href `/growth` in `src/lib/celebration.ts`
+- [X] T021 [US3] 홈 등급업 감지 — `HomeSignalsStreamed`에서 `loadLatestStyleSnapshot` 2회(최신·그 이전) 비교, 둘 다 gradeLabel 존재 && rank 상승 시에만 `gradeUp` 전달(computeStyle 재계산 금지 — DB 읽기 2건) in `src/app/dashboard/page.tsx`
+- [X] T022 [US3] 게이트 + quickstart US3 수동 검증·콜드스타트(과거 기록 무등급 → 무신호) 확인
 
 **Checkpoint**: US1~US3 독립 동작.
 

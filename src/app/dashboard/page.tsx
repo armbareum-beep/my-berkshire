@@ -35,6 +35,8 @@ import { quarterBounds } from "@/lib/finance/quarterClose";
 import { resolveHomeSignals, loadDismissed, type HomeSignal } from "@/lib/finance/homeSignal";
 import { computeCelebrations, mergeCelebrations } from "@/lib/celebration";
 import { loadDrawdownEpisodes } from "@/lib/drawdownEpisodes";
+import { loadLatestStyleSnapshot } from "@/lib/styleHistory";
+import { gradeRank } from "@/lib/style";
 import { todayKST } from "@/lib/date";
 import { getPortfolioDisclosureFeed } from "@/lib/finance/disclosureFeed";
 import { signOut } from "@/app/auth/actions";
@@ -836,7 +838,7 @@ async function HomeSignalsStreamed({
   today: string;
   planProg: { complete: boolean; createdAt: string } | null;
 }) {
-  const [watchSymbols, dismissed, drawdownEpisodes] = await Promise.all([
+  const [watchSymbols, dismissed, drawdownEpisodes, latestStyle] = await Promise.all([
     watchSymbolsPromise,
     dismissedPromise,
     loadDrawdownEpisodes({
@@ -848,7 +850,13 @@ async function HomeSignalsStreamed({
       events: portfolio.events,
       today,
     }),
+    // 등급업 비교의 "최신" 1건 — computeStyle 재계산 없이 DB 읽기만.
+    loadLatestStyleSnapshot(supabase, portfolio.holding.id),
   ]);
+  // "직전" 1건은 최신 스냅샷의 as_of_date 가 있어야 커트라인을 잡을 수 있어 순차 조회.
+  const previousStyle = latestStyle
+    ? await loadLatestStyleSnapshot(supabase, portfolio.holding.id, latestStyle.asOfDate)
+    : null;
   const watchNames = await loadSecurityNames(supabase, watchSymbols);
   const newsSignals = await resolveHomeSignals({
     events: portfolio.events,
@@ -863,12 +871,20 @@ async function HomeSignalsStreamed({
   const drawdownPassages = drawdownEpisodes
     .filter((e) => e.passed)
     .map((e) => ({ recoveryDate: e.recoveryDate as string, bucket: e.bucket }));
+  // 등급업 — 둘 다 gradeLabel 이 있고(콜드스타트 아님) 서열이 명확히 오른 경우만.
+  const latestGradeRank = latestStyle?.gradeLabel ? gradeRank(latestStyle.gradeLabel) : -1;
+  const previousGradeRank = previousStyle?.gradeLabel ? gradeRank(previousStyle.gradeLabel) : -1;
+  const gradeUp =
+    latestGradeRank >= 0 && previousGradeRank >= 0 && latestGradeRank > previousGradeRank
+      ? { label: latestStyle!.gradeLabel! }
+      : undefined;
   const celebrations = computeCelebrations({
     holdingName: portfolio.holding.name,
     foundedAt: portfolio.holding.founded_at,
     today,
     plan: planProg,
     drawdownPassages,
+    gradeUp,
     dismissed,
   });
   const signals = mergeCelebrations(newsSignals, celebrations);

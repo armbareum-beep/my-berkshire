@@ -85,6 +85,20 @@ function gradeOf(score: number): StyleGrade {
   return { label: "과매매 주의", emoji: "⚠️", tone: "warn" };
 }
 
+/**
+ * 등급 서열 — gradeOf가 실제로 반환하는 라벨 문자열과 정확히 일치해야 한다(진실원천은 코드).
+ * 등급업 비교(033 US3)에만 쓰인다. 미지 라벨(콜드스타트 등)은 -1(비교 불가).
+ */
+const GRADE_ORDER = [
+  "과매매 주의",
+  "성장하는 투자가",
+  "규율 있는 장기투자가",
+  "자본배분의 달인",
+];
+export function gradeRank(label: string): number {
+  return GRADE_ORDER.indexOf(label);
+}
+
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
 const pct = (r: number) => `${Math.round(r * 100)}%`;
 
