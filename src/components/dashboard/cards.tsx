@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Flame } from "lucide-react";
 import { SymbolAvatar } from "@/components/onboarding/SymbolPicker";
 import { EVENT_ICON, IconChip } from "@/components/transactions/eventIcons";
 import { SectionCard } from "@/components/ui/SectionCard";
@@ -192,7 +193,12 @@ export function HeroValuationCard({
           {compoundingStreak.unit === "month"
             ? `${compoundingStreak.months}개월`
             : `${compoundingStreak.days}일`}
-          {compoundingStreak.bonusRecentDeposit && " 🔥"}
+          {compoundingStreak.bonusRecentDeposit && (
+            <>
+              {" "}
+              <Flame size={13} className="inline align-[-2px] text-warn" aria-hidden />
+            </>
+          )}
         </p>
       )}
       {/* 자산 구성 — "주식은 내 재산의 일부"를 눈으로. 스택 바(브랜드색 농도) + 점 범례. */}

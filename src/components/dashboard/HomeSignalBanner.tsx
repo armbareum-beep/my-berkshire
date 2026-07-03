@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
+import { X } from "lucide-react";
 import { dismissHomeSignal } from "@/app/dashboard/signalActions";
 import { EmojiIcon } from "@/components/ui/EmojiIcon";
 import type { HomeSignal } from "@/lib/finance/homeSignal";
@@ -47,9 +48,9 @@ export function HomeSignalBanner({ signals }: { signals: HomeSignal[] }) {
           persist(sig.key);
           setIdx((i) => i + 1); // 낙관적으로 즉시 다음
         }}
-        className="shrink-0 rounded-full px-1.5 text-base leading-none opacity-60 transition active:scale-90"
+        className="touch-target shrink-0 rounded-full px-1.5 leading-none opacity-60 transition active:scale-90"
       >
-        ✕
+        <X size={16} aria-hidden />
       </button>
     </div>
   );

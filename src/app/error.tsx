@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
+import { AlertTriangle } from "lucide-react";
 
 /**
  * 루트 에러 바운더리 — 서버 컴포넌트·외부 API(시세/공시) 실패 시
@@ -22,7 +23,9 @@ export default function Error({
 
   return (
     <main className="flex min-h-dvh flex-col items-center justify-center gap-2 px-6 text-center">
-      <p className="text-4xl">⚠️</p>
+      <span className="flex h-14 w-14 items-center justify-center rounded-full bg-warn-tint text-warn">
+        <AlertTriangle size={28} />
+      </span>
       <h1 className="mt-2 text-xl font-bold">일시적인 오류가 발생했어요</h1>
       <p className="text-sm text-muted-foreground">
         데이터를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.

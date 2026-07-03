@@ -330,7 +330,7 @@ async function DashboardContent({
           <Link
             href="/search"
             aria-label="종목 검색"
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-secondary text-muted-foreground"
+            className="touch-target flex h-8 w-8 items-center justify-center rounded-full bg-secondary text-muted-foreground"
           >
             <Search size={16} />
           </Link>

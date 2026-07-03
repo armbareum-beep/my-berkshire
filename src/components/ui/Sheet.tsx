@@ -134,7 +134,7 @@ export function Sheet({
             type="button"
             onClick={close}
             aria-label="닫기"
-            className="absolute right-3 top-1.5 flex h-8 w-8 items-center justify-center rounded-full bg-secondary text-muted-foreground"
+            className="touch-target absolute right-3 top-1.5 flex h-8 w-8 items-center justify-center rounded-full bg-secondary text-muted-foreground"
           >
             <X size={18} />
           </button>
