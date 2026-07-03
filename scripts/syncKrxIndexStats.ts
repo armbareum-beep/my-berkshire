@@ -97,7 +97,7 @@ async function fetchRows(ctx: import("playwright").BrowserContext, trdDd: string
   if (text.trim() === "LOGOUT") throw new Error("KRX session expired (LOGOUT)");
   let json: Record<string, unknown>;
   try { json = JSON.parse(text); } catch { throw new Error(`JSON parse failed: ${text.slice(0, 300)}`); }
-  if (json?.result?.code === "LOGOUT") throw new Error("KRX LOGOUT in response");
+  if ((json?.result as { code?: string } | undefined)?.code === "LOGOUT") throw new Error("KRX LOGOUT in response");
   return Array.isArray(json?.output) ? (json.output as KrxRow[]) : [];
 }
 

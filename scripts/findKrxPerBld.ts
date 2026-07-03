@@ -80,8 +80,8 @@ async function main() {
 
   // 브라우저 닫힐 때까지 대기
   await new Promise<void>((resolve) => {
-    context.on("close", resolve);
-    browser.on("disconnected", resolve);
+    context.on("close", () => resolve());
+    browser.on("disconnected", () => resolve());
   });
 
   // 세션 저장
