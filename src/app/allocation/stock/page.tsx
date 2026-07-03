@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PieChart } from "lucide-react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -12,6 +13,7 @@ import { SymbolAvatar } from "@/components/onboarding/SymbolPicker";
 import { CashBreakdown } from "@/components/dashboard/CashBreakdown";
 import { Donut } from "@/components/dashboard/Donut";
 import { donutColor } from "@/components/dashboard/donutPalette";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { money, pct } from "@/lib/format";
 
 /** 종목별 자산배분 상세 — 도넛 + 종목 목록(현금 포함). /allocation 에서 이동. */
@@ -73,14 +75,18 @@ export default async function StockAllocationPage() {
         종목별 자산배분
       </h1>
 
-      {!data.priceAvailable || items.length === 0 ? (
+      {!data.priceAvailable ? (
         <div className="rounded-2xl bg-card p-6 text-center shadow-card">
           <p className="text-sm text-muted-foreground">
-            {data.priceAvailable
-              ? "보유 종목이 없습니다."
-              : "시세 갱신 필요 — 잠시 후 다시 시도하세요."}
+            시세 갱신 필요 — 잠시 후 다시 시도하세요.
           </p>
         </div>
+      ) : items.length === 0 ? (
+        <EmptyState
+          icon={PieChart}
+          title="보유 종목이 없어요"
+          description="종목을 매수하면 자산배분이 여기 나타나요"
+        />
       ) : (
         <>
           {/* 도넛 + 범례 */}

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PieChart } from "lucide-react";
 import { cookies } from "next/headers";
 import { redirect, notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -16,6 +17,7 @@ import { donutColor } from "@/components/dashboard/donutPalette";
 import { money, pct, signedMoneyShort, signedPct, changeColor } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { CategoryDrawer, type DrawerCategory } from "@/components/allocation/CategoryDrawer";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 const TAGS = {
   country: { key: "country" as const, title: "국가별 자산배분" },
@@ -174,9 +176,7 @@ export default async function AllocationDetailPage({
       <h1 className="text-2xl font-extrabold tracking-tight">{pageTitle}</h1>
 
       {categories.length === 0 ? (
-        <div className="rounded-2xl bg-card p-6 text-center shadow-card">
-          <p className="text-sm text-muted-foreground">보유 자산이 없습니다.</p>
-        </div>
+        <EmptyState icon={PieChart} title="보유 자산이 없어요" />
       ) : (
         <>
           {/* 도넛 + 범례 */}

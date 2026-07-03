@@ -26,6 +26,7 @@ import { PeriodReturns, type PeriodView } from "@/components/returns/PeriodRetur
 import { type LinePoint } from "@/components/benchmark/BenchmarkChart";
 import { MarketSection } from "@/components/benchmark/MarketSection";
 import { FrictionCard } from "@/components/dashboard/cards";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { businessCandidates } from "@/lib/finance/businessContribution";
 import { BusinessContribution } from "@/components/returns/BusinessContribution";
 
@@ -241,9 +242,11 @@ export default async function ReturnsPage() {
           )}
         </div>
         {realized.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            아직 실현 손익이 없습니다(매도·배당 기록 시 쌓입니다).
-          </p>
+          <EmptyState
+            className="p-0 text-left shadow-none"
+            title="아직 실현 손익이 없어요"
+            description="매도·배당을 기록하면 여기 쌓여요"
+          />
         ) : (
           <ul className="flex flex-col gap-3">
             {realized.map((r, i) => (
@@ -294,7 +297,7 @@ export default async function ReturnsPage() {
           )}
         </div>
         {unrealized.length === 0 ? (
-          <p className="text-sm text-muted-foreground">보유 종목이 없습니다.</p>
+          <EmptyState className="p-0 text-left shadow-none" title="보유 종목이 없어요" />
         ) : (
           <ul className="flex flex-col gap-1">
             {unrealized.map((u) => (

@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { Trophy } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getPortfolio } from "@/lib/portfolio";
 import { computeBenchmark } from "@/lib/finance/benchmark";
@@ -7,6 +8,7 @@ import { todayKST } from "@/lib/date";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
 import { ScoreCard } from "@/components/ranking/ScoreCard";
 import { Leaderboard } from "@/components/ranking/Leaderboard";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 export default async function RankingPage() {
   const supabase = await createClient();
@@ -82,12 +84,12 @@ export default async function RankingPage() {
       </div>
 
       {events.length === 0 ? (
-        <div className="rounded-2xl bg-card p-8 text-center shadow-card">
-          <p className="text-sm font-semibold">거래 기록이 없어요</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            매수·입금 기록을 추가하면 점수가 산출됩니다
-          </p>
-        </div>
+        <EmptyState
+          icon={Trophy}
+          title="거래 기록이 없어요"
+          description="매수·입금 기록을 남기면 점수가 산출돼요"
+          cta={{ label: "거래 기록하기", href: "/transactions" }}
+        />
       ) : (
         <>
           <Leaderboard rows={leaderboard} />

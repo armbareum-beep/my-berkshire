@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { Search, Upload } from "lucide-react";
+import { Search, Upload, Briefcase } from "lucide-react";
 import { after } from "next/server";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -44,6 +44,7 @@ import { ConsolidatedHoldings } from "@/components/dashboard/ConsolidatedHolding
 import { CurrencyProvider } from "@/components/dashboard/CurrencyProvider";
 import { CurrencyView } from "@/components/dashboard/CurrencyView";
 import { SectionCard } from "@/components/ui/SectionCard";
+import { EmptyState } from "@/components/ui/EmptyState";
 import {
   HeroValuationCard,
   PriceUnavailableCard,
@@ -242,20 +243,13 @@ async function DashboardContent({
     ),
     holdings:
       data.allocation.length === 0 ? (
-        <div
+        <EmptyState
           key="holdings"
-          className="rounded-2xl bg-card p-6 text-center shadow-card"
-        >
-          <p className="text-sm text-muted-foreground">
-            포트폴리오가 비어 있습니다.
-          </p>
-          <Link
-            href="/transactions"
-            className="mt-4 inline-flex h-11 items-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground"
-          >
-            첫 매수 기록하기
-          </Link>
-        </div>
+          icon={Briefcase}
+          title="아직 보유 종목이 없어요"
+          description="첫 매수를 기록하면 포트폴리오가 여기 채워져요"
+          cta={{ label: "첫 매수 기록하기", href: "/transactions" }}
+        />
       ) : (
         <Suspense key="holdings" fallback={<DashboardStackSkeleton />}>
           <HoldingsStreamed

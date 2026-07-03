@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Briefcase } from "lucide-react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -8,6 +9,7 @@ import { filterIncludedAccountGroups } from "@/lib/members";
 import { BackButton } from "@/components/BackButton";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
 import { HoldingsBrowser } from "@/components/holdings/HoldingsBrowser";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 /**
  * 보유 종목 — 오직 계좌·종목만 보는 전용 화면. 모든 계좌 × 모든 종목을 계좌별로,
@@ -69,17 +71,12 @@ export async function HoldingsContent() {
       </div>
 
       {groups.length === 0 ? (
-        <section className="rounded-2xl bg-card p-6 text-center shadow-card">
-          <p className="text-sm text-muted-foreground">
-            아직 계좌·보유 종목이 없습니다.
-          </p>
-          <Link
-            href="/transactions"
-            className="mt-4 inline-flex h-11 items-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground"
-          >
-            첫 매수 기록하기
-          </Link>
-        </section>
+        <EmptyState
+          icon={Briefcase}
+          title="아직 계좌·보유 종목이 없어요"
+          description="매수를 기록하면 계좌와 보유 종목이 여기 쌓여요"
+          cta={{ label: "첫 매수 기록하기", href: "/transactions" }}
+        />
       ) : (
         <HoldingsBrowser groups={groups} currency={displayCcy} />
       )}

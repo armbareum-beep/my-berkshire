@@ -10,6 +10,7 @@ import { money, signedMoneyShort, pct, changeColor } from "@/lib/format";
 import { SymbolAvatar } from "@/components/onboarding/SymbolPicker";
 import { BackButton } from "@/components/BackButton";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 /**
  * 계좌 상세 — 이 계좌(자회사 그릇)가 담은 종목 전체. 종목이 수십 개여도 한 화면에 쭉.
@@ -86,9 +87,7 @@ export default async function AccountDetailPage({
       <section className="rounded-2xl bg-card p-5 shadow-card">
         <p className="mb-3 text-sm font-semibold">보유 종목</p>
         {account.holdings.length === 0 ? (
-          <p className="py-2 text-sm text-muted-foreground">
-            이 계좌에 보유 종목이 없습니다.
-          </p>
+          <EmptyState className="p-0 py-2 text-left shadow-none" title="이 계좌에 보유 종목이 없어요" />
         ) : (
           <ul className="flex flex-col gap-1">
             {account.holdings.map((h) => (

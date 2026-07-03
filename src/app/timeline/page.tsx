@@ -1,8 +1,10 @@
 import { redirect } from "next/navigation";
+import { History } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { BackButton } from "@/components/BackButton";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
 import { TimelineCard } from "@/components/dashboard/cards";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { getPortfolio } from "@/lib/portfolio";
 import { computeDashboard } from "@/lib/dashboard";
 
@@ -27,9 +29,12 @@ export default async function TimelinePage() {
       {timeline.length > 0 ? (
         <TimelineCard timeline={timeline} />
       ) : (
-        <p className="rounded-2xl bg-card p-6 text-center text-sm text-muted-foreground shadow-card">
-          아직 연혁이 없어요. 첫 거래를 기록하면 설립·매수·마일스톤이 여기 쌓입니다.
-        </p>
+        <EmptyState
+          icon={History}
+          title="아직 연혁이 없어요"
+          description="첫 거래를 기록하면 설립·매수·마일스톤이 여기 쌓여요"
+          cta={{ label: "거래 기록하기", href: "/transactions" }}
+        />
       )}
       <BottomTabBar />
     </main>
