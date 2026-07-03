@@ -36,7 +36,7 @@ import { computeCelebrations, mergeCelebrations } from "@/lib/celebration";
 import { todayKST } from "@/lib/date";
 import { getPortfolioDisclosureFeed } from "@/lib/finance/disclosureFeed";
 import { signOut } from "@/app/auth/actions";
-import { LAST_SEEN_COOKIE } from "@/lib/lastSeen";
+import { LAST_SEEN_COOKIE, parseLastSeenCookie, pickBaseline } from "@/lib/lastSeen";
 import { LastSeenSync } from "@/components/dashboard/LastSeenSync";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
 import { HomeSignalBanner } from "@/components/dashboard/HomeSignalBanner";
@@ -125,7 +125,10 @@ async function DashboardContent({
   // 지난 접속 이후 "벌어들인 손익"(정직: 누적손익의 변화 → 증자·매수 자동 제외). ₩ 기준.
   const currentProfitKrw = dataKRW.profit;
   const currentValueKrw = result.currentValuation;
-  const lastSeen = parseLastSeen(cookieStore.get(LAST_SEEN_COOKIE)?.value);
+  const lastSeen = pickBaseline(
+    parseLastSeenCookie(cookieStore.get(LAST_SEEN_COOKIE)?.value),
+    today,
+  );
   const sinceLastSeenKrw =
     lastSeen && currentProfitKrw !== null
       ? (() => {
@@ -480,26 +483,6 @@ type PortfolioSnapshot = NonNullable<Awaited<ReturnType<typeof getPortfolio>>>;
 type DashboardData = ReturnType<typeof computeDashboard>;
 type BenchmarkSnapshot = Awaited<ReturnType<typeof computeBenchmark>>;
 type DismissedSignals = Awaited<ReturnType<typeof loadDismissed>>;
-
-/** "지난 접속" 스냅샷 쿠키 파싱 — 손상되면 null(다음 방문에 갱신). */
-function parseLastSeen(
-  raw: string | undefined,
-): { date: string; profit: number; value: number } | null {
-  if (!raw) return null;
-  try {
-    const o = JSON.parse(raw);
-    if (
-      typeof o?.profit === "number" &&
-      typeof o?.value === "number" &&
-      typeof o?.date === "string"
-    ) {
-      return { date: o.date, profit: o.profit, value: o.value };
-    }
-  } catch {
-    // 손상된 쿠키 — 무시.
-  }
-  return null;
-}
 
 async function PerformanceStreamed({
   result,
