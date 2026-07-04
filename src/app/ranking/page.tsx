@@ -3,8 +3,12 @@ import { Trophy } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getPortfolio } from "@/lib/portfolio";
 import { computeBenchmark } from "@/lib/finance/benchmark";
-import { computeRankingScore } from "@/lib/ranking";
+import { computeRankingScore, toGrade } from "@/lib/ranking";
 import { upsertRankingScore } from "@/lib/rankingSync";
+import { buildPublicMilestones, parsePublicMilestones } from "@/lib/rankingMilestones";
+import { loadLiabilities } from "@/lib/liabilities";
+import { totalLiabilities } from "@/lib/finance/liabilities";
+import { loadDrawdownEpisodes } from "@/lib/drawdownEpisodes";
 import { todayKST } from "@/lib/date";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
 import { ScoreCard } from "@/components/ranking/ScoreCard";
@@ -24,14 +28,26 @@ export default async function RankingPage() {
   const { holding, events, result, prices } = portfolio;
   const today = todayKST();
 
-  const [benchmark] = await Promise.all([
+  const [benchmark, liabilities, drawdownEpisodes] = await Promise.all([
     computeBenchmark(
       { foundedAt: holding.founded_at, initialValuation: Number(holding.initial_valuation) },
       events,
       today,
       "KRW",
     ),
+    loadLiabilities(supabase, holding.id),
+    loadDrawdownEpisodes({
+      supabase,
+      holdingId: holding.id,
+      portfolioRevision: holding.portfolio_revision,
+      foundedAt: holding.founded_at,
+      initialValuation: Number(holding.initial_valuation),
+      events,
+      today,
+    }),
   ]);
+  const debtKrw = totalLiabilities(liabilities);
+  const milestones = buildPublicMilestones({ holding, events, drawdownEpisodes, today });
 
   const score = computeRankingScore(
     events,
@@ -40,15 +56,18 @@ export default async function RankingPage() {
     result,
     benchmark,
     today,
+    { initialValuation: Number(holding.initial_valuation), debtKrw },
   );
 
   // 현재 유저 점수 upsert — 표시 직전 갱신이므로 동기(await) 유지.
-  await upsertRankingScore(supabase, portfolio, benchmark, today);
+  await upsertRankingScore(supabase, portfolio, benchmark, today, { debtKrw, milestones });
 
   // 전체 리더보드 조회
   const { data: rows } = await supabase
     .from("ranking_scores")
-    .select("holding_id, holding_name, total_score, computed_at")
+    .select(
+      "holding_id, holding_name, total_score, holding_period_score, contrarian_score, market_score, diversification_score, deposit_score, leverage_score, cost_score, score_version, founded_at, milestones, computed_at",
+    )
     .order("total_score", { ascending: false });
 
   const leaderboard = (rows ?? []).map((r, i) => ({
@@ -56,7 +75,18 @@ export default async function RankingPage() {
     holdingId: r.holding_id,
     holdingName: r.holding_name,
     totalScore: r.total_score,
+    grade: toGrade(r.total_score),
     isMe: r.holding_id === holding.id,
+    foundedAt: r.founded_at,
+    scoreVersion: r.score_version,
+    holdingPeriodScore: r.holding_period_score,
+    contrarianScore: r.contrarian_score,
+    marketScore: r.market_score,
+    diversificationScore: r.diversification_score,
+    depositScore: r.deposit_score,
+    leverageScore: r.leverage_score,
+    costScore: r.cost_score,
+    milestones: parsePublicMilestones(r.milestones),
   }));
 
   return (
@@ -65,7 +95,7 @@ export default async function RankingPage() {
       <div>
         <h1 className="text-2xl font-extrabold tracking-tight">랭킹</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          조작하기 어려운 5가지 규율 지표로 산출
+          조작하기 어려운 7가지 규율 지표로 산출
         </p>
       </div>
 

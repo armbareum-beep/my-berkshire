@@ -7,10 +7,11 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@/lib/supabase/database.types";
+import type { Database, Json } from "@/lib/supabase/database.types";
 import type { Portfolio } from "@/lib/portfolio";
 import type { BenchmarkResult } from "@/lib/finance/benchmark";
-import { computeRankingScore } from "@/lib/ranking";
+import type { PublicMilestonesV1 } from "@/lib/rankingMilestones";
+import { computeRankingScore, SCORE_VERSION } from "@/lib/ranking";
 
 /**
  * 활성 holding 의 랭킹 점수를 계산해 ranking_scores 에 upsert 한다.
@@ -21,6 +22,7 @@ export async function upsertRankingScore(
   portfolio: Portfolio,
   benchmark: BenchmarkResult,
   today: string,
+  opts: { debtKrw: number; milestones: PublicMilestonesV1 | null },
 ): Promise<void> {
   const { holding, events, prices, result } = portfolio;
   if (events.length === 0) return;
@@ -32,6 +34,7 @@ export async function upsertRankingScore(
     result,
     benchmark,
     today,
+    { initialValuation: Number(holding.initial_valuation), debtKrw: opts.debtKrw },
   );
 
   const { error } = await supabase.from("ranking_scores").upsert(
@@ -44,6 +47,11 @@ export async function upsertRankingScore(
       market_score: score.marketOutperformance,
       diversification_score: score.diversification,
       deposit_score: score.deposit,
+      leverage_score: score.lowLeverage,
+      cost_score: score.lowCost,
+      score_version: SCORE_VERSION,
+      founded_at: holding.founded_at,
+      milestones: opts.milestones as unknown as Json,
       computed_at: new Date().toISOString(),
     },
     { onConflict: "holding_id" },

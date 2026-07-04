@@ -752,34 +752,49 @@ export type Database = {
         Row: {
           computed_at: string
           contrarian_score: number
+          cost_score: number | null
           deposit_score: number
           diversification_score: number
+          founded_at: string | null
           holding_id: string
           holding_name: string
           holding_period_score: number
+          leverage_score: number | null
           market_score: number
+          milestones: Json | null
+          score_version: number
           total_score: number
         }
         Insert: {
           computed_at?: string
           contrarian_score?: number
+          cost_score?: number | null
           deposit_score?: number
           diversification_score?: number
+          founded_at?: string | null
           holding_id: string
           holding_name: string
           holding_period_score?: number
+          leverage_score?: number | null
           market_score?: number
+          milestones?: Json | null
+          score_version?: number
           total_score: number
         }
         Update: {
           computed_at?: string
           contrarian_score?: number
+          cost_score?: number | null
           deposit_score?: number
           diversification_score?: number
+          founded_at?: string | null
           holding_id?: string
           holding_name?: string
           holding_period_score?: number
+          leverage_score?: number | null
           market_score?: number
+          milestones?: Json | null
+          score_version?: number
           total_score?: number
         }
         Relationships: [

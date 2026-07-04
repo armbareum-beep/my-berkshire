@@ -1,19 +1,41 @@
 /**
- * 랭킹 점수 엔진 — 5가지 투자 규율 지표.
+ * 랭킹 점수 엔진 — 7가지 투자 규율 지표.
  * 모든 계산은 events + 현재가만 사용 (과거 시세 불필요).
  *
- * 지표:
- *  1. 보유기간 가중 수익률 (30%) — 오래 들고 있을수록 수익률을 더 크게 인정
- *  2. 역발상 매수율       (25%) — 기존 보유 종목이 하락했을 때 추가매수한 비율
- *  3. 시장 대비 성과      (20%) — 동일 현금흐름을 코스피에 넣었을 때 대비 XIRR 초과분
- *  4. 분산도 일관성       (15%) — 매 거래 시점 HHI 시간평균의 역수
- *  5. 적립 일관성         (10%) — 월별 입금 이벤트 비율
+ * 지표(가중치는 RANKING_WEIGHTS):
+ *  1. 보유기간 가중 수익률 (24%) — 오래 들고 있을수록 수익률을 더 크게 인정
+ *  2. 역발상 매수율       (20%) — 기존 보유 종목이 하락했을 때 추가매수한 비율
+ *  3. 시장 대비 성과      (16%) — 동일 현금흐름을 코스피에 넣었을 때 대비 XIRR 초과분
+ *  4. 분산도 일관성       (12%) — 매 거래 시점 HHI 시간평균의 역수
+ *  5. 적립 일관성         (8%)  — 월별 입금 이벤트 비율
+ *  6. 저레버리지          (10%) — 부채/자산(0=무차입 만점, 40%↑=0점)
+ *  7. 저비용              (10%) — 마찰비용(수수료+세금)/원금(0=만점, 2%↑=0점)
  */
 
 import type { InvestmentEvent } from "./finance/valuation";
 import type { PriceMap } from "./finance/valuation";
 import type { BenchmarkResult } from "./finance/benchmark";
 import type { ReturnResult } from "./finance/returns";
+import {
+  computeDrag,
+  lowCostScore01,
+  debtToAssets,
+  lowLeverageScore01,
+} from "./finance/discipline";
+
+/** 랭킹 채점 스키마 버전 — DB ranking_scores.score_version 과 대응. */
+export const SCORE_VERSION = 2;
+
+/** 7개 지표 가중치. 합계 = 1.00(테스트로 검증). */
+export const RANKING_WEIGHTS = {
+  holdingPeriod: 0.24,
+  contrarian: 0.2,
+  marketOutperformance: 0.16,
+  diversification: 0.12,
+  deposit: 0.08,
+  lowLeverage: 0.1,
+  lowCost: 0.1,
+} as const;
 
 export interface RankingScore {
   total: number;
@@ -23,11 +45,15 @@ export interface RankingScore {
   marketOutperformance: number;
   diversification: number;
   deposit: number;
+  lowLeverage: number;
+  lowCost: number;
   holdingPeriodInsufficient: boolean;
   contrarianInsufficient: boolean;
   marketInsufficient: boolean;
   diversificationInsufficient: boolean;
   depositInsufficient: boolean;
+  leverageInsufficient: boolean;
+  costInsufficient: boolean;
 }
 
 function clamp(v: number, lo: number, hi: number): number {
@@ -254,7 +280,36 @@ function depositScore(
   };
 }
 
-function toGrade(total: number): string {
+/**
+ * 저비용 점수 (10%)
+ * drag(마찰비용/원금)가 null(원금 없음)이면 insufficient(50점).
+ */
+function lowCostRankingScore(
+  events: InvestmentEvent[],
+  initialValuation: number,
+): { score: number; insufficient: boolean } {
+  const drag = computeDrag(events, initialValuation);
+  if (drag == null) return { score: 50, insufficient: true };
+  return { score: lowCostScore01(drag) * 100, insufficient: false };
+}
+
+/**
+ * 저레버리지 점수 (10%)
+ * 부채가 있는데 현재 평가액(시세)을 알 수 없으면 insufficient(50점).
+ * 무차입(debtKrw<=0)이면 만점.
+ */
+function lowLeverageRankingScore(
+  debtKrw: number,
+  currentValuation: number | null,
+): { score: number; insufficient: boolean } {
+  if (debtKrw > 0 && currentValuation == null) {
+    return { score: 50, insufficient: true };
+  }
+  const ratio = debtToAssets(debtKrw, currentValuation ?? 0);
+  return { score: lowLeverageScore01(ratio) * 100, insufficient: false };
+}
+
+export function toGrade(total: number): string {
   if (total >= 90) return "S";
   if (total >= 80) return "A+";
   if (total >= 70) return "A";
@@ -270,19 +325,28 @@ export function computeRankingScore(
   result: ReturnResult,
   benchmark: BenchmarkResult,
   today: string,
+  /** 저레버리지·저비용 채점에 쓰는 규율 지표 입력. 안 넘기면 무차입·원금 0 취급(호출부 배선 전 임시값). */
+  discipline: { initialValuation: number; debtKrw: number } = {
+    initialValuation: 0,
+    debtKrw: 0,
+  },
 ): RankingScore {
   const hp = holdingPeriodScore(events, prices, today);
   const ct = contrarianScore(events);
   const mkt = marketOutperformanceScore(result, benchmark);
   const dv = diversificationScore(events);
   const dp = depositScore(events, foundedAt, today);
+  const lev = lowLeverageRankingScore(discipline.debtKrw, result.currentValuation);
+  const cost = lowCostRankingScore(events, discipline.initialValuation);
 
   const total =
-    hp.score * 0.3 +
-    ct.score * 0.25 +
-    mkt.score * 0.2 +
-    dv.score * 0.15 +
-    dp.score * 0.1;
+    hp.score * RANKING_WEIGHTS.holdingPeriod +
+    ct.score * RANKING_WEIGHTS.contrarian +
+    mkt.score * RANKING_WEIGHTS.marketOutperformance +
+    dv.score * RANKING_WEIGHTS.diversification +
+    dp.score * RANKING_WEIGHTS.deposit +
+    lev.score * RANKING_WEIGHTS.lowLeverage +
+    cost.score * RANKING_WEIGHTS.lowCost;
 
   return {
     total: Math.round(total),
@@ -292,10 +356,14 @@ export function computeRankingScore(
     marketOutperformance: Math.round(mkt.score),
     diversification: Math.round(dv.score),
     deposit: Math.round(dp.score),
+    lowLeverage: Math.round(lev.score),
+    lowCost: Math.round(cost.score),
     holdingPeriodInsufficient: hp.insufficient,
     contrarianInsufficient: ct.insufficient,
     marketInsufficient: mkt.insufficient,
     diversificationInsufficient: dv.insufficient,
     depositInsufficient: dp.insufficient,
+    leverageInsufficient: lev.insufficient,
+    costInsufficient: cost.insufficient,
   };
 }

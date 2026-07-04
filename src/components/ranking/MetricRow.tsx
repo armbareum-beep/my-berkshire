@@ -4,6 +4,8 @@ interface MetricRowProps {
   score: number;
   weight: number;
   insufficient: boolean;
+  /** insufficient=true 일 때 표시할 문구. 기본 "데이터 부족"(예: 랭커 프로필의 구버전 행은 "산출 대기"). */
+  insufficientLabel?: string;
 }
 
 export function MetricRow({
@@ -12,6 +14,7 @@ export function MetricRow({
   score,
   weight,
   insufficient,
+  insufficientLabel = "데이터 부족",
 }: MetricRowProps) {
   return (
     <div className="py-4 first:pt-0 last:pb-0">
@@ -22,7 +25,7 @@ export function MetricRow({
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
           {insufficient ? (
-            <span className="text-xs text-muted-foreground">데이터 부족</span>
+            <span className="text-xs text-muted-foreground">{insufficientLabel}</span>
           ) : (
             <span className="text-sm font-bold tabular-nums" style={{ color: scoreColor(score) }}>
               {score}

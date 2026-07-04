@@ -12,6 +12,11 @@ import { daysSince } from "./finance/xirr";
 import { assetTypeOf, countryOf, type SecurityRecord } from "./securities";
 import { findCatalogItem } from "./finance/catalog";
 import { todayKST } from "./date";
+import {
+  lowCostScore01,
+  debtToAssets,
+  lowLeverageScore01,
+} from "./finance/discipline";
 
 export interface StyleDimension {
   key: string;
@@ -325,11 +330,10 @@ export function computeStyle(
   //  · 저레버리지: 부채/자산 — 40% 이상이면 0점(무차입=만점)
   //  · 계획 준수: 자본배분 계획 이행률(계획 있을 때만)
   // 회전율·보유기간·집중도는 점수에서 제외 → 위 dimensions(중립 프로파일)에만 둔다.
-  const lowCost = d.drag == null ? 1 : clamp01(1 - d.drag / 0.02);
+  const lowCost = lowCostScore01(d.drag);
   const assetsKrw = p.result.currentValuation;
-  const debtRatio =
-    debtKrw > 0 && assetsKrw && assetsKrw > 0 ? debtKrw / assetsKrw : 0;
-  const lowLeverage = clamp01(1 - debtRatio / 0.4);
+  const debtRatio = debtToAssets(debtKrw, assetsKrw);
+  const lowLeverage = lowLeverageScore01(debtRatio);
 
   const subScores: StyleDimension[] = [
     {
