@@ -11,6 +11,7 @@ import {
 import { daysSince } from "./finance/xirr";
 import { findCatalogItem } from "./finance/catalog";
 import { journeyMilestones } from "./finance/milestones";
+import { computeDrag } from "./finance/discipline";
 import { parsePlan, type RebalancePlan } from "./plan";
 import {
   computeCompoundingStreak,
@@ -177,8 +178,7 @@ export function computeDashboard(
     valuation && valuation > 0 ? cash / valuation : valuation === 0 ? 1 : null;
 
   const friction = events.reduce((s, e) => s + e.feeAndTax, 0);
-  const investedPrincipal = initialValuation + deposits;
-  const drag = investedPrincipal > 0 ? friction / investedPrincipal : null;
+  const drag = computeDrag(events, initialValuation);
 
   const recent: ActivityFeedItem[] = [...events]
     .sort((a, b) => (a.date < b.date ? 1 : -1))

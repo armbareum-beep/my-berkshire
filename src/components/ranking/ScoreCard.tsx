@@ -1,4 +1,4 @@
-import type { RankingScore } from "@/lib/ranking";
+import { RANKING_WEIGHTS, type RankingScore } from "@/lib/ranking";
 import { MetricRow } from "./MetricRow";
 
 const METRICS = [
@@ -7,39 +7,53 @@ const METRICS = [
     insufficientKey: "holdingPeriodInsufficient" as const,
     label: "보유기간 가중 수익률",
     description: "오래 들고 있을수록 수익률을 더 크게 인정",
-    weight: 30,
+    weight: RANKING_WEIGHTS.holdingPeriod,
   },
   {
     key: "contrarian" as const,
     insufficientKey: "contrarianInsufficient" as const,
     label: "역발상 매수율",
     description: "하락 중인 보유 종목을 추가매수한 비율",
-    weight: 25,
+    weight: RANKING_WEIGHTS.contrarian,
   },
   {
     key: "marketOutperformance" as const,
     insufficientKey: "marketInsufficient" as const,
     label: "시장 대비 성과",
     description: "같은 돈을 코스피에 넣었을 때보다 얼마나 잘했는지",
-    weight: 20,
+    weight: RANKING_WEIGHTS.marketOutperformance,
   },
   {
     key: "diversification" as const,
     insufficientKey: "diversificationInsufficient" as const,
     label: "분산도 일관성",
     description: "지금만이 아니라 과거 내내 분산되어 있었는지",
-    weight: 15,
+    weight: RANKING_WEIGHTS.diversification,
   },
   {
     key: "deposit" as const,
     insufficientKey: "depositInsufficient" as const,
     label: "적립 일관성",
     description: "매달 꾸준히 돈을 넣었는지",
-    weight: 10,
+    weight: RANKING_WEIGHTS.deposit,
+  },
+  {
+    key: "lowLeverage" as const,
+    insufficientKey: "leverageInsufficient" as const,
+    label: "저레버리지",
+    description: "부채 없이 자기자본으로 운용하는지",
+    weight: RANKING_WEIGHTS.lowLeverage,
+  },
+  {
+    key: "lowCost" as const,
+    insufficientKey: "costInsufficient" as const,
+    label: "저비용",
+    description: "수수료·세금 마찰이 원금 대비 낮은지",
+    weight: RANKING_WEIGHTS.lowCost,
   },
 ] as const;
 
-const GRADE_COLOR: Record<string, string> = {
+export const GRADE_COLOR: Record<string, string> = {
   S: "var(--primary)",
   "A+": "var(--primary)",
   A: "var(--primary)",
@@ -78,7 +92,7 @@ export function ScoreCard({ score }: { score: RankingScore }) {
             label={m.label}
             description={m.description}
             score={score[m.key]}
-            weight={m.weight}
+            weight={Math.round(m.weight * 100)}
             insufficient={score[m.insufficientKey]}
           />
         ))}

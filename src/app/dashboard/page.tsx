@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getPortfolio } from "@/lib/portfolio";
 import { syncDividends } from "@/lib/dividends/sync";
 import { upsertRankingScore } from "@/lib/rankingSync";
+import { buildPublicMilestones } from "@/lib/rankingMilestones";
 import { computeDashboard } from "@/lib/dashboard";
 import { getFxRateInfo } from "@/lib/finance/fx";
 import { computeBenchmark } from "@/lib/finance/benchmark";
@@ -171,11 +172,35 @@ async function DashboardContent({
     today,
     "KRW",
   );
+  const liabilitiesPromise = loadLiabilities(supabase, holding.id);
   // 랭킹 점수 백그라운드 갱신 — /ranking 방문 시에만 갱신되던 걸 대시보드 방문에도 태워
-  // 스테일 방지(032 후속). 응답을 막지 않고, 벤치마크는 이미 진행 중인 프라미스를 재사용.
+  // 스테일 방지(032 후속). 응답을 막지 않고, 벤치마크·부채는 이미 진행 중인 프라미스를 재사용.
+  // 드로다운 에피소드(연혁용)는 이 콜백 안에서만 필요해 여기서 새로 로드(응답 지연 없음).
   after(async () => {
-    const benchmark = await benchmarkKRWPromise;
-    await upsertRankingScore(supabase, portfolio, benchmark, today);
+    const [benchmark, liabilities] = await Promise.all([
+      benchmarkKRWPromise,
+      liabilitiesPromise,
+    ]);
+    const debtKrw = totalLiabilities(liabilities);
+    const drawdownEpisodes = await loadDrawdownEpisodes({
+      supabase,
+      holdingId: holding.id,
+      portfolioRevision: holding.portfolio_revision,
+      foundedAt: holding.founded_at,
+      initialValuation: Number(holding.initial_valuation),
+      events: portfolio.events,
+      today,
+    });
+    const milestones = buildPublicMilestones({
+      holding,
+      events: portfolio.events,
+      drawdownEpisodes,
+      today,
+    });
+    await upsertRankingScore(supabase, portfolio, benchmark, today, {
+      debtKrw,
+      milestones,
+    });
   });
   const benchmarkUSDPromise = computeBenchmark(
     benchSnapshot,
@@ -183,7 +208,6 @@ async function DashboardContent({
     today,
     "USD",
   );
-  const liabilitiesPromise = loadLiabilities(supabase, holding.id);
   const manualAssetsPromise = loadManualAssets(supabase, holding.id);
   const manualAssetIncomePromise = loadManualAssetIncome(supabase, holding.id);
   const financingReconciliationsPromise = loadFinancingReconciliations(
