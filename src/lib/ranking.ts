@@ -309,6 +309,24 @@ function lowLeverageRankingScore(
   return { score: lowLeverageScore01(ratio) * 100, insufficient: false };
 }
 
+/**
+ * 자산 구간 라벨 — 랭킹 프로필 시트 공개용(035). 정확한 금액은 저장하지 않고
+ * 구간 문자열로만 변환(구조적 프라이버시 보장). 시세 실패(valuationKrw null)면 null.
+ * 경계값은 하한 포함(예: 정확히 1천만은 "1천만~5천만" 구간).
+ */
+export function assetBucketLabel(valuationKrw: number | null): string | null {
+  if (valuationKrw === null) return null;
+  const v = valuationKrw;
+  if (v < 10_000_000) return "1천만 미만";
+  if (v < 50_000_000) return "1천만~5천만";
+  if (v < 100_000_000) return "5천만~1억";
+  if (v < 300_000_000) return "1억~3억";
+  if (v < 500_000_000) return "3억~5억";
+  if (v < 1_000_000_000) return "5억~10억";
+  if (v < 3_000_000_000) return "10억~30억";
+  return "30억 이상";
+}
+
 export function toGrade(total: number): string {
   if (total >= 90) return "S";
   if (total >= 80) return "A+";

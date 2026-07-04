@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeRankingScore, RANKING_WEIGHTS } from "./ranking";
+import { computeRankingScore, RANKING_WEIGHTS, assetBucketLabel } from "./ranking";
 import type { InvestmentEvent, PriceMap } from "./finance/valuation";
 import type { ReturnResult } from "./finance/returns";
 import type { BenchmarkResult } from "./finance/benchmark";
@@ -163,5 +163,30 @@ describe("RANKING_WEIGHTS", () => {
   it("7개 지표 가중치 합 = 100%", () => {
     const sum = Object.values(RANKING_WEIGHTS).reduce((a, b) => a + b, 0);
     expect(sum).toBeCloseTo(1, 9);
+  });
+});
+
+describe("assetBucketLabel — 자산 구간 경계값", () => {
+  it("null(시세 실패) → null", () => {
+    expect(assetBucketLabel(null)).toBeNull();
+  });
+
+  it("1천만 미만", () => {
+    expect(assetBucketLabel(0)).toBe("1천만 미만");
+    expect(assetBucketLabel(9_999_999)).toBe("1천만 미만");
+  });
+
+  it("1천만 정확한 경계 → 하한 포함(1천만~5천만)", () => {
+    expect(assetBucketLabel(10_000_000)).toBe("1천만~5천만");
+  });
+
+  it("1억 정확한 경계 → 하한 포함(1억~3억)", () => {
+    expect(assetBucketLabel(100_000_000)).toBe("1억~3억");
+    expect(assetBucketLabel(99_999_999)).toBe("5천만~1억");
+  });
+
+  it("30억 정확한 경계 → 하한 포함(30억 이상)", () => {
+    expect(assetBucketLabel(3_000_000_000)).toBe("30억 이상");
+    expect(assetBucketLabel(2_999_999_999)).toBe("10억~30억");
   });
 });

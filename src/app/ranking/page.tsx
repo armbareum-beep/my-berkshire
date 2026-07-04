@@ -6,6 +6,9 @@ import { computeBenchmark } from "@/lib/finance/benchmark";
 import { computeRankingScore, toGrade } from "@/lib/ranking";
 import { upsertRankingScore } from "@/lib/rankingSync";
 import { buildPublicMilestones, parsePublicMilestones } from "@/lib/rankingMilestones";
+import { computeCompositionPct, parseCompositionV1 } from "@/lib/rankingComposition";
+import { loadSecurityMeta } from "@/lib/securities";
+import { cashBalance } from "@/lib/finance/valuation";
 import { loadLiabilities } from "@/lib/liabilities";
 import { totalLiabilities } from "@/lib/finance/liabilities";
 import { loadDrawdownEpisodes } from "@/lib/drawdownEpisodes";
@@ -25,10 +28,10 @@ export default async function RankingPage() {
   const portfolio = await getPortfolio(supabase);
   if (!portfolio) redirect("/onboarding");
 
-  const { holding, events, result, prices } = portfolio;
+  const { holding, events, result, prices, positions } = portfolio;
   const today = todayKST();
 
-  const [benchmark, liabilities, drawdownEpisodes] = await Promise.all([
+  const [benchmark, liabilities, drawdownEpisodes, securityMeta] = await Promise.all([
     computeBenchmark(
       { foundedAt: holding.founded_at, initialValuation: Number(holding.initial_valuation) },
       events,
@@ -45,9 +48,18 @@ export default async function RankingPage() {
       events,
       today,
     }),
+    loadSecurityMeta(supabase, Object.keys(positions)),
   ]);
   const debtKrw = totalLiabilities(liabilities);
   const milestones = buildPublicMilestones({ holding, events, drawdownEpisodes, today });
+  const cash = Number(holding.initial_valuation) + cashBalance(events);
+  const composition = computeCompositionPct({
+    positions,
+    prices,
+    cash,
+    meta: securityMeta,
+    priceAvailable: result.status !== "price_unavailable",
+  });
 
   const score = computeRankingScore(
     events,
@@ -60,13 +72,17 @@ export default async function RankingPage() {
   );
 
   // 현재 유저 점수 upsert — 표시 직전 갱신이므로 동기(await) 유지.
-  await upsertRankingScore(supabase, portfolio, benchmark, today, { debtKrw, milestones });
+  await upsertRankingScore(supabase, portfolio, benchmark, today, {
+    debtKrw,
+    milestones,
+    composition,
+  });
 
   // 전체 리더보드 조회
   const { data: rows } = await supabase
     .from("ranking_scores")
     .select(
-      "holding_id, holding_name, total_score, holding_period_score, contrarian_score, market_score, diversification_score, deposit_score, leverage_score, cost_score, score_version, founded_at, milestones, computed_at",
+      "holding_id, holding_name, total_score, holding_period_score, contrarian_score, market_score, diversification_score, deposit_score, leverage_score, cost_score, score_version, founded_at, milestones, xirr, asset_bucket, composition, computed_at",
     )
     .order("total_score", { ascending: false });
 
@@ -87,6 +103,9 @@ export default async function RankingPage() {
     leverageScore: r.leverage_score,
     costScore: r.cost_score,
     milestones: parsePublicMilestones(r.milestones),
+    xirr: r.xirr,
+    assetBucket: r.asset_bucket,
+    composition: parseCompositionV1(r.composition),
   }));
 
   return (

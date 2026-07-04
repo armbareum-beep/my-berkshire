@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import type { PublicMilestonesV1 } from "@/lib/rankingMilestones";
+import type { CompositionV1 } from "@/lib/rankingComposition";
 import { RankerProfileSheet } from "./RankerProfileSheet";
 
 export interface LeaderboardRow {
@@ -22,6 +23,12 @@ export interface LeaderboardRow {
   leverageScore: number | null;
   costScore: number | null;
   milestones: PublicMilestonesV1 | null;
+  /** 연환산 XIRR(소수, 035). 시세 실패 등으로 미산출이면 null. */
+  xirr: number | null;
+  /** 자산 구간 라벨(035, 정확한 금액 아님). 미산출이면 null. */
+  assetBucket: string | null;
+  /** 유형별 구성 비중(%만, 035). 미산출이면 null. */
+  composition: CompositionV1 | null;
 }
 
 function rankMedal(rank: number): string {
