@@ -1,12 +1,26 @@
 "use client";
 import { RANKING_WEIGHTS } from "@/lib/ranking";
 import { todayKST } from "@/lib/date";
+import { signedPct, changeColor } from "@/lib/format";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { GRADE_COLOR } from "./ScoreCard";
 import { MetricRow } from "./MetricRow";
 import type { LeaderboardRow } from "./Leaderboard";
 
 const pad = (n: number) => String(n).padStart(2, "0");
+
+// 구성 비중 스택 바 색 농도 — 유형이 최대 5개(주식/ETF/원자재/코인/현금)라 cards.tsx의
+// 3단(HeroValuationCard.partShade)보다 한 단계 더 세분화. 초과분은 마지막 농도로 방어적 폴백.
+const COMPOSITION_SHADES = [
+  "bg-primary",
+  "bg-primary/70",
+  "bg-primary/45",
+  "bg-primary/25",
+  "bg-primary/12",
+];
+function compositionShade(i: number): string {
+  return COMPOSITION_SHADES[i] ?? COMPOSITION_SHADES[COMPOSITION_SHADES.length - 1];
+}
 
 /**
  * 설립일 기준 "진행 중인 연차"(1년차부터 시작, 기념일 지나면 +1).
@@ -84,9 +98,10 @@ const BASE_METRICS = [
 ] as const;
 
 /**
- * 리더보드 행 클릭 → 프로필 상세(지표 분해 + 공개 연혁).
- * 데이터 원천이 ranking_scores 행뿐이라 자산 금액·보유 종목·XIRR 절대값은
- * 구조적으로 유입될 수 없다(비공개 불변식).
+ * 리더보드 행 클릭 → 프로필 상세(지표 분해 + 공개 연혁 + 자산 구간·수익률·구성 비중).
+ * 035 정책: XIRR 연환산 값·자산 구간 라벨·유형별 구성 비중(%)은 공개한다.
+ * 단, 정확한 자산 금액과 보유 종목명은 ranking_scores 스키마 자체에 컬럼이 없어
+ * 여전히 구조적으로 유입될 수 없다(비공개 불변식은 유지, 완화된 건 XIRR·구간·%뿐).
  */
 export function RankerProfileSheet({
   row,
@@ -123,6 +138,49 @@ export function RankerProfileSheet({
             {row.grade}
           </div>
         </div>
+
+        {/* 자산 구간·수익률(연환산) — 035. 정확한 금액이 아닌 구간 라벨만. 미산출 시 행 생략. */}
+        {(row.assetBucket || row.xirr !== null) && (
+          <dl className="mt-3 flex flex-col gap-1 text-xs tabular-nums">
+            {row.assetBucket && (
+              <div className="flex items-center justify-between">
+                <dt className="text-muted-foreground">주식 자산</dt>
+                <dd className="font-medium">{row.assetBucket}</dd>
+              </div>
+            )}
+            {row.xirr !== null && (
+              <div className="flex items-center justify-between">
+                <dt className="text-muted-foreground">수익률(연환산)</dt>
+                <dd className="font-medium" style={{ color: changeColor(row.xirr) }}>
+                  {signedPct(row.xirr)}
+                </dd>
+              </div>
+            )}
+          </dl>
+        )}
+
+        {/* 구성 비중 — 유형별(주식/ETF/원자재/코인/현금) %만(cards.tsx 자산 구성 패턴 재사용). */}
+        {row.composition && row.composition.slices.length > 0 && (
+          <div className="mt-4">
+            <span className="flex h-2 w-full overflow-hidden rounded-full bg-secondary">
+              {row.composition.slices.map((s, i) => (
+                <span
+                  key={s.label}
+                  className={compositionShade(i)}
+                  style={{ width: `${s.pct}%` }}
+                />
+              ))}
+            </span>
+            <div className="mt-2.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground tabular-nums">
+              {row.composition.slices.map((s, i) => (
+                <span key={s.label} className="inline-flex items-center gap-1.5">
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${compositionShade(i)}`} />
+                  {s.label} {s.pct}%
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="my-5 border-t border-border" />
 

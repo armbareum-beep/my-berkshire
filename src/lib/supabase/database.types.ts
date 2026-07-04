@@ -750,6 +750,8 @@ export type Database = {
       }
       ranking_scores: {
         Row: {
+          asset_bucket: string | null
+          composition: Json | null
           computed_at: string
           contrarian_score: number
           cost_score: number | null
@@ -764,8 +766,11 @@ export type Database = {
           milestones: Json | null
           score_version: number
           total_score: number
+          xirr: number | null
         }
         Insert: {
+          asset_bucket?: string | null
+          composition?: Json | null
           computed_at?: string
           contrarian_score?: number
           cost_score?: number | null
@@ -780,8 +785,11 @@ export type Database = {
           milestones?: Json | null
           score_version?: number
           total_score: number
+          xirr?: number | null
         }
         Update: {
+          asset_bucket?: string | null
+          composition?: Json | null
           computed_at?: string
           contrarian_score?: number
           cost_score?: number | null
@@ -796,6 +804,7 @@ export type Database = {
           milestones?: Json | null
           score_version?: number
           total_score?: number
+          xirr?: number | null
         }
         Relationships: [
           {

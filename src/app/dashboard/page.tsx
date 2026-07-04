@@ -9,6 +9,7 @@ import { getPortfolio } from "@/lib/portfolio";
 import { syncDividends } from "@/lib/dividends/sync";
 import { upsertRankingScore } from "@/lib/rankingSync";
 import { buildPublicMilestones } from "@/lib/rankingMilestones";
+import { computeCompositionPct } from "@/lib/rankingComposition";
 import { computeDashboard } from "@/lib/dashboard";
 import { getFxRateInfo } from "@/lib/finance/fx";
 import { computeBenchmark } from "@/lib/finance/benchmark";
@@ -177,9 +178,10 @@ async function DashboardContent({
   // 스테일 방지(032 후속). 응답을 막지 않고, 벤치마크·부채는 이미 진행 중인 프라미스를 재사용.
   // 드로다운 에피소드(연혁용)는 이 콜백 안에서만 필요해 여기서 새로 로드(응답 지연 없음).
   after(async () => {
-    const [benchmark, liabilities] = await Promise.all([
+    const [benchmark, liabilities, secMeta] = await Promise.all([
       benchmarkKRWPromise,
       liabilitiesPromise,
+      secMetaPromise,
     ]);
     const debtKrw = totalLiabilities(liabilities);
     const drawdownEpisodes = await loadDrawdownEpisodes({
@@ -197,9 +199,18 @@ async function DashboardContent({
       drawdownEpisodes,
       today,
     });
+    // 유형별 구성 비중(035) — dataKRW.cash 는 initialValuation + cashBalance(events)의 ₩ 값(KRW factor=1).
+    const composition = computeCompositionPct({
+      positions: portfolio.positions,
+      prices: portfolio.prices,
+      cash: dataKRW.cash,
+      meta: secMeta,
+      priceAvailable: result.status !== "price_unavailable",
+    });
     await upsertRankingScore(supabase, portfolio, benchmark, today, {
       debtKrw,
       milestones,
+      composition,
     });
   });
   const benchmarkUSDPromise = computeBenchmark(

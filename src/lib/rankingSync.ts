@@ -11,7 +11,8 @@ import type { Database, Json } from "@/lib/supabase/database.types";
 import type { Portfolio } from "@/lib/portfolio";
 import type { BenchmarkResult } from "@/lib/finance/benchmark";
 import type { PublicMilestonesV1 } from "@/lib/rankingMilestones";
-import { computeRankingScore, SCORE_VERSION } from "@/lib/ranking";
+import type { CompositionV1 } from "@/lib/rankingComposition";
+import { computeRankingScore, SCORE_VERSION, assetBucketLabel } from "@/lib/ranking";
 
 /**
  * 활성 holding 의 랭킹 점수를 계산해 ranking_scores 에 upsert 한다.
@@ -22,7 +23,12 @@ export async function upsertRankingScore(
   portfolio: Portfolio,
   benchmark: BenchmarkResult,
   today: string,
-  opts: { debtKrw: number; milestones: PublicMilestonesV1 | null },
+  opts: {
+    debtKrw: number;
+    milestones: PublicMilestonesV1 | null;
+    /** 유형별 구성 비중(%만, 035). 시세 실패 등으로 산출 불가면 null. */
+    composition: CompositionV1 | null;
+  },
 ): Promise<void> {
   const { holding, events, prices, result } = portfolio;
   if (events.length === 0) return;
@@ -52,6 +58,10 @@ export async function upsertRankingScore(
       score_version: SCORE_VERSION,
       founded_at: holding.founded_at,
       milestones: opts.milestones as unknown as Json,
+      // 035 — 점수 산정에는 관여하지 않는 순수 표시 컬럼(XIRR·자산 구간·구성 비중).
+      xirr: result.xirr,
+      asset_bucket: assetBucketLabel(result.currentValuation),
+      composition: opts.composition as unknown as Json,
       computed_at: new Date().toISOString(),
     },
     { onConflict: "holding_id" },
