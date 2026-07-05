@@ -19,7 +19,10 @@ type Result = { ok: true } | { ok: false; error: string };
 const LISTED_NAME_MAX = 20;
 
 /**
- * 상장(IPO) — 심사 요건(설립 확정 + 거래 존재)을 서버에서 재검증한 뒤 listed_at 을 세운다.
+ * 상장(IPO) — 심사 요건(거래 존재)을 서버에서 재검증한 뒤 listed_at 을 세운다.
+ * 설립 확정(founding_declared)은 별도 요건이 아니라 상장이 겸한다(037) —
+ * 상장 = "기록된 첫 거래가 실제 첫 거래"라는 선언을 포함하며(화면에서 고지),
+ * 이후 더 이른 거래가 들어오면 기존 자동 해제 로직이 그대로 동작한다.
  * listedName 이 비어 있으면(트림 후) 회사명을 그대로 쓴다(listed_name=null).
  * first_listed_at 은 최초 상장일만 기록(불변, 재상장에도 유지 — 연혁용).
  */
@@ -32,9 +35,6 @@ export async function listCompany(listedName?: string): Promise<Result> {
 
   const holding = await getActiveHolding(supabase);
   if (!holding) return { ok: false, error: "회사를 찾을 수 없습니다." };
-
-  if (!holding.founding_declared)
-    return { ok: false, error: "설립 확정 후 상장할 수 있어요." };
 
   // events 존재 재검증 — accounts id 조회 후 count(head:true), saveRebalancePlan 패턴 축약.
   const { data: accounts } = await supabase
@@ -62,6 +62,7 @@ export async function listCompany(listedName?: string): Promise<Result> {
       listed_at: today,
       first_listed_at: holding.first_listed_at ?? today,
       listed_name: trimmed || null,
+      founding_declared: true, // 상장 = 첫 거래 선언을 겸함(037)
     })
     .eq("id", holding.id);
   if (error) return { ok: false, error: error.message };
@@ -71,6 +72,7 @@ export async function listCompany(listedName?: string): Promise<Result> {
   revalidatePath("/dashboard");
   revalidatePath("/timeline");
   revalidatePath("/growth");
+  revalidatePath("/import"); // 설립 확정 토글 상태(PositionFidelity) 반영
   return { ok: true };
 }
 
