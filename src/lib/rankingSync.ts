@@ -17,6 +17,7 @@ import type { Portfolio } from "@/lib/portfolio";
 import type { BenchmarkResult } from "@/lib/finance/benchmark";
 import type { PublicMilestonesV1 } from "@/lib/rankingMilestones";
 import type { CompositionV1 } from "@/lib/rankingComposition";
+import type { HoldingsV1 } from "@/lib/rankingHoldings";
 import { computeRankingScore, SCORE_VERSION, assetBucketLabel } from "@/lib/ranking";
 
 /**
@@ -31,8 +32,10 @@ export async function upsertRankingScore(
   opts: {
     debtKrw: number;
     milestones: PublicMilestonesV1 | null;
-    /** 유형별 구성 비중(%만, 035). 시세 실패 등으로 산출 불가면 null. */
+    /** 유형별 구성 비중(%만, 035 — 038부터 실물자산 포함). 시세 실패 등으로 산출 불가면 null. */
     composition: CompositionV1 | null;
+    /** 보유 종목 공시(종목명·%만, 038). 시세 실패·보유 없음이면 null. */
+    holdings: HoldingsV1 | null;
   },
 ): Promise<void> {
   const { holding, events, prices, result } = portfolio;
@@ -64,10 +67,11 @@ export async function upsertRankingScore(
       score_version: SCORE_VERSION,
       founded_at: holding.founded_at,
       milestones: opts.milestones as unknown as Json,
-      // 035 — 점수 산정에는 관여하지 않는 순수 표시 컬럼(XIRR·자산 구간·구성 비중).
+      // 035·038 — 점수 산정에는 관여하지 않는 순수 표시 컬럼(XIRR·자산 구간·구성 비중·보유 종목).
       xirr: result.xirr,
       asset_bucket: assetBucketLabel(result.currentValuation),
       composition: opts.composition as unknown as Json,
+      holdings: opts.holdings as unknown as Json,
       computed_at: new Date().toISOString(),
     },
     { onConflict: "holding_id" },

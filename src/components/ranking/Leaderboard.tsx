@@ -2,6 +2,7 @@
 import { useState } from "react";
 import type { PublicMilestonesV1 } from "@/lib/rankingMilestones";
 import type { CompositionV1 } from "@/lib/rankingComposition";
+import type { HoldingsV1 } from "@/lib/rankingHoldings";
 import { RankerProfileSheet } from "./RankerProfileSheet";
 
 export interface LeaderboardRow {
@@ -27,8 +28,10 @@ export interface LeaderboardRow {
   xirr: number | null;
   /** 자산 구간 라벨(035, 정확한 금액 아님). 미산출이면 null. */
   assetBucket: string | null;
-  /** 유형별 구성 비중(%만, 035). 미산출이면 null. */
+  /** 유형별 구성 비중(%만, 035 — 038부터 실물자산 포함). 미산출이면 null. */
   composition: CompositionV1 | null;
+  /** 보유 종목 공시(종목명·%만, 038). 구버전 행·미산출이면 null. */
+  holdings: HoldingsV1 | null;
 }
 
 function rankMedal(rank: number): string {
