@@ -4,6 +4,11 @@
  * 채점(computeRankingScore)은 순수 함수라 호출부에서 이미 계산해 넘긴다.
  * 이 함수는 "저장"만 담당 — 거래가 없으면(events.length===0) 저장할 점수가
  * 없으므로 skip(랭킹 테이블에 무의미한 0점 로우가 쌓이지 않게).
+ *
+ * 상장(IPO) 게이트(036) — 랭킹 참가는 방문만으로 자동 등록되지 않는다.
+ * holding.listed_at 이 null(미상장/폐지)이면 이 함수는 아무 것도 하지 않는다.
+ * DB 쪽에도 같은 조건이 ranking_scores 의 own_score_upsert RLS WITH CHECK 로
+ * 이중 방어되어 있다(배포 스큐·멀티 디바이스 race에서도 미상장 유저 행이 생기지 않게).
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -31,6 +36,7 @@ export async function upsertRankingScore(
   },
 ): Promise<void> {
   const { holding, events, prices, result } = portfolio;
+  if (holding.listed_at == null) return; // 미상장/폐지 — 랭킹 저장 대상 아님(옵트인 게이트)
   if (events.length === 0) return;
 
   const score = computeRankingScore(
@@ -46,7 +52,7 @@ export async function upsertRankingScore(
   const { error } = await supabase.from("ranking_scores").upsert(
     {
       holding_id: holding.id,
-      holding_name: holding.name,
+      holding_name: holding.listed_name?.trim() || holding.name,
       total_score: score.total,
       holding_period_score: score.holdingPeriod,
       contrarian_score: score.contrarian,

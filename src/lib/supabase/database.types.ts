@@ -347,9 +347,12 @@ export type Database = {
           created_at: string
           founded_at: string
           founding_declared: boolean
+          first_listed_at: string | null
           id: string
           initial_capital: number
           initial_valuation: number
+          listed_at: string | null
+          listed_name: string | null
           mode: Database["public"]["Enums"]["holding_mode"]
           name: string
           portfolio_revision: number
@@ -364,9 +367,12 @@ export type Database = {
           created_at?: string
           founded_at: string
           founding_declared?: boolean
+          first_listed_at?: string | null
           id?: string
           initial_capital?: number
           initial_valuation?: number
+          listed_at?: string | null
+          listed_name?: string | null
           mode: Database["public"]["Enums"]["holding_mode"]
           name: string
           portfolio_revision?: number
@@ -381,9 +387,12 @@ export type Database = {
           created_at?: string
           founded_at?: string
           founding_declared?: boolean
+          first_listed_at?: string | null
           id?: string
           initial_capital?: number
           initial_valuation?: number
+          listed_at?: string | null
+          listed_name?: string | null
           mode?: Database["public"]["Enums"]["holding_mode"]
           name?: string
           portfolio_revision?: number

@@ -45,6 +45,8 @@ RLS: 인증 유저 전체 SELECT, 본인 holding만 INSERT/UPDATE
 2. `computeBenchmark()` → 코스피 XIRR
 3. `computeRankingScore()` → RankingScore
 4. `supabase.from("ranking_scores").upsert(...)` — 현재 유저 점수 갱신
+   - 개정(036): 이 upsert는 이제 `holdings.listed_at`이 세워진("상장") 계정에만 실행된다.
+     미상장 계정은 4~5단계(upsert·리더보드 조회) 자체를 건너뛰고 점수 프리뷰(3단계 결과)만 본다.
 5. 전체 `ranking_scores` 조회 (total_score DESC)
 6. `<Leaderboard>` + `<ScoreCard>` 렌더
 
@@ -59,6 +61,9 @@ RLS: 인증 유저 전체 SELECT, 본인 holding만 INSERT/UPDATE
 
 - **과거 시세 불필요** — 모든 계산은 `events` + 현재가(KRW)만 사용
 - **참여 시점** — `/ranking` 방문 시 upsert (추후 `/dashboard` 방문 시 백그라운드 upsert로 확장 예정)
+  - 개정(036): 방문만으로 자동 upsert되던 이 절차는 "상장(IPO)" 명시적 옵트인으로 전환됐다.
+    `holdings.listed_at`이 세워진 계정만 upsert 대상이며(앱 게이트 + RLS `WITH CHECK` 이중 방어),
+    미상장 계정은 방문해도 `ranking_scores`에 등록되지 않는다. 상세는 `specs/036-ranking-ipo-optin/spec.md`.
 - **스타일 중립** — 거래 스타일(가치/성장)이 아닌 행동 규율(보유기간·역발상·분산·적립)만 측정
 - **데이터 부족 처리** — 추가매수 없음·운용 90일 미만 등은 해당 지표 "데이터 부족" 표시
 

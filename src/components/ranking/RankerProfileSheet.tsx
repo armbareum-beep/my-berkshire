@@ -47,6 +47,7 @@ function buildTimeline(row: LeaderboardRow): TimelineItem[] {
   }
   const m = row.milestones;
   if (m) {
+    if (m.listed_at) items.push({ date: m.listed_at, label: "시장 상장" });
     if (m.first_buy_at) items.push({ date: m.first_buy_at, label: "첫 매수" });
     if (m.first_overseas_at) {
       items.push({ date: m.first_overseas_at, label: "첫 해외 진출" });

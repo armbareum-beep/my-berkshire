@@ -177,42 +177,47 @@ async function DashboardContent({
   // 랭킹 점수 백그라운드 갱신 — /ranking 방문 시에만 갱신되던 걸 대시보드 방문에도 태워
   // 스테일 방지(032 후속). 응답을 막지 않고, 벤치마크·부채는 이미 진행 중인 프라미스를 재사용.
   // 드로다운 에피소드(연혁용)는 이 콜백 안에서만 필요해 여기서 새로 로드(응답 지연 없음).
-  after(async () => {
-    const [benchmark, liabilities, secMeta] = await Promise.all([
-      benchmarkKRWPromise,
-      liabilitiesPromise,
-      secMetaPromise,
-    ]);
-    const debtKrw = totalLiabilities(liabilities);
-    const drawdownEpisodes = await loadDrawdownEpisodes({
-      supabase,
-      holdingId: holding.id,
-      portfolioRevision: holding.portfolio_revision,
-      foundedAt: holding.founded_at,
-      initialValuation: Number(holding.initial_valuation),
-      events: portfolio.events,
-      today,
+  // 상장(IPO) 게이트(036) — 미상장 유저는 애초에 after() 자체를 등록하지 않는다(낭비 계산 제거).
+  // upsertRankingScore 내부에도 같은 게이트가 있어(이중 안전망) 여기서 빠뜨려도 저장은 안 되지만,
+  // 여기서 거르면 드로다운·milestones·composition 계산 자체를 스킵할 수 있다.
+  if (holding.listed_at) {
+    after(async () => {
+      const [benchmark, liabilities, secMeta] = await Promise.all([
+        benchmarkKRWPromise,
+        liabilitiesPromise,
+        secMetaPromise,
+      ]);
+      const debtKrw = totalLiabilities(liabilities);
+      const drawdownEpisodes = await loadDrawdownEpisodes({
+        supabase,
+        holdingId: holding.id,
+        portfolioRevision: holding.portfolio_revision,
+        foundedAt: holding.founded_at,
+        initialValuation: Number(holding.initial_valuation),
+        events: portfolio.events,
+        today,
+      });
+      const milestones = buildPublicMilestones({
+        holding,
+        events: portfolio.events,
+        drawdownEpisodes,
+        today,
+      });
+      // 유형별 구성 비중(035) — dataKRW.cash 는 initialValuation + cashBalance(events)의 ₩ 값(KRW factor=1).
+      const composition = computeCompositionPct({
+        positions: portfolio.positions,
+        prices: portfolio.prices,
+        cash: dataKRW.cash,
+        meta: secMeta,
+        priceAvailable: result.status !== "price_unavailable",
+      });
+      await upsertRankingScore(supabase, portfolio, benchmark, today, {
+        debtKrw,
+        milestones,
+        composition,
+      });
     });
-    const milestones = buildPublicMilestones({
-      holding,
-      events: portfolio.events,
-      drawdownEpisodes,
-      today,
-    });
-    // 유형별 구성 비중(035) — dataKRW.cash 는 initialValuation + cashBalance(events)의 ₩ 값(KRW factor=1).
-    const composition = computeCompositionPct({
-      positions: portfolio.positions,
-      prices: portfolio.prices,
-      cash: dataKRW.cash,
-      meta: secMeta,
-      priceAvailable: result.status !== "price_unavailable",
-    });
-    await upsertRankingScore(supabase, portfolio, benchmark, today, {
-      debtKrw,
-      milestones,
-      composition,
-    });
-  });
+  }
   const benchmarkUSDPromise = computeBenchmark(
     benchSnapshot,
     portfolio.events,
@@ -920,6 +925,7 @@ async function HomeSignalsStreamed({
     plan: planProg,
     drawdownPassages,
     gradeUp,
+    listedAt: portfolio.holding.listed_at,
     dismissed,
   });
   const signals = mergeCelebrations(newsSignals, celebrations);

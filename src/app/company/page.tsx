@@ -7,6 +7,7 @@ import { BackButton } from "@/components/BackButton";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
 import { CompanyStructure } from "@/components/company/CompanyStructure";
 import { CompanyMembers } from "@/components/company/CompanyMembers";
+import { ListingSection } from "@/components/company/ListingSection";
 import { renameActiveCompany } from "./actions";
 
 /**
@@ -59,6 +60,14 @@ export default async function CompanyPage() {
           설립 {holding.founded_at}
         </p>
       </section>
+
+      {/* 상장(IPO, 036) */}
+      <ListingSection
+        listedAt={holding.listed_at}
+        firstListedAt={holding.first_listed_at}
+        listedName={holding.listed_name}
+        companyName={holding.name}
+      />
 
       {/* 컴퍼니(CEO) */}
       <div className="mt-2">

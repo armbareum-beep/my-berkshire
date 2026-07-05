@@ -204,6 +204,10 @@ export function computeDashboard(
     const nm = firstBuy.symbol ? nameOf(firstBuy.symbol) : "";
     timeline.push({ date: firstBuy.date, label: `첫 매수 · ${nm}` });
   }
+  // 상장(IPO, 036) — 최초 상장일(불변, 폐지에도 유지)이 있으면 연혁에 남긴다.
+  if (holding.first_listed_at) {
+    timeline.push({ date: holding.first_listed_at, label: "시장 상장" });
+  }
   // 여정 마일스톤(첫 해외 인수·첫 배당·투입 자본 돌파·설립 N주년·계획 완수) — 중립·통제 가능한 것만.
   // archived_plans는 방어적 파싱 — 배열이 아니거나 항목이 손상됐으면 []/스킵.
   const archivedPlans: RebalancePlan[] = Array.isArray(holding.archived_plans)
