@@ -170,7 +170,9 @@ export default async function RankingPage() {
         <>
           {hasTrades && <ScoreCard score={score} />}
           <IpoCard
+            holdingId={holding.id}
             companyName={holding.name}
+            foundedAt={holding.founded_at}
             foundingDeclared={holding.founding_declared}
             hasTrades={hasTrades}
           />
