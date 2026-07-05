@@ -61,6 +61,7 @@ export async function declareFounding(holdingId: string, declared: boolean) {
 
   revalidatePath("/import");
   revalidatePath("/dashboard");
+  revalidatePath("/ranking"); // IpoCard 심사 요건 체크리스트(037)
   return { ok: true };
 }
 

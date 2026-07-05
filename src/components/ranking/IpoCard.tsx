@@ -15,20 +15,23 @@ const LISTED_NAME_MAX = 20;
 /**
  * 미상장 유저의 /ranking 카드 — "시장에 상장"이라는 옵트인 CTA(036).
  * EmptyState 카드 셸 문법을 따르되 체크리스트·입력·고지가 더해져 독립 컴포넌트로 분리.
+ * 설립 확정은 별도 단계가 아니라 상장에 합쳐진다(037) — 버튼 위 고지로 의미를 알린다.
  */
 export function IpoCard({
   companyName,
+  foundedAt,
   foundingDeclared,
   hasTrades,
 }: {
   companyName: string;
+  foundedAt: string;
   foundingDeclared: boolean;
   hasTrades: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [listedName, setListedName] = useState(companyName);
-  const eligible = foundingDeclared && hasTrades;
+  const eligible = hasTrades;
 
   function submit() {
     startTransition(async () => {
@@ -59,24 +62,6 @@ export function IpoCard({
 
       {/* ② 심사 요건 체크리스트 */}
       <ul className="mt-4 flex flex-col gap-2">
-        <li className="flex items-center gap-2 text-sm">
-          {foundingDeclared ? (
-            <CheckCircle2 size={16} className="shrink-0 text-primary" aria-hidden />
-          ) : (
-            <Circle size={16} className="shrink-0 text-muted-foreground" aria-hidden />
-          )}
-          <span className={foundingDeclared ? "" : "text-muted-foreground"}>
-            설립 확정
-          </span>
-          {!foundingDeclared && (
-            <Link
-              href="/company"
-              className="ml-auto text-xs font-medium text-primary"
-            >
-              하러 가기 ›
-            </Link>
-          )}
-        </li>
         <li className="flex items-center gap-2 text-sm">
           {hasTrades ? (
             <CheckCircle2 size={16} className="shrink-0 text-primary" aria-hidden />
@@ -131,7 +116,16 @@ export function IpoCard({
         <p className="mt-1">정확한 금액·보유 종목명은 공개되지 않아요</p>
       </div>
 
-      {/* ⑤ 상장 버튼 */}
+      {/* ⑤ 설립 확정 고지(037) — 상장이 첫 거래 선언을 겸하므로 누르기 전에 알린다 */}
+      {!foundingDeclared && hasTrades && (
+        <p className="mt-3 text-xs text-muted-foreground">
+          상장하면 기록된 첫 거래(설립일 {foundedAt})가 실제 첫 거래로
+          확정돼요. 더 이른 거래가 있다면 먼저 입력하세요 — 나중에 넣으면
+          확정은 자동 해제돼요.
+        </p>
+      )}
+
+      {/* ⑥ 상장 버튼 */}
       <Button
         onClick={submit}
         disabled={!eligible || pending}
