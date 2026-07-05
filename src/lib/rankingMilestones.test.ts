@@ -78,7 +78,7 @@ const drawdownEpisodes: DrawdownEpisode[] = [
 
 describe("buildPublicMilestones", () => {
   const result = buildPublicMilestones({
-    holding: { archived_plans: archivedPlans },
+    holding: { archived_plans: archivedPlans, first_listed_at: null },
     events,
     drawdownEpisodes,
     today,
@@ -113,6 +113,7 @@ describe("buildPublicMilestones", () => {
         "first_buy_at",
         "first_overseas_at",
         "first_dividend_at",
+        "listed_at",
       ].sort(),
     );
     const serialized = JSON.stringify(result);
@@ -128,7 +129,7 @@ describe("buildPublicMilestones", () => {
 
   it("archived_plans 가 배열이 아니면 방어적으로 빈 계획 취급", () => {
     const r = buildPublicMilestones({
-      holding: { archived_plans: null },
+      holding: { archived_plans: null, first_listed_at: null },
       events,
       drawdownEpisodes: [],
       today,
@@ -137,10 +138,24 @@ describe("buildPublicMilestones", () => {
     expect(r.plan_completed_dates).toEqual([]);
     expect(r.drawdowns_passed).toEqual([]);
   });
+
+  it("first_listed_at 이 있으면 listed_at 에 그대로 담는다", () => {
+    const r = buildPublicMilestones({
+      holding: { archived_plans: archivedPlans, first_listed_at: "2026-05-01" },
+      events,
+      drawdownEpisodes,
+      today,
+    });
+    expect(r.listed_at).toBe("2026-05-01");
+  });
+
+  it("first_listed_at 이 없으면(null) listed_at 도 null이다", () => {
+    expect(result.listed_at).toBeNull();
+  });
 });
 
 describe("parsePublicMilestones", () => {
-  it("정상 v1 payload를 그대로 파싱한다", () => {
+  it("정상 v1 payload를 그대로 파싱한다(listed_at 포함)", () => {
     const raw = {
       v: 1,
       plans_completed: 1,
@@ -149,8 +164,25 @@ describe("parsePublicMilestones", () => {
       first_buy_at: "2026-01-05",
       first_overseas_at: null,
       first_dividend_at: "2026-03-10",
+      listed_at: "2026-04-01",
     };
     expect(parsePublicMilestones(raw)).toEqual(raw);
+  });
+
+  it("listed_at 필드가 없는 036 이전 구버전 jsonb는 null로 채운다(하위호환, additive)", () => {
+    const legacy = {
+      v: 1,
+      plans_completed: 1,
+      plan_completed_dates: ["2026-02-01"],
+      drawdowns_passed: [{ bucket: 20, recovered_at: "2025-11-03" }],
+      first_buy_at: "2026-01-05",
+      first_overseas_at: null,
+      first_dividend_at: "2026-03-10",
+      // listed_at 필드 자체가 없음(036 이전 저장분)
+    };
+    const parsed = parsePublicMilestones(legacy);
+    expect(parsed?.listed_at).toBeNull();
+    expect(parsed).toEqual({ ...legacy, listed_at: null });
   });
 
   it("null·비객체·버전 불일치는 null 반환", () => {

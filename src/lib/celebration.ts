@@ -39,6 +39,11 @@ export interface CelebrationOpts {
   drawdownPassages?: { recoveryDate: string; bucket: number }[];
   /** 규율 등급업(직전 스냅샷 대비 상승) — 있을 때만, 시장 지표 무관(규율 점수만). */
   gradeUp?: { label: string };
+  /**
+   * 상장(IPO, 036) 게이트가 세워진 날짜(holding.listed_at). 미상장/폐지면 null.
+   * 재상장은 새 날짜 = 새 key라 자연히 다시 축하된다(결정 축하 철학 — 상장은 "옵트인 결정").
+   */
+  listedAt?: string | null;
   /** 확인(디스미스)된 신호 key — resolveHomeSignals 와 동일 집합. */
   dismissed: Set<string>;
 }
@@ -72,6 +77,7 @@ function anniversary(
  *  · 자본배분 계획 완수 — 규율 이행(통제 가능).
  *  · 드로다운 통과 — 낙폭이 아니라 "그 구간 동안 팔지 않은 결정"(유일한 예외, 헌법 §2·§4).
  *  · 규율 등급업 — style-history 스냅샷 비교(직전 대비 상승). 시장 지표 무관, 규율 점수만.
+ *  · 상장(IPO, 036) — 리더보드 참가를 스스로 결정한 옵트인(시장 결과 아님).
  */
 export function computeCelebrations(opts: CelebrationOpts): HomeSignal[] {
   const out: HomeSignal[] = [];
@@ -130,6 +136,22 @@ export function computeCelebrations(opts: CelebrationOpts): HomeSignal[] {
       tone: "good",
       at: opts.today,
     });
+  }
+
+  // 5) 상장(IPO) — 시장 결과가 아니라 "리더보드에 참가하기로 한 결정"을 축하.
+  //    재상장은 새 listed_at(=새 key)이라 자연히 다시 축하(036 결정 축하 철학).
+  if (opts.listedAt) {
+    const ago = daysSince(opts.listedAt, opts.today);
+    if (ago >= 0 && ago <= ANNIVERSARY_WINDOW_DAYS) {
+      out.push({
+        key: `ipo:${opts.listedAt}`, // 상장일별 1회, 폐지 후 재상장(새 날짜)이면 다시 축하
+        icon: "🔔",
+        text: `${opts.holdingName}, 시장에 상장했어요`,
+        href: "/ranking",
+        tone: "good",
+        at: opts.listedAt,
+      });
+    }
   }
 
   // 디스미스 제외(resolveHomeSignals 와 동일 규칙).

@@ -19,6 +19,12 @@ export interface PublicMilestonesV1 {
   first_buy_at: string | null;
   first_overseas_at: string | null;
   first_dividend_at: string | null;
+  /**
+   * 최초 상장일(036, additive — v는 1 유지). holding.first_listed_at 그대로.
+   * 상장폐지·재상장에도 불변이라 "시장 상장" 연혁 항목의 유일한 원천.
+   * 036 이전에 저장된 구버전 jsonb에는 이 필드가 없어 파싱 시 null로 채운다.
+   */
+  listed_at: string | null;
 }
 
 const earliestDate = (events: InvestmentEvent[]): string | null =>
@@ -31,7 +37,7 @@ const earliestDate = (events: InvestmentEvent[]): string | null =>
  * (로딩·시세 재조회는 이 함수 책임이 아님, 순수 CPU 계산).
  */
 export function buildPublicMilestones(params: {
-  holding: { archived_plans: unknown };
+  holding: { archived_plans: unknown; first_listed_at: string | null };
   events: InvestmentEvent[];
   /** 전체 드로다운 에피소드(필터 안 됨) — passed 만 내부에서 골라 쓴다. */
   drawdownEpisodes: DrawdownEpisode[];
@@ -73,6 +79,7 @@ export function buildPublicMilestones(params: {
     first_buy_at: firstBuy,
     first_overseas_at: firstOverseas,
     first_dividend_at: firstDividend,
+    listed_at: holding.first_listed_at ?? null,
   };
 }
 
@@ -107,5 +114,7 @@ export function parsePublicMilestones(raw: unknown): PublicMilestonesV1 | null {
       typeof o.first_overseas_at === "string" ? o.first_overseas_at : null,
     first_dividend_at:
       typeof o.first_dividend_at === "string" ? o.first_dividend_at : null,
+    // additive(036) — 필드가 없는 구버전 jsonb는 null(필수 검사에는 넣지 않는다, 하위호환).
+    listed_at: typeof o.listed_at === "string" ? o.listed_at : null,
   };
 }
