@@ -6,10 +6,17 @@ import { computeBenchmark } from "@/lib/finance/benchmark";
 import { computeRankingScore, toGrade } from "@/lib/ranking";
 import { upsertRankingScore } from "@/lib/rankingSync";
 import { buildPublicMilestones, parsePublicMilestones } from "@/lib/rankingMilestones";
-import { computeCompositionPct, parseCompositionV1 } from "@/lib/rankingComposition";
+import {
+  computeCompositionPct,
+  parseCompositionV1,
+  manualCompositionInput,
+} from "@/lib/rankingComposition";
+import { computeHoldingsPct, parseHoldingsV1 } from "@/lib/rankingHoldings";
 import { loadSecurityMeta } from "@/lib/securities";
 import { cashBalance } from "@/lib/finance/valuation";
 import { loadLiabilities } from "@/lib/liabilities";
+import { loadManualAssets, loadManualAssetIncome } from "@/lib/realAssets";
+import { applyCapRateValuation } from "@/lib/finance/realAssets";
 import { totalLiabilities } from "@/lib/finance/liabilities";
 import { loadDrawdownEpisodes } from "@/lib/drawdownEpisodes";
 import { todayKST } from "@/lib/date";
@@ -29,7 +36,7 @@ export default async function RankingPage() {
   const portfolio = await getPortfolio(supabase);
   if (!portfolio) redirect("/onboarding");
 
-  const { holding, events, result, prices, positions } = portfolio;
+  const { holding, events, result, prices, positions, names } = portfolio;
   const today = todayKST();
   // 상장(IPO) 옵트인 게이트(036) — listed_at 없으면 리더보드는 안 보이고 상장 CTA만 노출.
   const listed = holding.listed_at != null;
@@ -79,29 +86,45 @@ export default async function RankingPage() {
     xirr: number | null;
     assetBucket: string | null;
     composition: ReturnType<typeof parseCompositionV1>;
+    holdings: ReturnType<typeof parseHoldingsV1>;
   }[] = [];
 
   if (listed) {
-    const [drawdownEpisodes, securityMeta] = await Promise.all([
-      loadDrawdownEpisodes({
-        supabase,
-        holdingId: holding.id,
-        portfolioRevision: holding.portfolio_revision,
-        foundedAt: holding.founded_at,
-        initialValuation: Number(holding.initial_valuation),
-        events,
-        today,
-      }),
-      loadSecurityMeta(supabase, Object.keys(positions)),
-    ]);
+    const [drawdownEpisodes, securityMeta, manualAssetsRaw, manualIncome] =
+      await Promise.all([
+        loadDrawdownEpisodes({
+          supabase,
+          holdingId: holding.id,
+          portfolioRevision: holding.portfolio_revision,
+          foundedAt: holding.founded_at,
+          initialValuation: Number(holding.initial_valuation),
+          events,
+          today,
+        }),
+        loadSecurityMeta(supabase, Object.keys(positions)),
+        loadManualAssets(supabase, holding.id),
+        loadManualAssetIncome(supabase, holding.id),
+      ]);
     const milestones = buildPublicMilestones({ holding, events, drawdownEpisodes, today });
     const cash = Number(holding.initial_valuation) + cashBalance(events);
+    const priceAvailable = result.status !== "price_unavailable";
+    // 통 자산 구성(038) — 실물자산(수기 평가, cap_rate 반영)을 종류 라벨로 합류.
+    const manualAssets = applyCapRateValuation(manualAssetsRaw, manualIncome, today);
     const composition = computeCompositionPct({
       positions,
       prices,
       cash,
       meta: securityMeta,
-      priceAvailable: result.status !== "price_unavailable",
+      priceAvailable,
+      manual: manualCompositionInput(manualAssets),
+    });
+    // 보유 종목 공시(038) — 종목명·비중 %만.
+    const holdingsPublic = computeHoldingsPct({
+      positions,
+      prices,
+      names,
+      cash,
+      priceAvailable,
     });
 
     // 현재 유저 점수 upsert — 표시 직전 갱신이므로 동기(await) 유지.
@@ -109,13 +132,14 @@ export default async function RankingPage() {
       debtKrw,
       milestones,
       composition,
+      holdings: holdingsPublic,
     });
 
     // 전체 리더보드 조회
     const { data: rows } = await supabase
       .from("ranking_scores")
       .select(
-        "holding_id, holding_name, total_score, holding_period_score, contrarian_score, market_score, diversification_score, deposit_score, leverage_score, cost_score, score_version, founded_at, milestones, xirr, asset_bucket, composition, computed_at",
+        "holding_id, holding_name, total_score, holding_period_score, contrarian_score, market_score, diversification_score, deposit_score, leverage_score, cost_score, score_version, founded_at, milestones, xirr, asset_bucket, composition, holdings, computed_at",
       )
       .order("total_score", { ascending: false });
 
@@ -139,6 +163,7 @@ export default async function RankingPage() {
       xirr: r.xirr,
       assetBucket: r.asset_bucket,
       composition: parseCompositionV1(r.composition),
+      holdings: parseHoldingsV1(r.holdings),
     }));
   }
 

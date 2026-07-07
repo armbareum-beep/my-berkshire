@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { computeCompositionPct, parseCompositionV1 } from "./rankingComposition";
+import {
+  computeCompositionPct,
+  parseCompositionV1,
+  manualCompositionInput,
+} from "./rankingComposition";
 import type { SecurityRecord } from "./securities";
+import type { ManualAsset } from "./finance/realAssets";
 
 function meta(overrides: Record<string, Partial<SecurityRecord>>): Record<string, SecurityRecord> {
   const out: Record<string, SecurityRecord> = {};
@@ -110,6 +115,74 @@ describe("computeCompositionPct", () => {
       "원자재",
       "코인",
       "현금",
+    ]);
+  });
+
+  it("실물자산(manual)이 분모에 합류하고 유형 뒤에 금액 내림차순으로 붙는다(038)", () => {
+    const result = computeCompositionPct({
+      positions: { A: 1 },
+      prices: { A: 10_000 },
+      cash: 10_000,
+      meta: meta({ A: { assetType: "주식" } }),
+      priceAvailable: true,
+      manual: [
+        { label: "비상장·지분", valueKrw: 20_000 },
+        { label: "부동산", valueKrw: 60_000 },
+      ],
+    });
+    // 전체 100,000 — 주식 10% / 현금 10% / 부동산 60% / 비상장 20%
+    expect(result!.slices).toEqual([
+      { label: "주식", pct: 10 },
+      { label: "현금", pct: 10 },
+      { label: "부동산", pct: 60 },
+      { label: "비상장·지분", pct: 20 },
+    ]);
+  });
+
+  it("manual 미전달 시 기존(투자+현금) 동작과 동일", () => {
+    const base = {
+      positions: { A: 1 },
+      prices: { A: 10_000 },
+      cash: 10_000,
+      meta: meta({ A: { assetType: "주식" } }),
+      priceAvailable: true,
+    };
+    expect(computeCompositionPct(base)).toEqual(
+      computeCompositionPct({ ...base, manual: [] }),
+    );
+  });
+});
+
+describe("manualCompositionInput", () => {
+  const asset = (over: Partial<ManualAsset>): ManualAsset => ({
+    id: "id",
+    name: "자산",
+    kind: "REAL_ESTATE",
+    currentValue: 0,
+    acquiredPrice: null,
+    acquiredAt: null,
+    note: null,
+    acquisitionCost: null,
+    valuationSource: null,
+    valuedAt: null,
+    salePrice: null,
+    saleAt: null,
+    saleCost: null,
+    valuationMethod: "direct",
+    capRate: null,
+    ...over,
+  });
+
+  it("종류 라벨별 합산, 매도된 자산은 제외", () => {
+    const input = manualCompositionInput([
+      asset({ id: "1", kind: "REAL_ESTATE", currentValue: 100 }),
+      asset({ id: "2", kind: "REAL_ESTATE", currentValue: 50 }),
+      asset({ id: "3", kind: "UNLISTED", currentValue: 30 }),
+      asset({ id: "4", kind: "LAND", currentValue: 999, saleAt: "2026-01-01" }),
+    ]);
+    expect(input).toEqual([
+      { label: "부동산", valueKrw: 150 },
+      { label: "비상장·지분", valueKrw: 30 },
     ]);
   });
 });

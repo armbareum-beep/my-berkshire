@@ -770,6 +770,7 @@ export type Database = {
           holding_id: string
           holding_name: string
           holding_period_score: number
+          holdings: Json | null
           leverage_score: number | null
           market_score: number
           milestones: Json | null
@@ -789,6 +790,7 @@ export type Database = {
           holding_id: string
           holding_name: string
           holding_period_score?: number
+          holdings?: Json | null
           leverage_score?: number | null
           market_score?: number
           milestones?: Json | null
@@ -808,6 +810,7 @@ export type Database = {
           holding_id?: string
           holding_name?: string
           holding_period_score?: number
+          holdings?: Json | null
           leverage_score?: number | null
           market_score?: number
           milestones?: Json | null

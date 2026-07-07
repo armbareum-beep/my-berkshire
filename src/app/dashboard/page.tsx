@@ -9,7 +9,8 @@ import { getPortfolio } from "@/lib/portfolio";
 import { syncDividends } from "@/lib/dividends/sync";
 import { upsertRankingScore } from "@/lib/rankingSync";
 import { buildPublicMilestones } from "@/lib/rankingMilestones";
-import { computeCompositionPct } from "@/lib/rankingComposition";
+import { computeCompositionPct, manualCompositionInput } from "@/lib/rankingComposition";
+import { computeHoldingsPct } from "@/lib/rankingHoldings";
 import { computeDashboard } from "@/lib/dashboard";
 import { getFxRateInfo } from "@/lib/finance/fx";
 import { computeBenchmark } from "@/lib/finance/benchmark";
@@ -174,6 +175,8 @@ async function DashboardContent({
     "KRW",
   );
   const liabilitiesPromise = loadLiabilities(supabase, holding.id);
+  const manualAssetsPromise = loadManualAssets(supabase, holding.id);
+  const manualAssetIncomePromise = loadManualAssetIncome(supabase, holding.id);
   // 랭킹 점수 백그라운드 갱신 — /ranking 방문 시에만 갱신되던 걸 대시보드 방문에도 태워
   // 스테일 방지(032 후속). 응답을 막지 않고, 벤치마크·부채는 이미 진행 중인 프라미스를 재사용.
   // 드로다운 에피소드(연혁용)는 이 콜백 안에서만 필요해 여기서 새로 로드(응답 지연 없음).
@@ -182,11 +185,14 @@ async function DashboardContent({
   // 여기서 거르면 드로다운·milestones·composition 계산 자체를 스킵할 수 있다.
   if (holding.listed_at) {
     after(async () => {
-      const [benchmark, liabilities, secMeta] = await Promise.all([
-        benchmarkKRWPromise,
-        liabilitiesPromise,
-        secMetaPromise,
-      ]);
+      const [benchmark, liabilities, secMeta, manualAssetsRaw, manualIncome] =
+        await Promise.all([
+          benchmarkKRWPromise,
+          liabilitiesPromise,
+          secMetaPromise,
+          manualAssetsPromise,
+          manualAssetIncomePromise,
+        ]);
       const debtKrw = totalLiabilities(liabilities);
       const drawdownEpisodes = await loadDrawdownEpisodes({
         supabase,
@@ -203,18 +209,32 @@ async function DashboardContent({
         drawdownEpisodes,
         today,
       });
-      // 유형별 구성 비중(035) — dataKRW.cash 는 initialValuation + cashBalance(events)의 ₩ 값(KRW factor=1).
+      // 유형별 구성 비중(035, 038부터 실물자산 합류) — dataKRW.cash 는
+      // initialValuation + cashBalance(events)의 ₩ 값(KRW factor=1).
+      const priceAvailable = result.status !== "price_unavailable";
       const composition = computeCompositionPct({
         positions: portfolio.positions,
         prices: portfolio.prices,
         cash: dataKRW.cash,
         meta: secMeta,
-        priceAvailable: result.status !== "price_unavailable",
+        priceAvailable,
+        manual: manualCompositionInput(
+          applyCapRateValuation(manualAssetsRaw, manualIncome, today),
+        ),
+      });
+      // 보유 종목 공시(038) — 종목명·비중 %만.
+      const holdingsPublic = computeHoldingsPct({
+        positions: portfolio.positions,
+        prices: portfolio.prices,
+        names: portfolio.names,
+        cash: dataKRW.cash,
+        priceAvailable,
       });
       await upsertRankingScore(supabase, portfolio, benchmark, today, {
         debtKrw,
         milestones,
         composition,
+        holdings: holdingsPublic,
       });
     });
   }
@@ -224,8 +244,6 @@ async function DashboardContent({
     today,
     "USD",
   );
-  const manualAssetsPromise = loadManualAssets(supabase, holding.id);
-  const manualAssetIncomePromise = loadManualAssetIncome(supabase, holding.id);
   const financingReconciliationsPromise = loadFinancingReconciliations(
     supabase,
     holding.id,

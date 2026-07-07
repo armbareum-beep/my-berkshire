@@ -3,24 +3,15 @@ import { RANKING_WEIGHTS } from "@/lib/ranking";
 import { todayKST } from "@/lib/date";
 import { signedPct, changeColor } from "@/lib/format";
 import { BottomSheet } from "@/components/ui/BottomSheet";
+import { Donut } from "@/components/dashboard/Donut";
+import { donutColor } from "@/components/dashboard/donutPalette";
+import { Avatar } from "@/components/ui/Avatar";
+import { WeightBar } from "@/components/ui/WeightBar";
 import { GRADE_COLOR } from "./ScoreCard";
 import { MetricRow } from "./MetricRow";
 import type { LeaderboardRow } from "./Leaderboard";
 
 const pad = (n: number) => String(n).padStart(2, "0");
-
-// 구성 비중 스택 바 색 농도 — 유형이 최대 5개(주식/ETF/원자재/코인/현금)라 cards.tsx의
-// 3단(HeroValuationCard.partShade)보다 한 단계 더 세분화. 초과분은 마지막 농도로 방어적 폴백.
-const COMPOSITION_SHADES = [
-  "bg-primary",
-  "bg-primary/70",
-  "bg-primary/45",
-  "bg-primary/25",
-  "bg-primary/12",
-];
-function compositionShade(i: number): string {
-  return COMPOSITION_SHADES[i] ?? COMPOSITION_SHADES[COMPOSITION_SHADES.length - 1];
-}
 
 /**
  * 설립일 기준 "진행 중인 연차"(1년차부터 시작, 기념일 지나면 +1).
@@ -99,10 +90,11 @@ const BASE_METRICS = [
 ] as const;
 
 /**
- * 리더보드 행 클릭 → 프로필 상세(지표 분해 + 공개 연혁 + 자산 구간·수익률·구성 비중).
- * 035 정책: XIRR 연환산 값·자산 구간 라벨·유형별 구성 비중(%)은 공개한다.
- * 단, 정확한 자산 금액과 보유 종목명은 ranking_scores 스키마 자체에 컬럼이 없어
- * 여전히 구조적으로 유입될 수 없다(비공개 불변식은 유지, 완화된 건 XIRR·구간·%뿐).
+ * 리더보드 행 클릭 → 프로필 상세(지표 분해 + 공개 연혁 + 자산 구간·수익률·자산 구성·보유 종목).
+ * 035 정책: XIRR 연환산 값·자산 구간 라벨·구성 비중(%)은 공개.
+ * 038 정책: 자산 구성은 실물자산까지 포함한 "통 자산" 도넛으로, 보유 종목은 종목명+비중 %로 공개.
+ * 단, 정확한 자산 금액·수량은 ranking_scores 스키마 자체에 컬럼이 없어 여전히 구조적으로
+ * 유입될 수 없다(비공개 불변식 — 자산은 "구간"만 공개되므로 %로 금액이 역산되지 않는다).
  */
 export function RankerProfileSheet({
   row,
@@ -160,26 +152,55 @@ export function RankerProfileSheet({
           </dl>
         )}
 
-        {/* 구성 비중 — 유형별(주식/ETF/원자재/코인/현금) %만(cards.tsx 자산 구성 패턴 재사용). */}
+        {/* 자산 구성(038) — 실물자산 포함 "통 자산" 도넛. 자산구성 탭(Donut)과 같은 문법, %만. */}
         {row.composition && row.composition.slices.length > 0 && (
-          <div className="mt-4">
-            <span className="flex h-2 w-full overflow-hidden rounded-full bg-secondary">
-              {row.composition.slices.map((s, i) => (
-                <span
-                  key={s.label}
-                  className={compositionShade(i)}
-                  style={{ width: `${s.pct}%` }}
-                />
-              ))}
-            </span>
-            <div className="mt-2.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground tabular-nums">
-              {row.composition.slices.map((s, i) => (
-                <span key={s.label} className="inline-flex items-center gap-1.5">
-                  <span className={`h-2 w-2 shrink-0 rounded-full ${compositionShade(i)}`} />
-                  {s.label} {s.pct}%
-                </span>
-              ))}
+          <div className="mt-5">
+            <p className="text-sm font-semibold">자산 구성</p>
+            <div className="mt-3 flex items-center gap-4">
+              <Donut
+                slices={row.composition.slices.map((s) => ({
+                  label: s.label,
+                  weight: s.pct / 100,
+                }))}
+                size={140}
+                thickness={22}
+              />
+              <div className="flex min-w-0 flex-1 flex-col gap-1.5 text-xs tabular-nums">
+                {row.composition.slices.map((s, i) => (
+                  <span key={s.label} className="flex items-center gap-1.5">
+                    <span
+                      className="h-2 w-2 shrink-0 rounded-full"
+                      style={{ background: donutColor(i) }}
+                    />
+                    <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                      {s.label}
+                    </span>
+                    <span className="font-medium">{s.pct}%</span>
+                  </span>
+                ))}
+              </div>
             </div>
+          </div>
+        )}
+
+        {/* 보유 종목(038) — 공시 포트폴리오: 종목명 + 비중 %만(금액·수량 없음). */}
+        {row.holdings && row.holdings.items.length > 0 && (
+          <div className="mt-5">
+            <p className="text-sm font-semibold">보유 종목</p>
+            <ul className="mt-3 flex flex-col gap-3">
+              {row.holdings.items.map((h) => (
+                <li key={h.symbol} className="flex items-center gap-3">
+                  <Avatar name={h.name} symbol={h.symbol} size="sm" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{h.name}</p>
+                    <WeightBar weight={h.pct / 100} className="mt-1.5" />
+                  </div>
+                  <span className="w-14 shrink-0 text-right text-xs font-medium tabular-nums text-muted-foreground">
+                    {h.pct > 0 ? `${h.pct}%` : "1% 미만"}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 
