@@ -69,6 +69,15 @@ function cikMap(): Promise<Map<string, string>> {
   return _cikMap;
 }
 
+/**
+ * CIK 조회용 티커 정규화 — SEC company_tickers.json은 대시 표기(BRK-B).
+ * 과거 데이터에 슬래시 표기(BRK/B)가 남아 있어도 조회가 미스나지 않게 여기서 흡수한다
+ * (미스나면 그 종목이 no_disclosure로 조용히 빠져 투시 순이익이 과소·과대 왜곡됨).
+ */
+async function cikOf(symbol: string): Promise<string | undefined> {
+  return (await cikMap()).get(symbol.toUpperCase().replace(/\//g, "-"));
+}
+
 interface SubmissionRecent {
   accessionNumber?: string[];
   filingDate?: string[];
@@ -87,7 +96,7 @@ export async function getDisclosuresUS(
 ): Promise<Disclosure[]> {
   if (/^\d{6}$/.test(symbol)) return [];
   try {
-    const cik = (await cikMap()).get(symbol.toUpperCase());
+    const cik = await cikOf(symbol);
     if (!cik) return [];
     const res = await fetch(`https://data.sec.gov/submissions/CIK${cik}.json`, {
       headers: { "User-Agent": UA },
@@ -143,7 +152,7 @@ export async function getSicDescriptionUS(
   symbol: string,
 ): Promise<string | null> {
   try {
-    const cik = (await cikMap()).get(symbol.toUpperCase());
+    const cik = await cikOf(symbol);
     if (!cik) return null;
     const res = await fetch(`https://data.sec.gov/submissions/CIK${cik}.json`, {
       headers: { "User-Agent": UA },
@@ -190,7 +199,7 @@ function longestItemOne(text: string): string | null {
 export async function getBusinessSectionUS(symbol: string): Promise<string | null> {
   if (/^\d{6}$/.test(symbol)) return null;
   try {
-    const cik = (await cikMap()).get(symbol.toUpperCase());
+    const cik = await cikOf(symbol);
     if (!cik) return null;
     const submissions = await fetch(`https://data.sec.gov/submissions/CIK${cik}.json`, {
       headers: { "User-Agent": UA },
@@ -376,15 +385,32 @@ function periodInstVal(
   return null;
 }
 
+/**
+ * 같은 시점의 주식수 fact 들을 총 발행주식수로 합산.
+ * 복수 클래스(버크셔 A/B 등)는 같은 end 에 클래스별 fact 가 따로 오는데, 하나만 집으면
+ * A 클래스(수십만 주)를 잡아 지분율이 수천 배 부풀 수 있다(투시 순이익 억 단위 왜곡).
+ * 같은 값의 중복 fact(여러 제출본 재보고)는 값 기준으로 dedupe 후 합산한다.
+ * 한계: 클래스 간 경제적 가중(A=1500B 등)은 반영 못 하는 근사 — 단일 클래스는 정확.
+ */
+function sumClassShares(facts: Fact[]): number | null {
+  if (!facts.length) return null;
+  const distinct = [...new Set(facts.map((f) => f.val))];
+  return distinct.reduce((s, v) => s + v, 0);
+}
+
 /** 발행주식수 — 회계연도말 us-gaap, 없으면 dei 최신(표지일 기준). 환산 없음(count). */
 function sharesAt(cf: CompanyFacts, fyEnd: string): number | null {
   const us = sharesUnit(cf, "us-gaap", "CommonStockSharesOutstanding").filter(
     (f) => f.end === fyEnd,
   );
-  if (us.length) return us[us.length - 1].val;
+  const usSum = sumClassShares(us);
+  if (usSum != null) return usSum;
   const dei = sharesUnit(cf, "dei", "EntityCommonStockSharesOutstanding");
-  if (dei.length)
-    return [...dei].sort((a, b) => (a.end < b.end ? -1 : 1)).at(-1)!.val;
+  if (dei.length) {
+    const latestEnd = [...dei].sort((a, b) => (a.end < b.end ? -1 : 1)).at(-1)!
+      .end;
+    return sumClassShares(dei.filter((f) => f.end === latestEnd));
+  }
   return null;
 }
 
@@ -541,7 +567,7 @@ function buildYear(
 async function load(
   symbol: string,
 ): Promise<{ cf: CompanyFacts; rate: number; fys: { end: string; year: number }[] } | null> {
-  const cik = (await cikMap()).get(symbol.toUpperCase());
+  const cik = await cikOf(symbol);
   if (!cik) return null;
   const cf = await fetchFacts(cik);
   if (!cf) return null;
