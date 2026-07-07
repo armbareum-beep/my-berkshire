@@ -7,6 +7,7 @@ import type { SecurityRecord } from "./securities";
 import { ASSET_TYPE_ORDER } from "./allocation";
 import {
   MANUAL_ASSET_KIND_LABEL,
+  assetDivision,
   isSold,
   type ManualAsset,
 } from "./finance/realAssets";
@@ -92,7 +93,11 @@ export function manualCompositionInput(
   const byLabel = new Map<string, number>();
   for (const a of assets) {
     if (isSold(a)) continue;
-    const label = MANUAL_ASSET_KIND_LABEL[a.kind];
+    // 부동산 계열(주택·토지·상가)은 한 슬라이스로 묶는다 — 종류별로 쪼개면 도넛이 과분화됨.
+    const label =
+      assetDivision(a.kind) === "REAL_ESTATE"
+        ? "부동산"
+        : MANUAL_ASSET_KIND_LABEL[a.kind];
     byLabel.set(label, (byLabel.get(label) ?? 0) + a.currentValue);
   }
   return [...byLabel.entries()].map(([label, valueKrw]) => ({ label, valueKrw }));

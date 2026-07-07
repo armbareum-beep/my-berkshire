@@ -118,12 +118,11 @@ export default async function RankingPage() {
       priceAvailable,
       manual: manualCompositionInput(manualAssets),
     });
-    // 보유 종목 공시(038) — 종목명·비중 %만.
+    // 보유 종목 공시(038) — 종목명·비중 %만(분모=시세 있는 자산 합).
     const holdingsPublic = computeHoldingsPct({
       positions,
       prices,
       names,
-      cash,
       priceAvailable,
     });
 

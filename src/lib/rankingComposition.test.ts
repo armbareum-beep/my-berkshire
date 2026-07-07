@@ -173,15 +173,16 @@ describe("manualCompositionInput", () => {
     ...over,
   });
 
-  it("종류 라벨별 합산, 매도된 자산은 제외", () => {
+  it("부동산 계열(주택·토지·상가)은 한 슬라이스로 합산, 매도된 자산은 제외", () => {
     const input = manualCompositionInput([
       asset({ id: "1", kind: "REAL_ESTATE", currentValue: 100 }),
-      asset({ id: "2", kind: "REAL_ESTATE", currentValue: 50 }),
-      asset({ id: "3", kind: "UNLISTED", currentValue: 30 }),
-      asset({ id: "4", kind: "LAND", currentValue: 999, saleAt: "2026-01-01" }),
+      asset({ id: "2", kind: "COMMERCIAL", currentValue: 50 }),
+      asset({ id: "3", kind: "LAND", currentValue: 20 }),
+      asset({ id: "4", kind: "UNLISTED", currentValue: 30 }),
+      asset({ id: "5", kind: "LAND", currentValue: 999, saleAt: "2026-01-01" }),
     ]);
     expect(input).toEqual([
-      { label: "부동산", valueKrw: 150 },
+      { label: "부동산", valueKrw: 170 },
       { label: "비상장·지분", valueKrw: 30 },
     ]);
   });
