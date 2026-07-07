@@ -57,6 +57,15 @@ export function assetTypeOf(
   return instrumentType === "ETF" ? "ETF" : "주식";
 }
 
+/**
+ * 심볼 표기 정규화 — 슬래시를 대시로(BRK/B → BRK-B, Yahoo 형식).
+ * 입력 경로(거래 기록·온보딩·가져오기 복원)마다 표기가 다르면 같은 종목이
+ * 두 포지션으로 갈라진다. 이벤트·securities에 심볼을 쓰는 모든 경로가 이걸 거친다.
+ */
+export function normalizeSymbol(symbol: string): string {
+  return symbol.replace(/\//g, "-");
+}
+
 export interface SecurityRecord {
   name: string;
   country: string;
@@ -78,9 +87,10 @@ export async function upsertSecurities(
   const seen = new Map<string, SecurityMeta>();
   for (const it of items) {
     if (!it.symbol || !it.name) continue;
-    if (!seen.has(it.symbol))
-      seen.set(it.symbol, {
-        symbol: it.symbol,
+    const symbol = normalizeSymbol(it.symbol); // 이벤트와 같은 표기로 저장(이름 조회 일치)
+    if (!seen.has(symbol))
+      seen.set(symbol, {
+        symbol,
         name: it.name,
         exchange: it.exchange ?? null,
         currency: it.currency ?? "KRW",

@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { normalizeSymbol } from "@/lib/securities";
 import { getPrices } from "@/lib/finance/prices";
 import { getFxToKrw } from "@/lib/finance/fx";
 import { estimateFeeAndTax } from "@/lib/finance/fees";
@@ -180,6 +181,8 @@ export async function reconstructPosition(
   const commission = Number(acct.commission_rate);
 
   // 실제 거래 행 구성(매수=증자+매수 짝, 매도=매도). 한 번에 insert.
+  // 저장 심볼은 공통 표기로 정규화(BRK/B → BRK-B) — 스냅샷 검색·삭제는 원 표기 그대로.
+  const storedSymbol = normalizeSymbol(symbol);
   const insertRows: Database["public"]["Tables"]["events"]["Insert"][] = [];
   for (const t of sorted) {
     const priceKrw = t.price * fx;
@@ -201,7 +204,7 @@ export async function reconstructPosition(
       insertRows.push({
         account_id: accountId,
         type: "BUY",
-        symbol,
+        symbol: storedSymbol,
         quantity: t.quantity,
         price_or_amount: priceKrw,
         fee_and_tax: fee,
@@ -214,7 +217,7 @@ export async function reconstructPosition(
       insertRows.push({
         account_id: accountId,
         type: "SELL",
-        symbol,
+        symbol: storedSymbol,
         quantity: t.quantity,
         price_or_amount: priceKrw,
         fee_and_tax: fee,
