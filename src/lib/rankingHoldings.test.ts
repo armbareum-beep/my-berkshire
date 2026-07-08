@@ -7,7 +7,6 @@ describe("computeHoldingsPct", () => {
       positions: { A: 10 },
       prices: { A: 1000 },
       names: { A: "에이" },
-      cash: 0,
       priceAvailable: false,
     });
     expect(result).toBeNull();
@@ -18,24 +17,23 @@ describe("computeHoldingsPct", () => {
       positions: {},
       prices: {},
       names: {},
-      cash: 10_000,
       priceAvailable: true,
     });
     expect(result).toBeNull();
   });
 
-  it("비중 내림차순 + 종목 합 = 현금 제외 몫, 금액·수량 필드 없음", () => {
+  it("비중 내림차순 + 종목 합 = 100(분모는 시세 있는 자산만), 금액·수량 필드 없음", () => {
     const result = computeHoldingsPct({
       positions: { A: 10, B: 30 },
-      prices: { A: 1000, B: 1000 }, // A=10,000 / B=30,000
+      prices: { A: 1000, B: 1000 }, // A=10,000 / B=30,000 — B 75%, A 25%
       names: { A: "에이", B: "비" },
-      cash: 10_000, // 전체 50,000 — B 60%, A 20%, 현금 20%
       priceAvailable: true,
     });
     expect(result).not.toBeNull();
     expect(result!.items.map((i) => i.symbol)).toEqual(["B", "A"]);
+    expect(result!.items.map((i) => i.pct)).toEqual([75, 25]);
     const sum = result!.items.reduce((s, x) => s + x.pct, 0);
-    expect(sum).toBe(80); // 현금 20% 제외 몫
+    expect(sum).toBe(100);
     // 금액·수량 필드가 항목에 존재하지 않아야 한다(비공개 불변식) — symbol·name·pct만.
     for (const item of result!.items) {
       expect(Object.keys(item).sort()).toEqual(["name", "pct", "symbol"]);
@@ -47,7 +45,6 @@ describe("computeHoldingsPct", () => {
       positions: { A: 1, B: 1, C: 1 },
       prices: { A: 1, B: 1, C: 1 }, // 각 33.33%
       names: {},
-      cash: 0,
       priceAvailable: true,
     });
     const sum = result!.items.reduce((s, x) => s + x.pct, 0);
@@ -59,7 +56,6 @@ describe("computeHoldingsPct", () => {
       positions: { A: 999_999, B: 1 },
       prices: { A: 1, B: 1 },
       names: {},
-      cash: 0,
       priceAvailable: true,
     });
     const b = result!.items.find((i) => i.symbol === "B");
@@ -72,7 +68,6 @@ describe("computeHoldingsPct", () => {
       positions: { A: 10, B: 10 },
       prices: { A: 1000 }, // B 시세 없음
       names: {},
-      cash: 0,
       priceAvailable: true,
     });
     expect(result!.items.map((i) => i.symbol)).toEqual(["A"]);

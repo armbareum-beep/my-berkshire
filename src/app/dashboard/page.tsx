@@ -222,12 +222,11 @@ async function DashboardContent({
           applyCapRateValuation(manualAssetsRaw, manualIncome, today),
         ),
       });
-      // 보유 종목 공시(038) — 종목명·비중 %만.
+      // 보유 종목 공시(038) — 종목명·비중 %만(분모=시세 있는 자산 합).
       const holdingsPublic = computeHoldingsPct({
         positions: portfolio.positions,
         prices: portfolio.prices,
         names: portfolio.names,
-        cash: dataKRW.cash,
         priceAvailable,
       });
       await upsertRankingScore(supabase, portfolio, benchmark, today, {

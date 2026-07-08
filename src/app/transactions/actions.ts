@@ -12,7 +12,7 @@ import {
 import { estimateFeeAndTax } from "@/lib/finance/fees";
 import { getPrices } from "@/lib/finance/prices";
 import { getFxToKrw } from "@/lib/finance/fx";
-import { upsertSecurities } from "@/lib/securities";
+import { upsertSecurities, normalizeSymbol } from "@/lib/securities";
 import { activeEventRows } from "@/lib/portfolio";
 import { todayKST } from "@/lib/date";
 import type { AccountType } from "@/lib/config/tax";
@@ -264,8 +264,8 @@ export async function recordEvent(input: RecordInput): Promise<Result> {
     return { ok: false, error: "종목을 선택하세요." };
   if (needsQty && !(Number(input.quantity) > 0))
     return { ok: false, error: "수량을 입력하세요." };
-  // BRK/B → BRK-B (Yahoo Finance 형식 통일)
-  if (input.symbol) input = { ...input, symbol: input.symbol.replace(/\//g, "-") };
+  // BRK/B → BRK-B (Yahoo Finance 형식 통일 — 모든 입력 경로 공통 규칙)
+  if (input.symbol) input = { ...input, symbol: normalizeSymbol(input.symbol) };
 
   // 가격·통화: challenge/live 매수·매도는 현재 시세(네이티브)로 강제. 외국 종목은 현재 환율로 ₩ 환산.
   //   기능통화 = KRW → 외국 주식/배당은 ₩로 환산해 장부 기록(현금도 ₩ 단일).
@@ -470,7 +470,7 @@ export async function recordBuys(input: {
 
   const items = input.items
     .filter((i) => i.symbol && Number(i.quantity) > 0)
-    .map((i) => ({ ...i, symbol: i.symbol.replace(/\//g, "-") }));
+    .map((i) => ({ ...i, symbol: normalizeSymbol(i.symbol) }));
   if (items.length === 0) return { ok: false, error: "담은 종목이 없습니다." };
 
   const accountId = input.accountId ?? ctx.mainAccountId;

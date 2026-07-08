@@ -8,7 +8,7 @@
 export interface HoldingItemV1 {
   symbol: string;
   name: string;
-  /** 반올림 정수 %(0~100, 분모=투자자산+현금). 금액·수량은 저장하지 않는다. */
+  /** 반올림 정수 %(0~100, 분모=시세 있는 자산 합 — 종목 합계 100). 금액·수량은 저장하지 않는다. */
   pct: number;
 }
 
@@ -18,19 +18,20 @@ export interface HoldingsV1 {
 }
 
 /**
- * 종목별 보유수량×현재가의 비중 %만 반환(분모=종목 합+현금 — 주식계좌 안에서의 비중).
+ * 종목별 보유수량×현재가의 비중 %만 반환 — 분모는 시세 있는 자산(주식·ETF·원자재·코인 등
+ * positions 전체)의 합. 현금·실물자산은 분모에서 제외해 종목 합이 100이 되게 한다
+ * (전체 자산 대비 비중은 자산 구성 도넛이 담당 — 여기는 "포트폴리오 안에서의 비중").
  * 시세 실패(priceAvailable=false)면 null. 전 종목 공개가 원칙이라 반올림 0%인 소액
  * 종목도 items에 유지한다(UI가 "1% 미만"으로 표시). 반올림 오차는 최대 비중 종목에
- * 몰아 종목 합이 "전체에서 현금을 뺀 몫"과 일치하게 맞춘다. 정렬은 비중 내림차순.
+ * 몰아 합 100을 맞춘다. 정렬은 비중 내림차순.
  */
 export function computeHoldingsPct(params: {
   positions: Record<string, number>;
   prices: Record<string, number>;
   names: Record<string, string>;
-  cash: number;
   priceAvailable: boolean;
 }): HoldingsV1 | null {
-  const { positions, prices, names, cash, priceAvailable } = params;
+  const { positions, prices, names, priceAvailable } = params;
   if (!priceAvailable) return null;
 
   const valued: { symbol: string; name: string; value: number }[] = [];
@@ -39,8 +40,7 @@ export function computeHoldingsPct(params: {
     if (price == null) continue; // 시세 미확보 종목은 반영 안 함(방어적 — priceAvailable로 대부분 걸러짐)
     valued.push({ symbol, name: names[symbol] ?? symbol, value: qty * price });
   }
-  const stockTotal = valued.reduce((s, x) => s + x.value, 0);
-  const total = stockTotal + Math.max(0, cash);
+  const total = valued.reduce((s, x) => s + x.value, 0);
   if (valued.length === 0 || total <= 0) return null;
 
   valued.sort((a, b) => b.value - a.value);
@@ -49,10 +49,9 @@ export function computeHoldingsPct(params: {
     name: x.name,
     pct: Math.round((x.value / total) * 100),
   }));
-  // 종목 합이 "현금 제외 몫"(반올림)과 일치하도록 최대 종목에 오차를 몰아 보정.
-  const target = Math.round((stockTotal / total) * 100);
+  // 반올림 오차는 최대 비중 종목에 몰아 합 100을 맞춘다.
   const sum = items.reduce((a, b) => a + b.pct, 0);
-  if (sum !== target) items[0].pct += target - sum;
+  if (sum !== 100) items[0].pct += 100 - sum;
 
   return { v: 1, items };
 }

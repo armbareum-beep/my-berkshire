@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { cashBalance, type InvestmentEvent } from "@/lib/finance/valuation";
 import { getPrices } from "@/lib/finance/prices";
 import { getFxToKrw } from "@/lib/finance/fx";
-import { upsertSecurities } from "@/lib/securities";
+import { upsertSecurities, normalizeSymbol } from "@/lib/securities";
 import { todayKST } from "@/lib/date";
 import type { AccountType } from "@/lib/config/tax";
 import { getActiveHolding, setActiveHoldingCookie } from "@/lib/holdings";
@@ -209,7 +209,7 @@ export async function foundCompany(input: FoundInput): Promise<ActionResult> {
         {
           account_id: accountId,
           type: "BUY" as const,
-          symbol: x.symbol,
+          symbol: normalizeSymbol(x.symbol), // 입력 경로 공통 표기(BRK/B → BRK-B)
           quantity: x.quantity,
           price_or_amount: x.avgPrice, // 이미 ₩ 환산됨
           fee_and_tax: 0,
@@ -355,7 +355,7 @@ export async function recordFirstBuy(input: BuyInput): Promise<ActionResult> {
   const { error } = await supabase.from("events").insert({
     account_id: account.id,
     type: "BUY",
-    symbol: input.symbol,
+    symbol: normalizeSymbol(input.symbol), // 입력 경로 공통 표기(BRK/B → BRK-B)
     quantity: input.quantity,
     price_or_amount: price,
     fee_and_tax: 0,
