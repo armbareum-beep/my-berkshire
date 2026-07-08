@@ -104,6 +104,23 @@ export interface LookThrough {
   earningsYield: number | null; // 투시순이익 / 투입원금
 }
 
+/**
+ * 지분 단위 정합성 판정 — 회사 내재 PER(시총/순이익) 절댓값이 1 미만이면 클래스 단위
+ * 불일치로 본다. going concern이 시장가로 1년 순이익 이내에 회수되는 일은 사실상 없으므로,
+ * 이 조건은 정상 종목을 오탐하지 않고 복수 클래스(A주 환산 vs B주 보유, ~1500× 축소)만 잡는다.
+ * value=0(시세 미확보)·netIncome=0(판정 불가)이면 false(통과).
+ */
+export function isShareClassUnitMismatch(
+  value: number,
+  companyNetIncome: number | null,
+  ownership: number,
+): boolean {
+  if (!(value > 0) || companyNetIncome == null || companyNetIncome === 0)
+    return false;
+  const impliedPer = value / (companyNetIncome * ownership); // = 회사 시총 / 순이익
+  return Math.abs(impliedPer) < 1;
+}
+
 const REASON: Record<Exclude<LegStatus, "included">, string> = {
   no_disclosure: "공시·발행주식수 없음",
   us_pending: "미국 — 펀더멘털 연동 예정",
@@ -182,6 +199,19 @@ function aggregate(
     }
 
     const ownership = it.quantity / f.shares;
+
+    // 지분 단위 정합성 가드 — 복수 클래스(예: 버크셔 A/B) 종목은 공시 발행주식수가
+    // 보유 클래스와 다른 단위로 잡힐 수 있다(B주 보유인데 재무제표는 A주 환산 ~1500× 축소).
+    // 그러면 지분율이 부풀어 "내 몫" 순이익이 비현실적으로 커진다 → 단위 불일치로 보고 제외한다.
+    if (isShareClassUnitMismatch(it.value, f.netIncome, ownership)) {
+      legs.push({
+        ...base,
+        status: "no_disclosure",
+        reason: "지분 단위 불일치(복수 주식 클래스 추정)로 제외",
+      });
+      continue;
+    }
+
     if (requestedBasis === "ttm") {
       if ("basis" in f && f.basis === "TTM") ttmCount += 1;
       else fyFallbackCount += 1;
