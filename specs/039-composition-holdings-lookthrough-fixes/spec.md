@@ -14,7 +14,7 @@
 1. **부동산 계열 병합** — 자산 구성 도넛에서 실물자산 종류(주택/토지/상가·수익형)를 각각 슬라이스로 두지 않고 `assetDivision === "REAL_ESTATE"`인 것을 **"부동산" 한 슬라이스로 병합**한다. 비상장·지분/실물·수집/기타는 종류 라벨 유지(사업부 성격이 달라 병합하지 않음).
 2. **보유 종목 비중 분모 = 시세 있는 자산 합** — 보유 종목 목록의 비중 분모를 "투자자산 + 현금"에서 **시세 있는 자산(주식·ETF·원자재·코인 = positions 전체) 합**으로 바꿔 항목 합계가 100이 되게 한다. 전체 자산 대비 비중(현금·실물 포함)은 자산 구성 도넛이 담당 — 역할 분리.
 3. **심볼 표기 정규화 통일** — 종목 심볼의 표준 표기는 대시(Yahoo/SEC 형식, `BRK/B` → `BRK-B`). 모든 쓰기 경로(거래 기록·온보딩 스냅샷·온보딩 개별 매수·가져오기 복원·securities upsert)가 `normalizeSymbol`을 거쳐 저장한다. 같은 종목이 표기 차이로 두 포지션으로 갈라지지 않게 한다.
-4. **투시 순이익 정확도** — /growth "내 지분 실적"(look-through net income)의 결함을 수정한다: (a) 발행주식수 fact 를 값 기준 dedupe 합산(중복 제보 제거), (b) SEC CIK 조회 전 심볼 정규화(슬래시 표기 누락 방지), (c) **지분 단위 정합성 가드** — 복수 클래스 기업(버크셔 A/B 등)은 재무제표가 A주 환산 단일 주식수(~144만)로만 보고해 B주 보유(예: 61주)와 단위가 ~1500× 어긋난다. 클래스별 정확한 주식수는 SEC 플랫 피드에서 신뢰 확보가 어려우므로, **회사 내재 PER(시총/순이익) 절댓값이 1 미만이면 단위 불일치로 보고 그 레그를 합산에서 제외**한다(정상 종목은 오탐 없음 — going concern P/E<1은 사실상 불가). 제외된 레그는 "지분 단위 불일치(복수 주식 클래스 추정)"로 표기.
+4. **투시 순이익 정확도** — /growth "내 지분 실적"(look-through net income)의 결함을 수정한다: (a) 발행주식수 fact 를 값 기준 dedupe 합산(중복 제보 제거), (b) SEC CIK 조회 전 심볼 정규화(슬래시 표기 누락 방지), (c) **주식 클래스 단위 환산** — 복수 클래스 기업(버크셔)은 재무제표가 A주 환산 단일 주식수(~144만)로만 보고하는데 보유는 B주(예: 61주)라 단위가 ~1500× 어긋난다. `SHARE_CLASS_DIVISOR` 테이블(`BRK-B`: 1500)로 보유수량을 A주 환산 단위로 맞춰(÷1500) 정확한 지분율·"내 몫"을 계산한다(B주 1500개 = A주 1개). (d) **지분 단위 정합성 가드(백업)** — 환산 테이블에 없는 미등록 복수 클래스 종목이 남아 지분율이 부풀면, 회사 내재 PER(시총/순이익) 절댓값이 1 미만인 레그를 단위 불일치로 보고 합산에서 제외한다(정상 종목 오탐 없음 — going concern P/E<1은 사실상 불가). 제외 레그는 "지분 단위 불일치(복수 주식 클래스 추정)"로 표기.
 5. **기존 갈라진 데이터 정리** — 이미 두 표기로 저장된 데이터(`BRK/B` 56주 + `BRK-B` 5주)는 코드 배포로는 안 합쳐지므로, `events.symbol`·`securities`를 `BRK-B`로 일괄 갱신해 61주 한 포지션으로 통합한다(수동 데이터 정리, 사용자 승인 후 실행).
 
 ## Requirements
@@ -26,7 +26,8 @@
 - **FR-003**: `normalizeSymbol`(`src/lib/securities.ts`, 슬래시→대시)을 모든 심볼 쓰기 경로가 사용해야 한다 — `transactions/actions.ts`(recordTransaction·quickEntry), `onboarding/actions.ts`(foundCompany 스냅샷 BUY·recordFirstBuy), `import/actions.ts`(reconstructPosition), `upsertSecurities`.
 - **FR-004**: `sharesAt`(`src/lib/finance/edgar.ts`)은 같은 시점의 주식수 fact를 값 기준 dedupe 후 합산해야 한다(중복 제보 제거). 단일 클래스는 정확.
 - **FR-005**: EDGAR CIK 조회(`cikOf`)는 티커를 대문자화 + 슬래시→대시 정규화한 뒤 매칭해야 한다. 4개 조회 지점(getDisclosuresUS·getSicDescriptionUS·getBusinessSectionUS·getFundamentalsUS) 모두 적용.
-- **FR-006**: `isShareClassUnitMismatch`(`src/lib/finance/lookThrough.ts`)는 회사 내재 PER(=보유 시장가치 / (회사 순이익 × 지분율)) 절댓값이 1 미만이면 true를 반환해야 하며(value=0·netIncome=0/null이면 false), `aggregate`는 true인 후보 레그를 합산에서 제외하고 no_disclosure 로 표기해야 한다.
+- **FR-006**: `toReportedShareUnit(symbol, quantity)`(`src/lib/finance/lookThrough.ts`)는 보유수량을 재무제표 발행주식수 단위로 환산해야 한다 — 버크셔 B주(`BRK-B`)는 A주 환산이므로 ÷1500, 미등록 종목은 그대로. `aggregate`의 지분율은 이 환산값 ÷ 발행주식수여야 한다. 이로써 버크셔 B주가 정확한 "내 몫"으로 합산된다.
+- **FR-007**: `isShareClassUnitMismatch`(`src/lib/finance/lookThrough.ts`)는 회사 내재 PER(=보유 시장가치 / (회사 순이익 × 지분율)) 절댓값이 1 미만이면 true를 반환해야 하며(value=0·netIncome=0/null이면 false), `aggregate`는 true인 후보 레그를 합산에서 제외하고 no_disclosure 로 표기해야 한다 — `toReportedShareUnit` 테이블에 없는 미등록 복수 클래스 종목의 백업 방어선.
 
 ### Key Entities
 

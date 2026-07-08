@@ -1,5 +1,28 @@
 import { describe, expect, it } from "vitest";
-import { isShareClassUnitMismatch } from "./lookThrough";
+import { isShareClassUnitMismatch, toReportedShareUnit } from "./lookThrough";
+
+describe("toReportedShareUnit", () => {
+  it("버크셔 B주는 A주 환산으로 ÷1500", () => {
+    expect(toReportedShareUnit("BRK-B", 1500)).toBe(1);
+    expect(toReportedShareUnit("BRK-B", 61)).toBeCloseTo(61 / 1500, 10);
+  });
+
+  it("등록 안 된 종목은 그대로", () => {
+    expect(toReportedShareUnit("AAPL", 100)).toBe(100);
+    expect(toReportedShareUnit("005930", 50)).toBe(50);
+  });
+
+  it("B주 환산 후 지분율은 정상 PER 범위 → 가드 통과", () => {
+    const value = 38_700_000; // ₩ 보유가치(61 B주)
+    const netIncome = 120_000_000_000_000; // ₩ 순이익
+    const sharesAEquiv = 1_440_000; // A주 환산 발행주식수
+    const ownership = toReportedShareUnit("BRK-B", 61) / sharesAEquiv;
+    expect(isShareClassUnitMismatch(value, netIncome, ownership)).toBe(false);
+    // 내 몫 순이익 ≈ 340만원(억 단위 왜곡 아님)
+    expect(netIncome * ownership).toBeGreaterThan(2_000_000);
+    expect(netIncome * ownership).toBeLessThan(6_000_000);
+  });
+});
 
 describe("isShareClassUnitMismatch", () => {
   // 버크셔 B주 시나리오: 보유 61주, 순이익 ₩120조, 시세 있는 보유가치 ₩3,870만.

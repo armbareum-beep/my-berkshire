@@ -105,9 +105,26 @@ export interface LookThrough {
 }
 
 /**
+ * 보유수량을 "재무제표 발행주식수와 같은 단위"로 환산하는 제수(除數).
+ * 버크셔는 발행주식수를 A주 환산 총량으로 보고하므로, B주 보유는 1500으로 나눠
+ * A주 환산 단위로 맞춰야 지분율이 정확하다(B주 1500개 = A주 1개). 미등록 심볼은 1.
+ * (심볼은 normalizeSymbol 통과 후의 표기 — 슬래시 없음.)
+ */
+const SHARE_CLASS_DIVISOR: Record<string, number> = {
+  "BRK-B": 1500, // 버크셔 해서웨이 B주 = A주 1/1500
+};
+
+/** 보유수량 → 발행주식수 단위 환산. 등록 안 된 종목은 그대로. */
+export function toReportedShareUnit(symbol: string, quantity: number): number {
+  const divisor = SHARE_CLASS_DIVISOR[symbol.toUpperCase()] ?? 1;
+  return quantity / divisor;
+}
+
+/**
  * 지분 단위 정합성 판정 — 회사 내재 PER(시총/순이익) 절댓값이 1 미만이면 클래스 단위
  * 불일치로 본다. going concern이 시장가로 1년 순이익 이내에 회수되는 일은 사실상 없으므로,
  * 이 조건은 정상 종목을 오탐하지 않고 복수 클래스(A주 환산 vs B주 보유, ~1500× 축소)만 잡는다.
+ * SHARE_CLASS_DIVISOR 로 환산이 되면 여기서 통과, 미등록 클래스면 이 가드가 백업으로 제외.
  * value=0(시세 미확보)·netIncome=0(판정 불가)이면 false(통과).
  */
 export function isShareClassUnitMismatch(
@@ -198,11 +215,11 @@ function aggregate(
       continue;
     }
 
-    const ownership = it.quantity / f.shares;
+    // 보유수량을 발행주식수와 같은 단위로 환산(버크셔 B주 → A주 환산 ÷1500).
+    const ownership = toReportedShareUnit(it.symbol, it.quantity) / f.shares;
 
-    // 지분 단위 정합성 가드 — 복수 클래스(예: 버크셔 A/B) 종목은 공시 발행주식수가
-    // 보유 클래스와 다른 단위로 잡힐 수 있다(B주 보유인데 재무제표는 A주 환산 ~1500× 축소).
-    // 그러면 지분율이 부풀어 "내 몫" 순이익이 비현실적으로 커진다 → 단위 불일치로 보고 제외한다.
+    // 지분 단위 정합성 가드(백업) — 환산 테이블에 없는 복수 클래스 종목이 남아 있으면
+    // 지분율이 부풀어 "내 몫" 순이익이 비현실적으로 커진다 → 단위 불일치로 보고 제외한다.
     if (isShareClassUnitMismatch(it.value, f.netIncome, ownership)) {
       legs.push({
         ...base,
