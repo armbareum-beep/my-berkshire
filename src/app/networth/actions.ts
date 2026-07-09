@@ -145,12 +145,19 @@ export interface ManualAssetInput {
   valuationSource?: string;
   /** 평가 갱신일(YYYY-MM-DD) 또는 빈 문자열. */
   valuedAt?: string;
-  /** 평가 방법: 'direct'(기본) | 'cap_rate'(수익률환원법). */
-  valuationMethod?: "direct" | "cap_rate";
+  /** 평가 방법: 'direct'(기본) | 'cap_rate'(수익률환원법) | 'transaction_comp'(실거래가). */
+  valuationMethod?: "direct" | "cap_rate" | "transaction_comp";
   /** 환원율(소수, 0.04 = 4%). cap_rate 방식일 때만 의미 있음. */
   capRate?: number | null;
   /** cap_rate 방식 등록 시 첫 임대수익을 함께 저장. */
   initialIncome?: { date: string; amount: number; cost: number } | null;
+  /** transaction_comp(실거래가) 매칭키. 해당 방식일 때 필수. */
+  rtms?: {
+    lawdCd: string;
+    propertyType: "APT" | "RH" | "OFFI" | "SILV";
+    complexName: string;
+    exclusiveArea: number;
+  } | null;
 }
 
 function validateAsset(input: ManualAssetInput): string | null {
@@ -162,7 +169,30 @@ function validateAsset(input: ManualAssetInput): string | null {
     return "취득가가 올바르지 않습니다.";
   if (input.acquisitionCost != null && !(input.acquisitionCost >= 0))
     return "취득 부대비용이 올바르지 않습니다.";
+  if (input.valuationMethod === "transaction_comp") {
+    const r = input.rtms;
+    if (
+      !r ||
+      !/^\d{5}$/.test(r.lawdCd) ||
+      !["APT", "RH", "OFFI", "SILV"].includes(r.propertyType) ||
+      !r.complexName.trim() ||
+      !(r.exclusiveArea > 0)
+    )
+      return "실거래가 방식은 실거래 단지를 선택해야 합니다.";
+    if (!(input.currentValue > 0)) return "실거래가 평가액이 올바르지 않습니다.";
+  }
   return null;
+}
+
+/** transaction_comp 가 아니면 rtms 컬럼을 null 로 초기화(방식 전환 잔재 제거). */
+function rtmsColumns(input: ManualAssetInput) {
+  const r = input.valuationMethod === "transaction_comp" ? input.rtms : null;
+  return {
+    rtms_lawd_cd: r?.lawdCd ?? null,
+    rtms_property_type: r?.propertyType ?? null,
+    rtms_complex_name: r?.complexName ?? null,
+    rtms_exclusive_area: r?.exclusiveArea ?? null,
+  };
 }
 
 export async function addManualAsset(
@@ -195,6 +225,7 @@ export async function addManualAsset(
       valued_at: input.valuedAt || null,
       valuation_method: input.valuationMethod ?? "direct",
       cap_rate: input.capRate ?? null,
+      ...rtmsColumns(input),
     })
     .select("id")
     .single();
@@ -246,6 +277,7 @@ export async function updateManualAsset(
       valued_at: input.valuedAt || null,
       valuation_method: input.valuationMethod ?? "direct",
       cap_rate: input.capRate ?? null,
+      ...rtmsColumns(input),
     })
     .eq("id", id);
   if (error) return { ok: false, error: error.message };
