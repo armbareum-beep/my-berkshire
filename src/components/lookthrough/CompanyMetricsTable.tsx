@@ -2,21 +2,23 @@
 
 import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
-import { moneyShort, pct, type Currency } from "@/lib/format";
+import { pct } from "@/lib/format";
 import type { LookThroughLeg } from "@/lib/finance/lookThrough";
 
 /**
  * 내 지분 실적 — 내가 소유한 사업체(한국·미국 주식)를 한 표에서 비교.
- * 기여(내 몫 순이익·비중) + 밸류에이션(PER/PBR/ROE/순이익률)을 합쳐 한 화면에.
+ * 기여 비중(%) + 밸류에이션(PER/PBR/ROE/순이익률)을 합쳐 한 화면에.
+ * 금액(내 몫 원화·보유 평가액)은 표시하지 않음 — 화면을 공유해도 자산 규모가
+ * 드러나지 않게(비율·비중만). 정렬 기준 "mine"(내 몫 순이익)은 내부 계산으로만 사용.
  * 가로 슬라이드 없이 480px 폭에 맞도록 table-fixed 로 열 너비 고정 — 한눈에 비교.
  * 엑셀 조건부 서식식 틴트: 각 지표 열에서 우수한 칸일수록 토스블루 배경이 진해짐
  * (PER·PBR=낮을수록, ROE·순이익률=높을수록 우수). 색은 단일 액센트만(디자인 토큰 원칙).
- * 헤더 클릭 정렬(같은 키 재클릭 시 방향 토글) + 이름 검색. 비율은 통화 무관, 내 몫·보유만 환율 변환.
+ * 헤더 클릭 정렬(같은 키 재클릭 시 방향 토글) + 이름 검색. 비율은 통화 무관.
  * 정렬·필터·틴트는 서버에서 받은 legs 만 클라이언트에서 처리(추가 요청 없음).
  */
 
 // "mine"(내 몫 순이익=기여)는 기본 정렬값 — 헤더 열은 아니지만 초기 순서로 사용.
-type SortKey = "name" | "mine" | "per" | "pbr" | "roe" | "netMargin" | "value";
+type SortKey = "name" | "mine" | "per" | "pbr" | "roe" | "netMargin";
 type MetricKey = "per" | "pbr" | "roe" | "netMargin";
 type Dir = "asc" | "desc";
 
@@ -34,12 +36,11 @@ type Col = {
 };
 
 const COLS: Col[] = [
-  { key: "name", label: "사업부", w: "w-[32%]", fmt: () => "" },
-  { key: "per", label: "PER", w: "w-[14%]", metric: "per", better: "low", fmt: mult },
-  { key: "pbr", label: "PBR", w: "w-[13%]", metric: "pbr", better: "low", fmt: mult },
-  { key: "roe", label: "ROE", w: "w-[14%]", metric: "roe", better: "high", fmt: pctOrDash },
-  { key: "netMargin", label: "순이익", w: "w-[14%]", metric: "netMargin", better: "high", fmt: pctOrDash },
-  { key: "value", label: "보유", w: "w-[13%]", fmt: () => "" },
+  { key: "name", label: "사업부", w: "w-[40%]", fmt: () => "" },
+  { key: "per", label: "PER", w: "w-[15%]", metric: "per", better: "low", fmt: mult },
+  { key: "pbr", label: "PBR", w: "w-[15%]", metric: "pbr", better: "low", fmt: mult },
+  { key: "roe", label: "ROE", w: "w-[15%]", metric: "roe", better: "high", fmt: pctOrDash },
+  { key: "netMargin", label: "순이익", w: "w-[15%]", metric: "netMargin", better: "high", fmt: pctOrDash },
 ];
 
 const METRIC_COLS = COLS.filter((c): c is Col & { metric: MetricKey; better: "low" | "high" } => !!c.metric);
@@ -58,7 +59,7 @@ function numOf(leg: LookThroughLeg, key: SortKey): number | null {
     case "netMargin":
       return leg.netMargin ?? null;
     default:
-      return leg.value; // value
+      return null; // name 은 makeCmp 가 먼저 처리
   }
 }
 
@@ -99,13 +100,9 @@ function scoreMap(legs: LookThroughLeg[], metric: MetricKey, better: "low" | "hi
 
 export function CompanyMetricsTable({
   legs,
-  factor,
-  currency,
   summary,
 }: {
   legs: LookThroughLeg[];
-  factor: number;
-  currency: Currency;
   /** 연결(가중) 비율 — leg만으론 못 구하는 값(자본·매출 합 필요). 페이지가 lt 에서 전달. */
   summary: Record<MetricKey, number | null>;
 }) {
@@ -123,9 +120,8 @@ export function CompanyMetricsTable({
     }
   }
 
+  // 기여 비중(%) 분모 — 금액 자체는 표시하지 않는다(공유 시 자산 규모 비노출).
   const totalMine = legs.reduce((s, l) => s + (l.netIncomeMine ?? 0), 0);
-  const totalValue = legs.reduce((s, l) => s + l.value, 0);
-  const m = (v: number) => moneyShort(v * factor, currency);
 
   // 열별 틴트 점수 — legs 기준(정렬·검색과 무관하게 전체 모집단에서 산출).
   const scores = useMemo(() => {
@@ -192,11 +188,11 @@ export function CompanyMetricsTable({
             const share = totalMine > 0 ? mine / totalMine : 0;
             return (
               <tr key={l.symbol} className="border-t border-border/60 align-top">
-                {/* 사업부 — 이름(긴 것 2줄) + 기여 보조 줄(내 몫·비중) */}
+                {/* 사업부 — 이름(긴 것 2줄) + 기여 비중 보조 줄(금액 비노출) */}
                 <th scope="row" className="py-2.5 pr-2 text-left font-medium">
                   <span className="line-clamp-2 break-keep">{l.name}</span>
                   <span className="block truncate text-[10px] font-normal text-muted-foreground">
-                    내 몫 {m(mine)} · {pct(share)}
+                    기여 {pct(share)}
                   </span>
                 </th>
                 {/* 지표 열 — 우수할수록 토스블루 틴트가 진해짐 */}
@@ -220,10 +216,6 @@ export function CompanyMetricsTable({
                     </td>
                   );
                 })}
-                {/* 보유 — 품질 지표 아님, 틴트 없이 보조색 */}
-                <td className="py-2.5 pl-1 text-right text-muted-foreground">
-                  {m(l.value)}
-                </td>
               </tr>
             );
           })}
@@ -232,19 +224,13 @@ export function CompanyMetricsTable({
           <tfoot>
             <tr className="border-t-2 border-border font-semibold">
               <th scope="row" className="py-2.5 pr-2 text-left">
-                <span className="block">연결 합계</span>
-                <span className="block truncate text-[10px] font-normal text-muted-foreground">
-                  내 몫 {m(totalMine)}
-                </span>
+                연결 합계
               </th>
               {METRIC_COLS.map((c) => (
                 <td key={c.key} className="py-2.5 pl-1 text-right text-foreground">
                   {c.fmt(summary[c.metric])}
                 </td>
               ))}
-              <td className="py-2.5 pl-1 text-right text-muted-foreground">
-                {m(totalValue)}
-              </td>
             </tr>
           </tfoot>
         )}

@@ -265,8 +265,6 @@ async function LookThroughBodyStreamed({
             <p className="mb-3 mt-1 text-[11px] text-muted-foreground">{lt.asOfNote}</p>
             <CompanyMetricsTable
               legs={divisions}
-              factor={factor}
-              currency={currency}
               summary={{
                 per: lt.per,
                 pbr: lt.pbr,
