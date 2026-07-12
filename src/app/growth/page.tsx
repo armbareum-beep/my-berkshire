@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Suspense } from "react";
+import { Suspense, type ReactNode } from "react";
 import { ReceiptText } from "lucide-react";
 import { after } from "next/server";
 import { redirect } from "next/navigation";
@@ -34,7 +34,7 @@ import { TimelineCard } from "@/components/dashboard/cards";
 import { CompanyTierCard } from "@/components/growth/CompanyTierCard";
 import { CompoundingStreakCard } from "@/components/growth/CompoundingStreakCard";
 import { EtfSnapshotCard } from "@/components/growth/EtfSnapshotCard";
-import { EtfChartStreamed } from "@/components/etf/EtfChartStreamed";
+import { StockChartStreamed } from "@/components/growth/StockChartStreamed";
 import { ChartSkeleton } from "@/components/etf/ChartSkeleton";
 import { LockedCard } from "@/components/growth/LockedCard";
 
@@ -97,14 +97,10 @@ export default async function GrowthPage() {
     : new Map<string, number>();
 
   // ETF 슬라이스 + 가중평균 TER 계산
-  // value/etfWeight는 배분 차트(EtfChartStreamed) 입력, weight/ter는 EtfSnapshotCard 입력.
-  const totalEtfValue = etfAllocations.reduce((s, a) => s + a.value, 0);
   const etfSlices = etfAllocations.map((a) => ({
     symbol: a.symbol,
     name: secMeta[a.symbol]?.name ?? a.name,
     weight: a.weight,
-    value: a.value,
-    etfWeight: totalEtfValue > 0 ? a.value / totalEtfValue : 0,
     ter: terMap.get(a.symbol) ?? null,
   }));
   let weightedAvgTer: number | null = null;
@@ -163,12 +159,23 @@ export default async function GrowthPage() {
   );
   const annual = annualReportEligibility(holding.founded_at, today);
 
-  // ETF 배분 도넛(/etf-portfolio 와 동일 차트) — 내 ETF 포트폴리오 카드에 삽입.
-  const etfChart = hasEtf ? (
+  // 개별주(비ETF) 배분 도넛 — 내 지분 실적 카드 하단 "종목 배분" 섹션에 삽입.
+  // UI는 /etf-portfolio 차트와 동일(EtfDonutChart), 데이터만 종목 기준.
+  const stockAllocations = data.allocation.filter(
+    (a) => secMeta[a.symbol]?.assetType !== "ETF",
+  );
+  const totalStockValue = stockAllocations.reduce((s, a) => s + a.value, 0);
+  const stockChart = hasStock ? (
     <Suspense fallback={<ChartSkeleton embedded />}>
-      <EtfChartStreamed
-        etfSlices={etfSlices}
-        totalEtfValue={totalEtfValue}
+      <StockChartStreamed
+        supabase={supabase}
+        slices={stockAllocations.map((a) => ({
+          symbol: a.symbol,
+          name: secMeta[a.symbol]?.name ?? a.name,
+          stockWeight: totalStockValue > 0 ? a.value / totalStockValue : 0,
+          countryTag: a.countryTag,
+        }))}
+        meta={secMeta}
         embedded
       />
     </Suspense>
@@ -190,7 +197,7 @@ export default async function GrowthPage() {
       {/* 복리 무중단 — 이미 계산된 data.compoundingStreak를 그대로 노출(새 계산 없음). */}
       <CompoundingStreakCard streak={data.compoundingStreak} />
 
-      {/* 내 지분 실적(현재 투시 펀더멘털) — 개별주 없으면 잠금 */}
+      {/* 내 지분 실적(현재 투시 펀더멘털) + 종목 배분 차트 — 개별주 없으면 잠금 */}
       {hasStock ? (
         <Suspense fallback={<GrowthCardSkeleton />}>
           <BusinessSnapshotStreamed
@@ -202,6 +209,7 @@ export default async function GrowthPage() {
             portfolioRevision={holding.portfolio_revision}
             asOfDate={today}
             year={Number(today.slice(0, 4))}
+            chart={stockChart}
           />
         </Suspense>
       ) : (
@@ -211,13 +219,9 @@ export default async function GrowthPage() {
         />
       )}
 
-      {/* ETF 포트폴리오 현황(+배분 차트) — ETF 없으면 잠금 */}
+      {/* ETF 포트폴리오 현황 — ETF 없으면 잠금 */}
       {hasEtf ? (
-        <EtfSnapshotCard
-          slices={etfSlices}
-          weightedAvgTer={weightedAvgTer}
-          chart={etfChart}
-        />
+        <EtfSnapshotCard slices={etfSlices} weightedAvgTer={weightedAvgTer} />
       ) : (
         <LockedCard
           title="📦 ETF 포트폴리오"
@@ -288,6 +292,7 @@ async function BusinessSnapshotStreamed({
   portfolioRevision,
   asOfDate,
   year,
+  chart,
 }: {
   supabase: Awaited<ReturnType<typeof createClient>>;
   enabled: boolean;
@@ -297,6 +302,8 @@ async function BusinessSnapshotStreamed({
   portfolioRevision: number;
   asOfDate: string;
   year: number;
+  /** 카드 하단 "종목 배분" 차트(없으면 생략). */
+  chart?: ReactNode;
 }) {
   const lt = enabled
     ? (
@@ -322,25 +329,33 @@ async function BusinessSnapshotStreamed({
         roe={lt.roe}
         factor={1}
         currency="KRW"
+        chart={chart}
       />
     );
   }
-  // 반영할 공시가 없을 때 — /lookthrough 정적 링크.
+  // 반영할 공시가 없을 때 — /lookthrough 정적 링크(+종목 배분 차트).
   return (
-    <Link
-      href="/lookthrough"
-      className="block rounded-2xl bg-card p-5 shadow-card transition active:scale-[0.99]"
-    >
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-semibold">🏭 내 지분 실적</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            보유 회사들의 투시 펀더멘털 — 지분만큼 내 몫
-          </p>
+    <div className="rounded-2xl bg-card p-5 shadow-card">
+      <Link href="/lookthrough" className="block transition active:opacity-70">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold">🏭 내 지분 실적</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              보유 회사들의 투시 펀더멘털 — 지분만큼 내 몫
+            </p>
+          </div>
+          <span className="text-muted-foreground">›</span>
         </div>
-        <span className="text-muted-foreground">›</span>
-      </div>
-    </Link>
+      </Link>
+      {chart && (
+        <div className="mt-4 border-t border-border pt-4">
+          <p className="mb-3 text-xs font-semibold text-muted-foreground">
+            종목 배분
+          </p>
+          {chart}
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -56,7 +56,7 @@ function assetTypeOf(name: string): string {
   return "주식";
 }
 
-function aggregate(items: { key: string; weight: number }[]): ChartSlice[] {
+export function aggregate(items: { key: string; weight: number }[]): ChartSlice[] {
   const map = new Map<string, number>();
   for (const { key, weight } of items) {
     map.set(key, (map.get(key) ?? 0) + weight);
