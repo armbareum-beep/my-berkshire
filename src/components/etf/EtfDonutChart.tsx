@@ -55,11 +55,23 @@ function arcPath(cx: number, cy: number, or_: number, ir: number, a0: number, a1
   ].join(" ");
 }
 
-function groupSmall(slices: ChartSlice[], threshold = 0.03): ChartSlice[] {
+interface DisplaySlice extends ChartSlice {
+  /** "기타"로 묶인 원본 조각들(비중 내림차순) — 선택 시 구성 펼침용. */
+  parts?: ChartSlice[];
+}
+
+function groupSmall(slices: ChartSlice[], threshold = 0.03): DisplaySlice[] {
   const main = slices.filter((s) => s.weight >= threshold);
   const rest = slices.filter((s) => s.weight < threshold);
   if (!rest.length) return main;
-  return [...main, { name: "기타", weight: rest.reduce((s, o) => s + o.weight, 0) }];
+  return [
+    ...main,
+    {
+      name: "기타",
+      weight: rest.reduce((s, o) => s + o.weight, 0),
+      parts: [...rest].sort((a, b) => b.weight - a.weight),
+    },
+  ];
 }
 
 // ── Component ─────────────────────────────────────────────────
@@ -192,23 +204,43 @@ export function EtfDonutChart({
             {slices.map((s, i) => (
               <li
                 key={i}
-                className="flex cursor-pointer items-center justify-between"
+                className="cursor-pointer"
                 onClick={() => setActive(active === i ? null : i)}
               >
-                <div className="flex min-w-0 items-center gap-2">
-                  <span
-                    className="h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: s.color }}
-                  />
-                  <span
-                    className={`truncate text-sm ${active === i ? "font-semibold" : "text-foreground"}`}
-                  >
-                    {s.name}
+                <div className="flex items-center justify-between">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: s.color }}
+                    />
+                    <span
+                      className={`truncate text-sm ${active === i ? "font-semibold" : "text-foreground"}`}
+                    >
+                      {s.name}
+                    </span>
+                  </div>
+                  <span className="ml-2 shrink-0 text-sm tabular-nums text-muted-foreground">
+                    {pct(s.weight)}
                   </span>
                 </div>
-                <span className="ml-2 shrink-0 text-sm tabular-nums text-muted-foreground">
-                  {pct(s.weight)}
-                </span>
+                {/* "기타" 선택 시 묶인 조각 구성 펼침 */}
+                {active === i && s.parts && (
+                  <ul className="mt-1.5 space-y-1 pl-[18px]">
+                    {s.parts.map((p, j) => (
+                      <li
+                        key={j}
+                        className="flex items-center justify-between"
+                      >
+                        <span className="truncate text-xs text-muted-foreground">
+                          {p.name}
+                        </span>
+                        <span className="ml-2 shrink-0 text-xs tabular-nums text-muted-foreground">
+                          {pct(p.weight)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </li>
             ))}
           </ul>
