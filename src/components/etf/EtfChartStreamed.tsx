@@ -8,7 +8,16 @@ interface EtfSliceInput {
   etfWeight: number;
 }
 
+/** 혼합형(주식+채권 등 복수 자산·지역) 판별 — 이름 규칙. 예: KODEX 200미국채혼합. */
+function isMixed(name: string): boolean {
+  return (
+    name.includes("혼합") || name.includes("TDF") || name.includes("멀티에셋")
+  );
+}
+
 function regionOf(name: string, symbol: string): string {
+  // 혼합형은 지역이 갈라져 있어(예: 코스피200 40% + 미국채 60%) 단일 지역으로 넣으면 왜곡 — 따로 묶는다.
+  if (isMixed(name)) return "혼합";
   if (
     name.includes("미국") ||
     name.includes("S&P") ||
@@ -34,6 +43,8 @@ function regionOf(name: string, symbol: string): string {
 }
 
 function assetTypeOf(name: string): string {
+  // 혼합 판별을 채권보다 먼저 — "미국채혼합"이 "국채" 매칭으로 채권 처리되지 않게.
+  if (isMixed(name)) return "혼합";
   if (
     name.includes("채권") ||
     name.includes("Bond") ||
@@ -51,8 +62,6 @@ function assetTypeOf(name: string): string {
     name.includes("원유")
   )
     return "원자재";
-  if (name.includes("TDF") || name.includes("혼합") || name.includes("멀티에셋"))
-    return "혼합";
   return "주식";
 }
 
