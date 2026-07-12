@@ -69,9 +69,12 @@ function aggregate(items: { key: string; weight: number }[]): ChartSlice[] {
 export async function EtfChartStreamed({
   etfSlices,
   totalEtfValue,
+  embedded,
 }: {
   etfSlices: EtfSliceInput[];
   totalEtfValue: number;
+  /** true면 카드 래퍼 없이 렌더 — 다른 카드 내부에 삽입할 때. */
+  embedded?: boolean;
 }) {
   const etfShare: ChartSlice[] = etfSlices.map((s) => ({
     name: s.name,
@@ -103,5 +106,5 @@ export async function EtfChartStreamed({
 
   const datasets: ChartDatasets = { etfShare, sector, region, assetType };
 
-  return <EtfDonutChart datasets={datasets} />;
+  return <EtfDonutChart datasets={datasets} embedded={embedded} />;
 }
