@@ -29,7 +29,7 @@ export function LookThroughCard({
   roe: number | null;
   factor?: number;
   currency?: Currency;
-  /** 카드 하단에 붙는 배분 차트 섹션(예: ETF 도넛). 링크 영역 밖이라 자체 인터랙션 유지. */
+  /** 카드 하단 "종목 배분" 섹션(개별주 도넛). 링크 영역 밖이라 자체 인터랙션 유지. */
   chart?: ReactNode;
 }) {
   const rotations: Rot[] = [];
@@ -80,7 +80,7 @@ export function LookThroughCard({
       {chart && (
         <div className="mt-4 border-t border-border pt-4">
           <p className="mb-3 text-xs font-semibold text-muted-foreground">
-            ETF 배분
+            종목 배분
           </p>
           {chart}
         </div>

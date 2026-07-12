@@ -66,13 +66,20 @@ function groupSmall(slices: ChartSlice[], threshold = 0.03): ChartSlice[] {
 export function EtfDonutChart({
   datasets,
   embedded = false,
+  shareLabel = "ETF",
 }: {
   datasets: ChartDatasets;
   /** true면 카드 래퍼 없이 렌더 — 다른 카드 내부에 삽입할 때. */
   embedded?: boolean;
+  /** 첫 탭(구성 종목 비중) 라벨 — ETF 뷰는 "ETF", 개별주 뷰는 "종목". */
+  shareLabel?: string;
 }) {
   const [tab, setTab] = useState<TabKey>("etfShare");
   const [active, setActive] = useState<number | null>(null);
+
+  const tabs = TABS.map((t) =>
+    t.key === "etfShare" ? { ...t, label: shareLabel } : t,
+  );
 
   const rawSlices = datasets[tab];
   const slices = groupSmall(rawSlices).map((s, i) => ({
@@ -94,13 +101,13 @@ export function EtfDonutChart({
   });
 
   const activeSlice = active !== null ? slices[active] ?? null : null;
-  const tabLabel = TABS.find((t) => t.key === tab)?.label ?? "";
+  const tabLabel = tabs.find((t) => t.key === tab)?.label ?? "";
 
   return (
     <div className={embedded ? undefined : "rounded-2xl bg-card p-5 shadow-card"}>
       {/* Tab row */}
       <div className="mb-5 flex gap-1 rounded-xl bg-secondary p-1">
-        {TABS.map(({ key, label }) => {
+        {tabs.map(({ key, label }) => {
           const empty = datasets[key].length === 0;
           return (
             <button
