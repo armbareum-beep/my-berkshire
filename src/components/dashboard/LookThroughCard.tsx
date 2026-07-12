@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { moneyCompact, type Currency } from "@/lib/format";
 
@@ -20,7 +20,6 @@ export function LookThroughCard({
   roe,
   factor = 1,
   currency = "KRW",
-  chart,
 }: {
   /** ₩ 기준 연결 순이익(내 몫). 표시 시 factor 로 환산. */
   netIncome: number;
@@ -29,8 +28,6 @@ export function LookThroughCard({
   roe: number | null;
   factor?: number;
   currency?: Currency;
-  /** 카드 하단에 붙는 배분 차트 섹션(예: ETF 도넛). 링크 영역 밖이라 자체 인터랙션 유지. */
-  chart?: ReactNode;
 }) {
   const rotations: Rot[] = [];
   if (per != null) rotations.push({ label: "PER", value: `${per.toFixed(1)}배` });
@@ -51,40 +48,33 @@ export function LookThroughCard({
   const rot = rotations[i % Math.max(1, rotations.length)];
 
   return (
-    <div className="rounded-2xl bg-card p-5 shadow-card">
-      <Link href="/lookthrough" className="block transition active:opacity-70">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-semibold">🏭 내 지분 실적</p>
-            <p className="text-xs text-muted-foreground">
-              내 회사들이 버는 힘 · 지분 몫 이익
-            </p>
-          </div>
-          <span className="text-muted-foreground">›</span>
-        </div>
-        <div className="mt-2 flex items-end justify-between">
-          <div>
-            <p className="text-xs text-muted-foreground">연결 투시 순이익 (내 몫)</p>
-            <p className="mt-0.5 text-2xl font-extrabold tabular-nums">
-              {moneyCompact(netIncome * factor, currency)}
-            </p>
-          </div>
-          {rot && (
-            <div className="text-right">
-              <p className="text-xs text-muted-foreground">{rot.label}</p>
-              <p className="text-lg font-bold tabular-nums">{rot.value}</p>
-            </div>
-          )}
-        </div>
-      </Link>
-      {chart && (
-        <div className="mt-4 border-t border-border pt-4">
-          <p className="mb-3 text-xs font-semibold text-muted-foreground">
-            ETF 배분
+    <Link
+      href="/lookthrough"
+      className="block rounded-2xl bg-card p-5 shadow-card transition active:scale-[0.99]"
+    >
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold">🏭 내 지분 실적</p>
+          <p className="text-xs text-muted-foreground">
+            내 회사들이 버는 힘 · 지분 몫 이익
           </p>
-          {chart}
         </div>
-      )}
-    </div>
+        <span className="text-muted-foreground">›</span>
+      </div>
+      <div className="mt-2 flex items-end justify-between">
+        <div>
+          <p className="text-xs text-muted-foreground">연결 투시 순이익 (내 몫)</p>
+          <p className="mt-0.5 text-2xl font-extrabold tabular-nums">
+            {moneyCompact(netIncome * factor, currency)}
+          </p>
+        </div>
+        {rot && (
+          <div className="text-right">
+            <p className="text-xs text-muted-foreground">{rot.label}</p>
+            <p className="text-lg font-bold tabular-nums">{rot.value}</p>
+          </div>
+        )}
+      </div>
+    </Link>
   );
 }
