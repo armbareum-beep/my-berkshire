@@ -44,6 +44,10 @@ const asset = (over: Partial<ManualAsset> = {}): ManualAsset => ({
   saleCost: null,
   valuationMethod: "direct",
   capRate: null,
+  rtmsLawdCd: null,
+  rtmsPropertyType: null,
+  rtmsComplexName: null,
+  rtmsExclusiveArea: null,
   ...over,
 });
 

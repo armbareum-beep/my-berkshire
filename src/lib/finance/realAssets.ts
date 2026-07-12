@@ -101,10 +101,24 @@ export interface ManualAsset {
   saleAt: string | null;
   /** 매도 부대비용(양도세·중개료 등 단일 합산, ₩) 또는 null. */
   saleCost: number | null;
-  /** 평가 방법: 'direct'=직접입력(기본), 'cap_rate'=수익률환원법. */
-  valuationMethod: "direct" | "cap_rate";
+  /**
+   * 평가 방법 — currentValue 의 영속성 규칙이 방식마다 다르다:
+   * - 'direct': 영속(사용자 직접 입력)
+   * - 'cap_rate': 무시 — 읽기 시 applyCapRateValuation 이 파생값으로 덮어씀
+   * - 'transaction_comp': 영속(거래사례비교법 — cron/수동 갱신이 국토부
+   *   실거래가를 써 넣음. 읽기 경로는 direct 와 동일)
+   */
+  valuationMethod: "direct" | "cap_rate" | "transaction_comp";
   /** 환원율(소수, 0.04 = 4%). cap_rate 방식일 때만 의미 있음. */
   capRate: number | null;
+  /** RTMS 법정동 시군구 코드 5자리. transaction_comp 방식일 때만. */
+  rtmsLawdCd: string | null;
+  /** RTMS 유형: APT|RH|OFFI|SILV. transaction_comp 방식일 때만. */
+  rtmsPropertyType: string | null;
+  /** RTMS 단지명 원문 — 정규화 완전일치 매칭 키. */
+  rtmsComplexName: string | null;
+  /** 전용면적(㎡) — ±10% 허용오차 매칭. */
+  rtmsExclusiveArea: number | null;
 }
 
 /** 부동산 사업부 임대수익 기록 — 자산별, events와 분리된 자체 원장. */

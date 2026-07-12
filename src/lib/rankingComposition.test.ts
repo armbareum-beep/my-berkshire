@@ -170,6 +170,10 @@ describe("manualCompositionInput", () => {
     saleCost: null,
     valuationMethod: "direct",
     capRate: null,
+    rtmsLawdCd: null,
+    rtmsPropertyType: null,
+    rtmsComplexName: null,
+    rtmsExclusiveArea: null,
     ...over,
   });
 

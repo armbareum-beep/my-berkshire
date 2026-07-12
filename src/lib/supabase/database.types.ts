@@ -615,6 +615,10 @@ export type Database = {
           kind: Database["public"]["Enums"]["manual_asset_kind"]
           name: string
           note: string | null
+          rtms_complex_name: string | null
+          rtms_exclusive_area: number | null
+          rtms_lawd_cd: string | null
+          rtms_property_type: string | null
           sale_at: string | null
           sale_cost: number | null
           sale_price: number | null
@@ -636,6 +640,10 @@ export type Database = {
           kind?: Database["public"]["Enums"]["manual_asset_kind"]
           name: string
           note?: string | null
+          rtms_complex_name?: string | null
+          rtms_exclusive_area?: number | null
+          rtms_lawd_cd?: string | null
+          rtms_property_type?: string | null
           sale_at?: string | null
           sale_cost?: number | null
           sale_price?: number | null
@@ -657,6 +665,10 @@ export type Database = {
           kind?: Database["public"]["Enums"]["manual_asset_kind"]
           name?: string
           note?: string | null
+          rtms_complex_name?: string | null
+          rtms_exclusive_area?: number | null
+          rtms_lawd_cd?: string | null
+          rtms_property_type?: string | null
           sale_at?: string | null
           sale_cost?: number | null
           sale_price?: number | null

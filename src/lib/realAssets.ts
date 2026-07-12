@@ -31,8 +31,13 @@ export async function loadManualAssets(
     salePrice: r.sale_price == null ? null : Number(r.sale_price),
     saleAt: r.sale_at,
     saleCost: r.sale_cost == null ? null : Number(r.sale_cost),
-    valuationMethod: (r.valuation_method ?? "direct") as "direct" | "cap_rate",
+    valuationMethod: (r.valuation_method ?? "direct") as ManualAsset["valuationMethod"],
     capRate: r.cap_rate == null ? null : Number(r.cap_rate),
+    rtmsLawdCd: r.rtms_lawd_cd,
+    rtmsPropertyType: r.rtms_property_type,
+    rtmsComplexName: r.rtms_complex_name,
+    rtmsExclusiveArea:
+      r.rtms_exclusive_area == null ? null : Number(r.rtms_exclusive_area),
   }));
 }
 

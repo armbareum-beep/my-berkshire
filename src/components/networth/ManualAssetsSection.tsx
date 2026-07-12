@@ -9,7 +9,10 @@ import {
   sellManualAsset,
   deleteLiability,
 } from "@/app/networth/actions";
-import { deleteFinancingReconciliation } from "@/app/real-estate/actions";
+import {
+  deleteFinancingReconciliation,
+  refreshTransactionCompValuation,
+} from "@/app/real-estate/actions";
 import type { Liability } from "@/lib/finance/liabilities";
 import {
   MANUAL_ASSET_KIND_LABEL,
@@ -133,6 +136,22 @@ export function ManualAssetsSection({
             router.refresh();
           }),
       },
+    });
+  }
+
+  /** 실거래가(거래사례비교법) 자산 수동 갱신 — cron 을 기다리지 않고 즉시 최신화. */
+  function refreshRtms(id: string) {
+    startTransition(async () => {
+      const res = await refreshTransactionCompValuation(id);
+      if (!res.ok) { toast.error(res.error); return; }
+      if (!res.updated) {
+        toast("최근 6개월 내 실거래가 없어 마지막 평가액을 유지해요");
+        return;
+      }
+      toast.success(
+        `실거래가 갱신: ${money(cv(res.amountKrw), currency)} (${res.dealDate} 거래)`,
+      );
+      router.refresh();
     });
   }
 
@@ -350,12 +369,29 @@ export function ManualAssetsSection({
                           </span>
                         </div>
                       )}
-                      {(a.valuationSource || a.valuedAt) && (
-                        <span className="text-[11px] text-muted-foreground">
-                          추정
-                          {a.valuationSource ? ` · ${a.valuationSource}` : ""}
-                          {a.valuedAt ? ` · ${a.valuedAt}` : ""}
+                      {a.valuationMethod === "transaction_comp" && !isSold(a) ? (
+                        <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+                          <span>
+                            실거래가 · {a.rtmsComplexName} {a.rtmsExclusiveArea}㎡
+                            {a.valuedAt ? ` · 기준일 ${a.valuedAt}` : ""}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={pending}
+                            onClick={() => refreshRtms(a.id)}
+                            className="rounded-full bg-card px-2.5 py-1 text-xs font-medium"
+                          >
+                            시세 갱신
+                          </button>
                         </span>
+                      ) : (
+                        (a.valuationSource || a.valuedAt) && (
+                          <span className="text-[11px] text-muted-foreground">
+                            추정
+                            {a.valuationSource ? ` · ${a.valuationSource}` : ""}
+                            {a.valuedAt ? ` · ${a.valuedAt}` : ""}
+                          </span>
+                        )
                       )}
                       {loans.length > 0 && (
                         <span className="flex flex-col gap-0.5 text-[11px] text-amber-700">

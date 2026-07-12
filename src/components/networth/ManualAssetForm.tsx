@@ -11,6 +11,8 @@ import {
   type ManualAssetInput,
 } from "@/app/networth/actions";
 import { CardPickerField } from "@/components/ui/CardPickerField";
+import { RtmsDealPicker, type RtmsSelection } from "@/components/networth/RtmsDealPicker";
+import type { RtmsPropertyType } from "@/lib/finance/rtms/parse";
 import {
   MANUAL_ASSET_KINDS,
   MANUAL_ASSET_KIND_LABEL,
@@ -23,6 +25,37 @@ import {
   type ManualAsset,
   type ManualAssetKind,
 } from "@/lib/finance/realAssets";
+
+type ValuationMethod = "direct" | "cap_rate" | "transaction_comp";
+
+const VALUATION_METHOD_LABEL: Record<ValuationMethod, string> = {
+  direct: "직접 입력",
+  cap_rate: "수익률환원법",
+  transaction_comp: "실거래가",
+};
+
+/** RTMS 실거래가 매칭 대상 종류 — 아파트·빌라·오피스텔·분양권이 속하는 부동산 계열. */
+const RTMS_KINDS: ManualAssetKind[] = ["REAL_ESTATE", "COMMERCIAL"];
+
+/** 수정 모드에서 저장된 rtms 매칭키 → 선택 상태 복원. */
+function rtmsSelectionOf(editing: ManualAsset | null | undefined): RtmsSelection | null {
+  if (
+    editing?.valuationMethod !== "transaction_comp" ||
+    !editing.rtmsLawdCd ||
+    !editing.rtmsPropertyType ||
+    !editing.rtmsComplexName ||
+    editing.rtmsExclusiveArea == null
+  )
+    return null;
+  return {
+    lawdCd: editing.rtmsLawdCd,
+    propertyType: editing.rtmsPropertyType as RtmsPropertyType,
+    complexName: editing.rtmsComplexName,
+    exclusiveArea: editing.rtmsExclusiveArea,
+    amountKrw: editing.currentValue,
+    dealDate: editing.valuedAt ?? "",
+  };
+}
 
 /**
  * 수기 평가 자산 등록/수정 폼 — 거래 플로우(인라인)와 순자산 페이지 공용.
@@ -63,19 +96,28 @@ export function ManualAssetForm({
     editing?.valuationSource ?? "",
   );
   const [valuedAt, setValuedAt] = useState(editing?.valuedAt ?? "");
-  const [valuationMethod, setValuationMethod] = useState<"direct" | "cap_rate">(
+  const [valuationMethod, setValuationMethod] = useState<ValuationMethod>(
     editing?.valuationMethod ?? "direct",
   );
   const [capRateInput, setCapRateInput] = useState(
     editing?.capRate != null ? String(editing.capRate * 100) : "",
   );
+  const [rtmsSel, setRtmsSel] = useState<RtmsSelection | null>(rtmsSelectionOf(editing));
   // 첫 임대수익(신규 cap_rate 등록 시에만 노출 — 수정 시 별도 임대 입력 사용)
   const [incomeDate, setIncomeDate] = useState(today);
   const [incomeAmount, setIncomeAmount] = useState("");
   const [incomeCost, setIncomeCost] = useState("");
 
   const producesIncome = kind != null && ASSET_DIVISION_PRODUCES_INCOME[assetDivision(kind)];
+  // 실거래가(거래사례비교법)는 RTMS API 가 커버하는 부동산 계열에서만.
+  const allowsRtms = kind != null && RTMS_KINDS.includes(kind);
+  const methods: ValuationMethod[] = [
+    "direct",
+    ...(producesIncome ? (["cap_rate"] as const) : []),
+    ...(allowsRtms ? (["transaction_comp"] as const) : []),
+  ];
   const isCapRate = valuationMethod === "cap_rate" && producesIncome;
+  const isTxComp = valuationMethod === "transaction_comp" && allowsRtms;
   const isNew = !editing;
 
   function buildInput(): ManualAssetInput {
@@ -97,9 +139,18 @@ export function ManualAssetForm({
         acquisitionCost.trim() === "" ? null : Number(acquisitionCost),
       valuationSource: valuationSource || undefined,
       valuedAt: valuedAt || undefined,
-      valuationMethod: isCapRate ? "cap_rate" : "direct",
+      valuationMethod: isCapRate ? "cap_rate" : isTxComp ? "transaction_comp" : "direct",
       capRate: isCapRate ? capRateDec : null,
       initialIncome,
+      rtms:
+        isTxComp && rtmsSel
+          ? {
+              lawdCd: rtmsSel.lawdCd,
+              propertyType: rtmsSel.propertyType,
+              complexName: rtmsSel.complexName,
+              exclusiveArea: rtmsSel.exclusiveArea,
+            }
+          : null,
     };
   }
 
@@ -137,6 +188,15 @@ export function ManualAssetForm({
         toast.error("환원율(%)을 입력하세요. 예: 4.5");
         return;
       }
+      doSubmit();
+      return;
+    }
+    if (isTxComp) {
+      if (!rtmsSel) {
+        toast.error("실거래 단지를 선택하세요.");
+        return;
+      }
+      // 실거래가는 시장가라 평가손실 확인(FR-006) 생략 — 직접입력 오타 방지용이므로.
       doSubmit();
       return;
     }
@@ -186,11 +246,11 @@ export function ManualAssetForm({
             />
           </div>
 
-      {producesIncome && (
+      {methods.length > 1 && (
         <div>
           <p className="mb-1 text-sm font-medium">평가 방법</p>
-          <div className="grid grid-cols-2 gap-2">
-            {(["direct", "cap_rate"] as const).map((m) => (
+          <div className={"grid gap-2 " + (methods.length === 3 ? "grid-cols-3" : "grid-cols-2")}>
+            {methods.map((m) => (
               <button
                 key={m}
                 type="button"
@@ -202,13 +262,18 @@ export function ManualAssetForm({
                     : "bg-secondary text-secondary-foreground")
                 }
               >
-                {m === "direct" ? "직접 입력" : "수익률환원법"}
+                {VALUATION_METHOD_LABEL[m]}
               </button>
             ))}
           </div>
           {isCapRate && (
             <p className="mt-1 text-xs text-muted-foreground">
               평가액 = 최근 12개월 순임대수익 ÷ 환원율
+            </p>
+          )}
+          {isTxComp && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              같은 단지·비슷한 면적의 국토부 실거래가로 평가해요 (매월 자동 갱신)
             </p>
           )}
         </div>
@@ -275,6 +340,17 @@ export function ManualAssetForm({
             </div>
           )}
         </>
+      ) : isTxComp ? (
+        <RtmsDealPicker
+          value={rtmsSel}
+          onSelect={(sel) => {
+            setRtmsSel(sel);
+            // 선택 거래가 → 평가액·평가일·출처 자동 채움(이후 cron/수동 갱신이 이어감).
+            setCurrentValue(String(sel.amountKrw));
+            if (sel.dealDate) setValuedAt(sel.dealDate);
+            setValuationSource("국토부 실거래가");
+          }}
+        />
       ) : (
         <div>
           <NumberPadField

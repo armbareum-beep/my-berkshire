@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveHolding } from "@/lib/holdings";
 import { todayKST } from "@/lib/date";
+import { findLatestComparableDeal } from "@/lib/finance/rtms/refresh";
+import type { RtmsPropertyType } from "@/lib/finance/rtms/parse";
 
 type Result = { ok: true } | { ok: false; error: string };
 
@@ -54,6 +56,76 @@ export async function addFinancingReconciliation(
   revalidatePath("/networth");
   revalidatePath("/dashboard");
   return { ok: true };
+}
+
+export type RefreshValuationResult =
+  | { ok: true; updated: true; amountKrw: number; dealDate: string }
+  | { ok: true; updated: false } // 최근 6개월 무거래 → 기존 평가액 유지
+  | { ok: false; error: string };
+
+/**
+ * 실거래가(거래사례비교법) 자산 수동 갱신 — 최근 6개월 내 동일 단지·유사 면적의
+ * 최신 실거래 1건으로 current_value 를 덮어쓴다. cron(월 1회)과 같은 로직.
+ * updateManualAsset(전 컬럼 덮어쓰기)과 달리 평가액·평가일·출처만 좁게 갱신.
+ */
+export async function refreshTransactionCompValuation(
+  assetId: string,
+): Promise<RefreshValuationResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "로그인이 필요합니다." };
+
+  // RLS 가 소유권 보장 — 내 holding 자산이 아니면 조회되지 않는다.
+  const { data: asset, error: loadError } = await supabase
+    .from("manual_assets")
+    .select(
+      "id, valuation_method, rtms_lawd_cd, rtms_property_type, rtms_complex_name, rtms_exclusive_area",
+    )
+    .eq("id", assetId)
+    .is("deleted_at", null)
+    .single();
+  if (loadError || !asset) return { ok: false, error: "자산을 찾을 수 없습니다." };
+  if (
+    asset.valuation_method !== "transaction_comp" ||
+    !asset.rtms_lawd_cd ||
+    !asset.rtms_property_type ||
+    !asset.rtms_complex_name ||
+    asset.rtms_exclusive_area == null
+  )
+    return { ok: false, error: "실거래가 방식 자산이 아닙니다." };
+
+  try {
+    const deal = await findLatestComparableDeal({
+      type: asset.rtms_property_type as RtmsPropertyType,
+      lawdCd: asset.rtms_lawd_cd,
+      complexName: asset.rtms_complex_name,
+      area: Number(asset.rtms_exclusive_area),
+      today: todayKST(),
+    });
+    if (!deal) return { ok: true, updated: false };
+
+    const { error } = await supabase
+      .from("manual_assets")
+      .update({
+        current_value: deal.amountKrw,
+        valued_at: deal.date,
+        valuation_source: "국토부 실거래가",
+      })
+      .eq("id", assetId);
+    if (error) return { ok: false, error: error.message };
+
+    revalidatePath("/real-estate");
+    revalidatePath("/networth");
+    revalidatePath("/dashboard");
+    return { ok: true, updated: true, amountKrw: deal.amountKrw, dealDate: deal.date };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "실거래가 조회에 실패했습니다.",
+    };
+  }
 }
 
 /** 보정 소프트 삭제. */
