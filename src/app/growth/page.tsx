@@ -34,6 +34,8 @@ import { TimelineCard } from "@/components/dashboard/cards";
 import { CompanyTierCard } from "@/components/growth/CompanyTierCard";
 import { CompoundingStreakCard } from "@/components/growth/CompoundingStreakCard";
 import { EtfSnapshotCard } from "@/components/growth/EtfSnapshotCard";
+import { EtfChartStreamed } from "@/components/etf/EtfChartStreamed";
+import { ChartSkeleton } from "@/components/etf/ChartSkeleton";
 import { LockedCard } from "@/components/growth/LockedCard";
 
 /**
@@ -95,10 +97,14 @@ export default async function GrowthPage() {
     : new Map<string, number>();
 
   // ETF 슬라이스 + 가중평균 TER 계산
+  // value/etfWeight는 배분 차트(EtfChartStreamed) 입력, weight/ter는 EtfSnapshotCard 입력.
+  const totalEtfValue = etfAllocations.reduce((s, a) => s + a.value, 0);
   const etfSlices = etfAllocations.map((a) => ({
     symbol: a.symbol,
     name: secMeta[a.symbol]?.name ?? a.name,
     weight: a.weight,
+    value: a.value,
+    etfWeight: totalEtfValue > 0 ? a.value / totalEtfValue : 0,
     ter: terMap.get(a.symbol) ?? null,
   }));
   let weightedAvgTer: number | null = null;
@@ -172,6 +178,16 @@ export default async function GrowthPage() {
 
       {/* 복리 무중단 — 이미 계산된 data.compoundingStreak를 그대로 노출(새 계산 없음). */}
       <CompoundingStreakCard streak={data.compoundingStreak} />
+
+      {/* ETF 배분 차트 — ETF/섹터/지역/자산 탭 (/etf-portfolio 와 동일 차트, ETF 보유 시만) */}
+      {hasEtf && (
+        <Suspense fallback={<ChartSkeleton />}>
+          <EtfChartStreamed
+            etfSlices={etfSlices}
+            totalEtfValue={totalEtfValue}
+          />
+        </Suspense>
+      )}
 
       {/* 내 지분 실적(현재 투시 펀더멘털) — 개별주 없으면 잠금 */}
       {hasStock ? (
