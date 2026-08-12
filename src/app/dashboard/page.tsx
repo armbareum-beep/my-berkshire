@@ -873,6 +873,14 @@ async function HoldingsStreamed({
       {dataKRW.priceAvailable && (
         <AllocationCard slices={countrySlices} itemsByCountry={itemsByCountry} currency={dataKRW.currency} />
       )}
+
+      {/* 하단탭을 2탭으로 줄이며(스펙 v1.1 §2) /growth 가 진입점을 잃었다.
+          두 화면을 실제로 합치기 전(Phase 4)까지 여기서 잇는다 — 화면이 고아가 되지 않게. */}
+      <SectionCard title="내 지분 실적" href="/growth">
+        <p className="text-sm text-muted-foreground">
+          ETF를 투시한 실제 종목 배분과 기업별 지분 실적을 봅니다.
+        </p>
+      </SectionCard>
     </div>
   );
 }
