@@ -29,11 +29,11 @@ const TABS: {
   },
   { href: "/transactions", label: "기록", action: true },
   {
-    href: "/rebalance",
+    href: "/allocate",
     label: "자본배분",
     icon: PieChart,
-    // §22.2 — /allocation + /rebalance 는 /allocate 로 통합 예정.
-    match: ["/rebalance", "/allocation"],
+    // §22.2 — 목표비중 편집(/rebalance)은 아직 별도 화면이라 함께 활성으로 둔다.
+    match: ["/allocate", "/rebalance", "/allocation"],
   },
 ];
 

@@ -614,52 +614,55 @@ v1.0 의사코드는 항상 `remainingCash: 0` 을 반환하는데, 이는 v1.0 
 
 > **결정: `planInvestment()` 을 유지하고 cap 규칙만 앞단에 얹는다.**
 
-## 15.2 확장 형태
+## 15.2 구현 — `src/lib/allocate.ts`
 
-```ts
-// src/lib/allocate.ts (신규) — rebalance.ts 의 planInvestment 을 감싼다
-import { planInvestment, type RebalItem } from "./rebalance";
+구현 완료. 계산식은 다음과 같다.
 
-export interface AllocateTarget {
-  key: string;          // symbol
-  label: string;
-  value: number;        // 현재 평가액 (표시통화 환산 후)
-  target: number;       // 0~1
-  softCap?: number;     // 기본 target * 1.25
-  hardCap?: number;     // 기본 target * 1.50
-}
-
-const PRIORITY = { normal: 1, overTarget: 0.25, overSoft: 0.05, overHard: 0 };
-
-export function allocateCapital(targets: AllocateTarget[], invest: number) {
-  const V = targets.reduce((s, t) => s + t.value, 0);   // §16 — 분모 정의
-
-  const items: RebalItem[] = targets.map((t) => {
-    const w = V > 0 ? t.value / V : 0;
-    const soft = t.softCap ?? t.target * 1.25;
-    const hard = t.hardCap ?? t.target * 1.5;
-
-    const k =
-      w >= hard ? PRIORITY.overHard
-      : w >= soft ? PRIORITY.overSoft
-      : w > t.target ? PRIORITY.overTarget
-      : PRIORITY.normal;
-
-    // cap은 목표비중을 깎는 방식으로 반영 → 기존 배분 엔진을 그대로 쓸 수 있다
-    return { key: t.key, label: t.label, value: t.value, targetFrac: t.target * k };
-  });
-
-  // 계수 적용으로 합이 1 미만이 되므로 정규화 — 잔여는 현금 슬롯이 흡수한다
-  const sum = items.reduce((s, i) => s + i.targetFrac, 0);
-  const normalized = sum > 0
-    ? items.map((i) => ({ ...i, targetFrac: i.targetFrac / sum }))
-    : items;
-
-  return planInvestment(normalized, invest);
-}
+```text
+V        = Σ(대상 자산 평가액)                  ← §16.1 분모
+future   = V + 투자금
+gap_i    = max(0, future × target_i − value_i)
+weight_i = gap_i × priority_i × attractiveness_i
+amount_i = min(투자금 × weight_i / Σweight, gap_i)   ← 부족분이 상한
+잔여금    = 투자금 − Σamount
 ```
 
-실행단계에서 처리할 것: 현재가 · 최소 거래단위 · 소수점 매매 가능 여부 · 원화/달러 환산 · 계좌 선택.
+`priority_i` 는 §14.1 의 4단계 계수, `attractiveness_i` 는 §15.3 참조(기본 1.0).
+
+### v1.1 초안에서 바뀐 점 — 잔여금 처리
+
+초안은 `rebalance.ts:planInvestment` 을 그대로 감싸려 했으나, **잔여금 규칙이 다르다.**
+
+| | 투자금 > 총부족분일 때 |
+|---|---|
+| `rebalance.ts` (기존 리밸런싱 화면) | 부족분을 채우고 **남는 돈도 목표비중 비례로 전액 배분** |
+| `allocate.ts` (신규) | 부족분까지만 채우고 **남는 돈은 현금으로 남긴다** |
+
+후자를 택한 이유는 PRD v0.3 §8 이다.
+
+> 핵심은 항상 전액 투자하는 것이 아니다. **매력적인 기회가 부족하면 현금을 남긴다.**
+
+목표를 이미 채운 종목에 돈을 더 밀어넣으면 목표비중을 스스로 깨뜨리게 된다.
+따라서 각 칸의 배분액에 **부족분 상한**을 두었다.
+
+기존 `/rebalance` 화면의 동작은 바꾸지 않았다 — `planInvestment` 은 그대로다.
+
+## 15.3 밸류에이션 훅 — `attractiveness`
+
+스펙(밸류에이션 제외)과 PRD(Expected CAGR 이 핵심)의 충돌을 미루기 위한 이음매다.
+
+```text
+미지정      → 1.0 → 순수 비중 기반 배분 (스펙 §12 동작)
+Expected CAGR 연결 → 기대수익률이 높은 쪽에 더 많이 (PRD §6 동작)
+0           → 후보에서 제외 ("요구수익률 미달")
+```
+
+가정을 입력하지 않은 종목과 입력한 종목이 **한 화면에 섞여도 계산이 성립한다.**
+자세한 내용은 `docs/spec-vs-prd-reconciliation.md` §4.
+
+## 15.4 실행단계에서 처리할 것
+
+현재가 · 최소 거래단위 · 소수점 매매 가능 여부 · 원화/달러 환산 · 계좌 선택.
 
 ---
 
