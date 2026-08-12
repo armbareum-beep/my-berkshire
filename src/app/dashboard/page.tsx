@@ -52,6 +52,8 @@ import { CurrencyProvider } from "@/components/dashboard/CurrencyProvider";
 import { CurrencyView } from "@/components/dashboard/CurrencyView";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { StockChartStreamed } from "@/components/growth/StockChartStreamed";
+import { ChartSkeleton } from "@/components/etf/ChartSkeleton";
 import {
   HeroValuationCard,
   PriceUnavailableCard,
@@ -320,6 +322,7 @@ async function DashboardContent({
       ) : (
         <Suspense key="holdings" fallback={<DashboardStackSkeleton />}>
           <HoldingsStreamed
+            supabase={supabase}
             dataKRW={dataKRW}
             factorUSD={factorUSD}
             secMetaPromise={secMetaPromise}
@@ -802,12 +805,14 @@ function RealDivisionsCard({
 }
 
 async function HoldingsStreamed({
+  supabase,
   dataKRW,
   factorUSD,
   secMetaPromise,
   accountGroupsKRWPromise,
   memberNamesPromise,
 }: {
+  supabase: SupabaseServer;
   dataKRW: DashboardData;
   factorUSD: number;
   secMetaPromise: Promise<Awaited<ReturnType<typeof loadSecurityMeta>>>;
@@ -853,6 +858,29 @@ async function HoldingsStreamed({
     });
   }
 
+  // 종목 배분 도넛(종목·섹터·지역·자산유형) — /growth 에서 이전(스펙 v1.1 §7.4.1).
+  // 개별주 슬리브 내부 비중 기준. 섹터는 공시 API backfill 이 필요해 Suspense 로 흘린다.
+  const stockAllocations = dataKRW.allocation.filter(
+    (a) => secMeta[a.symbol]?.assetType !== "ETF",
+  );
+  const totalStockValue = stockAllocations.reduce((s, a) => s + a.value, 0);
+  const stockChart =
+    stockAllocations.length > 0 ? (
+      <Suspense fallback={<ChartSkeleton embedded />}>
+        <StockChartStreamed
+          supabase={supabase}
+          slices={stockAllocations.map((a) => ({
+            symbol: a.symbol,
+            name: secMeta[a.symbol]?.name ?? a.name,
+            stockWeight: totalStockValue > 0 ? a.value / totalStockValue : 0,
+            countryTag: a.countryTag,
+          }))}
+          meta={secMeta}
+          embedded
+        />
+      </Suspense>
+    ) : null;
+
   return (
     <div className="flex flex-col gap-4">
       <SectionCard
@@ -869,18 +897,15 @@ async function HoldingsStreamed({
         />
       </SectionCard>
 
-      {/* 보유계좌 → 국가별 자산구성. 국가 누르면 드랍시트. */}
+      {/* 보유계좌 → 국가별 자산구성. 국가 누르면 드랍시트. 하단에 종목 배분 도넛. */}
       {dataKRW.priceAvailable && (
-        <AllocationCard slices={countrySlices} itemsByCountry={itemsByCountry} currency={dataKRW.currency} />
+        <AllocationCard
+          slices={countrySlices}
+          itemsByCountry={itemsByCountry}
+          currency={dataKRW.currency}
+          chart={stockChart}
+        />
       )}
-
-      {/* 하단탭을 2탭으로 줄이며(스펙 v1.1 §2) /growth 가 진입점을 잃었다.
-          두 화면을 실제로 합치기 전(Phase 4)까지 여기서 잇는다 — 화면이 고아가 되지 않게. */}
-      <SectionCard title="내 지분 실적" href="/growth">
-        <p className="text-sm text-muted-foreground">
-          ETF를 투시한 실제 종목 배분과 기업별 지분 실적을 봅니다.
-        </p>
-      </SectionCard>
     </div>
   );
 }

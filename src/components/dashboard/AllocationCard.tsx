@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { SectionCard } from "@/components/ui/SectionCard";
@@ -24,10 +24,17 @@ export function AllocationCard({
   slices,
   itemsByCountry,
   currency = "KRW",
+  chart,
 }: {
   slices: TagSlice[];
   itemsByCountry: Record<string, CountrySheetItem[]>;
   currency?: Currency;
+  /**
+   * 종목 배분 도넛(종목·섹터·지역·자산유형 4축). 서버 컴포넌트라 노드로 받는다.
+   * 시트 안의 Donut(선택 국가 상위 8개)과는 다른 뷰 — 이쪽은 포트폴리오 전체 개별주 기준.
+   * `/growth` 에서 홈으로 옮겨왔다(스펙 v1.1 §7.4.1).
+   */
+  chart?: ReactNode;
 }) {
   const [openCountry, setOpenCountry] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<string | null>(null);
@@ -89,6 +96,15 @@ export function AllocationCard({
             </li>
           ))}
         </ul>
+
+        {chart && (
+          <div className="mt-4 border-t border-border pt-4">
+            <p className="mb-3 text-xs font-semibold text-muted-foreground">
+              종목 배분
+            </p>
+            {chart}
+          </div>
+        )}
       </SectionCard>
 
       <BottomSheet

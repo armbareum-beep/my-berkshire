@@ -314,17 +314,40 @@ ETF 이름 + 비중 목록   → 자산 구성. 홈 AllocationCard 의 드릴다
 투시 펀더멘털(연결 순이익·PER/PBR/ROE)은 **포트폴리오 합산 레벨에서는 내리지만**,
 종목 단위 실적 요약은 §20 의 KEEP 목록("최근 실적 요약")에 이미 있다. 새로 옮길 것은 없다.
 
-## 7.4.4 순서
+## 7.4.4 순서 — 완료 (2026-08-12)
 
 ```text
-1) 종목 배분 도넛을 홈으로 이동 (7.4.1)
-2) 홈에서 /growth 진입 카드 제거 — Phase 1 에서 넣은 임시 연결(§27 Phase 1)
-3) /growth 라우트는 남긴다 — §5.1 대로 링크만 끊는다
+1) 종목 배분 도넛을 홈으로 이동          ✅  AllocationCard 에 chart 프로퍼티로 통합(A안)
+2) 홈에서 /growth 진입 카드 제거          ✅  Phase 1 의 임시 연결 회수
+3) /growth 라우트는 남긴다 — 링크만 끊음  ✅
 ```
 
-3번이 중요하다. `/growth` 는 `CompanyTierCard` · `CompoundingStreakCard` · `EtfSnapshotCard` ·
-`StockChartStreamed` · `LockedCard` 의 **유일한 사용처**라, 라우트를 지우면 이 컴포넌트들이
-함께 죽는다. 물리 삭제는 Phase 6 에서 의존성 분석과 함께 한다.
+### 구현 메모
+
+`AllocationCard` 는 클라이언트 컴포넌트고 `StockChartStreamed` 는 섹터 backfill 때문에
+서버 컴포넌트다. 그래서 도넛을 **`ReactNode` 프로퍼티로 주입**한다(`/growth` 가 쓰던 것과 같은 패턴).
+`<Suspense>` 로 감싸 두었으므로 섹터 조회가 홈 first paint 를 막지 않는다.
+
+카드 안에는 이제 두 개의 다른 뷰가 있다. 겹쳐 보이지만 답하는 질문이 다르다.
+
+```text
+카드 본문   국가별 막대 + 종목 배분 도넛(종목·섹터·지역·자산유형)  → 전체 구성
+바텀시트    선택한 국가의 상위 8개 도넛 + 종목 목록                → 그 국가 안의 구성
+```
+
+### `/growth` 는 지금 링크가 없다 — 의도된 상태
+
+§5.1 의 격리 방식대로 **라우트는 살아 있고 진입 링크만 없다.** 남은 6개 카드는 전부
+§5 의 LEGACY 목록이라 노출하지 않는 것이 맞고, 살릴 가치가 있던 도넛은 홈으로 옮겨졌다.
+
+라우트를 지우면 안 된다. `/growth` 는 다음 컴포넌트들의 **유일한 사용처**다.
+
+```text
+CompanyTierCard · CompoundingStreakCard · EtfSnapshotCard · LockedCard
+```
+
+(`StockChartStreamed` 는 이제 홈에서도 쓰므로 이 목록에서 빠진다.)
+물리 삭제는 Phase 6 에서 의존성 분석과 함께 한다.
 
 ---
 
