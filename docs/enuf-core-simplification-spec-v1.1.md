@@ -311,17 +311,31 @@ KRW · USD · 기타
 
 ## 9.2 현행 온보딩의 문제
 
-`src/app/onboarding/actions.ts:109`:
+이 앱은 **보유종목의 매수를 그 매수일의 증자(DEPOSIT)로 변환한다.** `src/app/onboarding/actions.ts:109`:
 
 ```text
 설립자본(t0 시드) = 현금만.
 보유종목 자본은 각 "매수일"에 증자(DEPOSIT)로 투입한다.
 ```
 
-현행 온보딩은 **각 종목의 매수를 그 매수일의 DEPOSIT으로 변환한다.**
 그래서 매수일이 XIRR에 영향을 준다 — 엔진이 요구해서가 아니라 **입력 변환이 만들어낸 요구사항**이다.
 
-부작용도 있다. `actions.ts:345`:
+### 이 변환이 실제로 일어나는 곳은 세 군데다
+
+| 경로 | 위치 | 현재 사용 여부 |
+|---|---|---|
+| `foundCompany` 의 `stocks` 처리 | `onboarding/actions.ts:190` | **미사용** — `OnboardingRail.tsx:70` 이 `stocks: []`, `cash: 0` 으로 호출 |
+| 온보딩 J4 → BuyWizard → `recordBuys` | `BuyWizard.tsx` + `transactions/actions.ts:461` | **사용 중.** 실제 보유종목 입력 경로 |
+| 증권사 파일 가져오기 | `import/actions.ts:84` | 사용 중 |
+
+> ⚠️ 온보딩에서 종목을 담는 실제 경로는 `foundCompany` 가 아니라 **BuyWizard** 다.
+> `mode="ledger"` + `defaultFundingSource="deposit"` 조합이 거래일 입력을 요구하고,
+> `recordBuys` 가 그 날짜에 종목별 DEPOSIT을 만든다.
+> `foundCompany` 의 `stocks` 분기는 현재 도달하지 않는 코드다(Phase 6 정리 대상).
+
+### 부작용
+
+`onboarding/actions.ts:345` (`recordFirstBuy`):
 
 ```ts
 if (availableCash < cost) {
@@ -331,6 +345,7 @@ if (availableCash < cost) {
 ```
 
 매수 원가가 입력 현금을 초과하면 `initial_valuation` 을 자동 증액한다. 사용자가 모르는 보정이다.
+(`recordFirstBuy` 는 `components/onboarding/BuyForm.tsx` 에서만 쓰인다.)
 
 ## 9.3 v1.1 채택 모델 — 스냅샷 시작
 
@@ -388,8 +403,16 @@ TODAY        현재 평가액    +200,000,000
 ```
 
 차이는 그 데이터를 *만드는 방법*뿐이고, `xirr.ts` 는 결과만 읽는다.
-따라서 `holdings` 에 모델 구분 컬럼을 추가할 필요가 없고, 엔진 분기도 없다.
-**변경 범위는 `src/app/onboarding/actions.ts` 한 파일로 닫힌다.**
+따라서 `holdings` 에 모델 구분 컬럼을 추가할 필요가 없고, 엔진 분기도 없으며,
+**서버 액션(`recordBuys`)도 그대로 둔다.** 변경은 전부 클라이언트 입력 레이어에서 끝난다.
+
+```text
+BuyWizard      snapshot 프로퍼티 추가 → 거래일 UI 숨김, date = today
+OnboardingRail J4 에서 snapshot 전달
+```
+
+`recordBuys` 는 계속 `date` 를 받는다. 스냅샷 모드는 **그 값을 오늘로 고정할 뿐**이므로
+일반 기록 흐름(과거 거래 소급 입력)은 영향을 받지 않는다.
 
 ## 9.6 날짜를 안 받으면 잃는 것 (정직하게)
 
@@ -961,10 +984,15 @@ v1.1은 **싸고 체감이 큰 것 → 킬러 기능 → 무거운 통합** 순�
 - 엔진은 이미 있으므로 화면 작업이 대부분
 
 ## Phase 3 — 온보딩 스냅샷 모델 ⭐ 입력 노동 제거
-- `onboarding/actions.ts:112` 의 "매수일 → DEPOSIT" 변환 제거
-- 성과 시작점 선택 화면 추가 (§7.2)
-- `actions.ts:345` 의 `initial_valuation` 자동 증액 제거
+- `BuyWizard` 에 `snapshot` 프로퍼티 추가 — 거래일 UI를 숨기고 `date = today` 로 고정
+- `OnboardingRail` J4 에서 `snapshot` 전달 + 안내 문구 수정
+- **서버 액션·DB·엔진 변경 없음** (§9.5)
 - **기존 사용자 데이터는 건드리지 않는다** (§9.5)
+
+### Phase 3 후속 (별도 작업)
+- 성과 시작점 선택 화면 — "오늘부터 / 과거 시점부터" (§7.2)
+- `actions.ts:345` 의 `initial_valuation` 자동 증액 제거
+- `foundCompany` 의 도달 불가 `stocks` 분기 정리 → Phase 6
 
 ## Phase 4 — My Berkshire 통합
 - `/dashboard` + `/growth` + `/networth` + `/holdings` 병합

@@ -277,7 +277,8 @@ export function OnboardingRail({
           보유 종목을 등기할까요?
         </h1>
         <p className="mt-3 max-w-xs text-sm leading-relaxed text-muted-foreground">
-          지금 가진 종목을 추가하면 오늘부터 수익률 추적이 시작돼요. 나중에도 언제든 추가할 수 있어요.
+          종목·수량·평단만 있으면 돼요. 언제 샀는지는 묻지 않아요. 오늘부터 수익률
+          추적이 시작되고, 나중에도 언제든 추가할 수 있어요.
         </p>
 
         <div className="mt-10 flex w-full max-w-xs flex-col gap-3">
@@ -311,6 +312,8 @@ export function OnboardingRail({
         prices={prices}
         names={{}}
         defaultFundingSource="deposit"
+        // 온보딩은 "지금 가진 것"만 담는다 — 매수일을 묻지 않는다(스펙 v1.1 §7).
+        snapshot
         returnTo="/dashboard?welcome=1"
         onExit={() => setStep("J3")}
       />

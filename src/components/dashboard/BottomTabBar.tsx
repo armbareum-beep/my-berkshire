@@ -2,24 +2,39 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Search, Building2, Plus, Trophy, type LucideIcon } from "lucide-react";
+import { Building2, PieChart, Plus, type LucideIcon } from "lucide-react";
 
 /**
- * 하단 탭바 — **평시(resting) 화면에만**(대시보드·자산·챌린지·현금·자산배분·리밸런싱·계좌·종목 등).
+ * 하단 탭바 — **평시(resting) 화면에만**(대시보드·자산·현금·자산배분·리밸런싱·계좌·종목 등).
  * ⛔ "여정 중" 화면엔 넣지 않는다(이탈 방지, 디자인 §4): 온보딩·로그인 + **거래 입력(/transactions·/acquire)**.
  * 기록은 가운데 강조된 ＋ 버튼(토스식). 아이콘은 거래화면과 동일한 lucide 라인(이모지 금지).
+ *
+ * 구성은 코어 단순화 스펙 v1.1 §2 — 5탭(홈·검색·기록·랭킹·마이 버크셔)을 **2탭 + 기록**으로 축소.
+ * 검색은 기록 위저드 내부 검색으로, 랭킹은 legacy 로 내린다(라우트 자체는 남겨둔다, §5.1).
  */
 const TABS: {
   href: string;
   label: string;
   icon?: LucideIcon;
   action?: boolean;
+  /** 활성 판정용 경로 접두사. 생략하면 href 하나만 본다. */
+  match?: string[];
 }[] = [
-  { href: "/dashboard", label: "홈", icon: Home },
-  { href: "/search", label: "검색", icon: Search },
+  {
+    href: "/dashboard",
+    label: "마이 버크셔",
+    icon: Building2,
+    // §22.2 — /dashboard·/growth·/networth·/holdings 는 하나로 병합될 화면들이라 함께 활성.
+    match: ["/dashboard", "/growth", "/networth", "/holdings"],
+  },
   { href: "/transactions", label: "기록", action: true },
-  { href: "/ranking", label: "랭킹", icon: Trophy },
-  { href: "/growth", label: "마이 버크셔", icon: Building2 },
+  {
+    href: "/rebalance",
+    label: "자본배분",
+    icon: PieChart,
+    // §22.2 — /allocation + /rebalance 는 /allocate 로 통합 예정.
+    match: ["/rebalance", "/allocation"],
+  },
 ];
 
 export function BottomTabBar() {
@@ -45,7 +60,10 @@ export function BottomTabBar() {
               </li>
             );
           }
-          const active = pathname === t.href;
+          // 하위 경로(/rebalance/country 등)에서도 탭이 켜져 있어야 위치감이 유지된다.
+          const active = (t.match ?? [t.href]).some(
+            (p) => pathname === p || pathname.startsWith(`${p}/`),
+          );
           const Icon = t.icon!;
           return (
             <li key={t.href} className="flex-1">
