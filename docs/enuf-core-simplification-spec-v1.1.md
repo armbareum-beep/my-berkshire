@@ -242,6 +242,92 @@ initial_valuation = Σ(입력한 종목 수량 × 현재가, 표시통화 환산
 
 ---
 
+# 7.4 `/growth` 해체 계획 (2026-08-12 실사)
+
+`/growth`("마이 버크셔" 허브)는 Phase 4 에서 홈으로 흡수된다. 무엇을 옮기고 무엇을 내릴지
+카드 단위로 실사했다.
+
+## 결론 먼저
+
+**7개 카드 중 6개가 이미 §5 의 LEGACY 목록에 있다.** 옮길 것은 사실상 하나뿐이다.
+
+| # | 카드 | 컴포넌트 | §5 분류 | 처리 |
+|---|---|---|---|---|
+| 1 | 기업 등급 | `CompanyTierCard` | LEGACY "기업 등급" | 내림 |
+| 2 | 복리 무중단 | `CompoundingStreakCard` | LEGACY "복리 스트릭" | 내림 |
+| 3 | 내 지분 실적(투시 펀더멘털) | `LookThroughCard` | LEGACY "Look-through Financials" | 내림 |
+| 3-a | └ **종목 배분 도넛** | `StockChartStreamed` | **비-legacy** | **홈으로 이동** ⭐ |
+| 4 | ETF 포트폴리오 | `EtfSnapshotCard` | 비중=자산 / TER=비용 | 아래 참조 |
+| 5 | 규율 점수 | `StyleCard` | LEGACY "Style · 규율 점수" | 내림 |
+| 6 | 분기 리포트 · Annual Report | (인라인 섹션) | LEGACY "CFO Report · Annual Report" | 내림 |
+| 7 | 마일스톤 타임라인 | `TimelineCard` | LEGACY "Timeline" | 내림 |
+
+## 7.4.1 반드시 살릴 것 — 종목 배분 도넛
+
+`src/app/growth/page.tsx:168` 의 `stockChart` 는 개별주(비ETF) 비중 도넛이다.
+**투시(look-through)가 아니라 단순 배분 시각화**라 §5 의 legacy 사유에 해당하지 않는다.
+
+가장 최근 작업 4개가 이 카드에 몰려 있다.
+
+```text
+6af497f  마이버크셔 '내 지분 실적' 카드에 ETF 배분 도넛 차트 통합
+9d3261a  내 지분 실적 카드에 종목 배분 차트 추가 + 혼합형 ETF 분류 수정
+f38ac43  도넛 차트 '기타' 조각 탭하면 구성 펼침
+d95d940  내 지분 실적 표에서 금액(내 몫·보유) 제거
+```
+
+`/growth` 를 통째로 내리면 이 작업이 함께 묻힌다. **도넛만 떼어 홈으로 옮긴다.**
+
+### 겹침 주의
+
+홈에는 이미 `AllocationCard` 가 있다(`dashboard/page.tsx`).
+
+| | 보여주는 것 | 형태 |
+|---|---|---|
+| 홈 `AllocationCard` | 국가별 → 탭하면 종목 드릴다운(유형별 탭) | 목록 |
+| `/growth` 도넛 | 개별주 종목별 비중 | 도넛 |
+
+**정보는 겹치고 표현이 다르다.** 두 가지 선택지가 있다.
+
+```text
+A. AllocationCard 안에 도넛을 넣는다   → 카드 1개 유지, 홈이 안 길어짐
+B. 별도 "종목 배분" 카드로 홈에 둔다   → 구현 단순, 홈에 카드 1개 추가
+```
+
+A 를 권장한다 — 자산 구성이라는 같은 질문에 답하는 두 뷰를 한 카드에 두는 편이
+§30 의 "홈 first paint" 기준에 맞는다.
+
+## 7.4.2 ETF 카드 — 쪼개서 처리
+
+`EtfSnapshotCard` 는 성격이 다른 두 정보를 한 카드에 담고 있다.
+
+```text
+ETF 이름 + 비중 목록   → 자산 구성. 홈 AllocationCard 의 드릴다운이 이미 같은 정보를 준다
+가중평균 TER          → 보수(비용) 지표. §5 "Friction / 마찰비용" 과 같은 성격
+```
+
+따라서 **별도 이동 없이 카드 전체를 내린다.** 비중은 홈에 이미 있고, TER 은 legacy 다.
+`/etf-portfolio` 라우트는 §5.1 대로 그대로 두고 링크만 끊는다.
+
+## 7.4.3 종목 상세로 가는 것
+
+투시 펀더멘털(연결 순이익·PER/PBR/ROE)은 **포트폴리오 합산 레벨에서는 내리지만**,
+종목 단위 실적 요약은 §20 의 KEEP 목록("최근 실적 요약")에 이미 있다. 새로 옮길 것은 없다.
+
+## 7.4.4 순서
+
+```text
+1) 종목 배분 도넛을 홈으로 이동 (7.4.1)
+2) 홈에서 /growth 진입 카드 제거 — Phase 1 에서 넣은 임시 연결(§27 Phase 1)
+3) /growth 라우트는 남긴다 — §5.1 대로 링크만 끊는다
+```
+
+3번이 중요하다. `/growth` 는 `CompanyTierCard` · `CompoundingStreakCard` · `EtfSnapshotCard` ·
+`StockChartStreamed` · `LockedCard` 의 **유일한 사용처**라, 라우트를 지우면 이 컴포넌트들이
+함께 죽는다. 물리 삭제는 Phase 6 에서 의존성 분석과 함께 한다.
+
+---
+
 # 8. My Berkshire 화면
 
 My Berkshire가 새로운 Home이다. 경로: `/` 또는 `/my-berkshire`.
