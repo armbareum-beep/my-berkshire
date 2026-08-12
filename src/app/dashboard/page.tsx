@@ -52,6 +52,9 @@ import { CurrencyProvider } from "@/components/dashboard/CurrencyProvider";
 import { CurrencyView } from "@/components/dashboard/CurrencyView";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { StockChartStreamed } from "@/components/growth/StockChartStreamed";
+import { ChartSkeleton } from "@/components/etf/ChartSkeleton";
+import { LEGACY_RANKING_SYNC } from "@/lib/config/legacy";
 import {
   HeroValuationCard,
   PriceUnavailableCard,
@@ -183,7 +186,9 @@ async function DashboardContent({
   // 상장(IPO) 게이트(036) — 미상장 유저는 애초에 after() 자체를 등록하지 않는다(낭비 계산 제거).
   // upsertRankingScore 내부에도 같은 게이트가 있어(이중 안전망) 여기서 빠뜨려도 저장은 안 되지만,
   // 여기서 거르면 드로다운·milestones·composition 계산 자체를 스킵할 수 있다.
-  if (holding.listed_at) {
+  // 2026-08-12 — 랭킹을 legacy 로 내리면서(§5) 이 갱신도 껐다. 아래 블록은 스위치를
+  // true 로 되돌리면 그대로 되살아난다(src/lib/config/legacy.ts).
+  if (LEGACY_RANKING_SYNC && holding.listed_at) {
     after(async () => {
       const [benchmark, liabilities, secMeta, manualAssetsRaw, manualIncome] =
         await Promise.all([
@@ -320,6 +325,7 @@ async function DashboardContent({
       ) : (
         <Suspense key="holdings" fallback={<DashboardStackSkeleton />}>
           <HoldingsStreamed
+            supabase={supabase}
             dataKRW={dataKRW}
             factorUSD={factorUSD}
             secMetaPromise={secMetaPromise}
@@ -802,12 +808,14 @@ function RealDivisionsCard({
 }
 
 async function HoldingsStreamed({
+  supabase,
   dataKRW,
   factorUSD,
   secMetaPromise,
   accountGroupsKRWPromise,
   memberNamesPromise,
 }: {
+  supabase: SupabaseServer;
   dataKRW: DashboardData;
   factorUSD: number;
   secMetaPromise: Promise<Awaited<ReturnType<typeof loadSecurityMeta>>>;
@@ -853,6 +861,29 @@ async function HoldingsStreamed({
     });
   }
 
+  // 종목 배분 도넛(종목·섹터·지역·자산유형) — /growth 에서 이전(스펙 v1.1 §7.4.1).
+  // 개별주 슬리브 내부 비중 기준. 섹터는 공시 API backfill 이 필요해 Suspense 로 흘린다.
+  const stockAllocations = dataKRW.allocation.filter(
+    (a) => secMeta[a.symbol]?.assetType !== "ETF",
+  );
+  const totalStockValue = stockAllocations.reduce((s, a) => s + a.value, 0);
+  const stockChart =
+    stockAllocations.length > 0 ? (
+      <Suspense fallback={<ChartSkeleton embedded />}>
+        <StockChartStreamed
+          supabase={supabase}
+          slices={stockAllocations.map((a) => ({
+            symbol: a.symbol,
+            name: secMeta[a.symbol]?.name ?? a.name,
+            stockWeight: totalStockValue > 0 ? a.value / totalStockValue : 0,
+            countryTag: a.countryTag,
+          }))}
+          meta={secMeta}
+          embedded
+        />
+      </Suspense>
+    ) : null;
+
   return (
     <div className="flex flex-col gap-4">
       <SectionCard
@@ -869,9 +900,14 @@ async function HoldingsStreamed({
         />
       </SectionCard>
 
-      {/* 보유계좌 → 국가별 자산구성. 국가 누르면 드랍시트. */}
+      {/* 보유계좌 → 국가별 자산구성. 국가 누르면 드랍시트. 하단에 종목 배분 도넛. */}
       {dataKRW.priceAvailable && (
-        <AllocationCard slices={countrySlices} itemsByCountry={itemsByCountry} currency={dataKRW.currency} />
+        <AllocationCard
+          slices={countrySlices}
+          itemsByCountry={itemsByCountry}
+          currency={dataKRW.currency}
+          chart={stockChart}
+        />
       )}
     </div>
   );

@@ -63,6 +63,7 @@ export function BuyWizard({
   initialName,
   initialQty,
   defaultFundingSource = "cash",
+  snapshot = false,
   returnTo,
   onExit,
 }: {
@@ -77,6 +78,12 @@ export function BuyWizard({
   initialName?: string;
   initialQty?: number;
   defaultFundingSource?: "cash" | "deposit";
+  /**
+   * 현재 보유 스냅샷 모드 — 거래일을 묻지 않고 전부 `today` 로 기록한다(스펙 v1.1 §7).
+   * 온보딩에서 "지금 가진 것"을 담을 때 쓴다. 전체 XIRR은 외부 현금흐름만 쓰므로
+   * (`src/lib/finance/xirr.ts`) 과거 매수일이 없어도 수익률은 정확하다 — §9.6 참조.
+   */
+  snapshot?: boolean;
   returnTo?: string;
   onExit: () => void;
 }) {
@@ -174,7 +181,8 @@ export function BuyWizard({
           price: it.price,
         })),
         accountId,
-        date: mode === "ledger" ? date : today,
+        // 스냅샷 모드는 거래일을 받지 않는다 → 추적 시작일(오늘)로 기록.
+        date: mode === "ledger" && !snapshot ? date : today,
         fundingSource,
       });
       if (!res.ok) {
@@ -432,7 +440,7 @@ export function BuyWizard({
             )}
           </div>
 
-          {mode === "ledger" && (
+          {mode === "ledger" && !snapshot && (
             <div>
               <label className="text-sm font-medium">거래일</label>
               <input
@@ -443,6 +451,13 @@ export function BuyWizard({
                 className="mt-2 h-12 w-full rounded-xl border border-input bg-card px-3 text-base outline-none"
               />
             </div>
+          )}
+
+          {snapshot && (
+            <p className="rounded-xl bg-secondary px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
+              지금 가진 것을 담는 중이라 매수일은 묻지 않아요. 수익률은 오늘부터
+              정확하게 기록됩니다.
+            </p>
           )}
 
           <p className="text-center text-base tabular-nums">
