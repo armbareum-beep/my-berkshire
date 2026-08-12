@@ -54,6 +54,7 @@ import { SectionCard } from "@/components/ui/SectionCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { StockChartStreamed } from "@/components/growth/StockChartStreamed";
 import { ChartSkeleton } from "@/components/etf/ChartSkeleton";
+import { LEGACY_RANKING_SYNC } from "@/lib/config/legacy";
 import {
   HeroValuationCard,
   PriceUnavailableCard,
@@ -185,7 +186,9 @@ async function DashboardContent({
   // 상장(IPO) 게이트(036) — 미상장 유저는 애초에 after() 자체를 등록하지 않는다(낭비 계산 제거).
   // upsertRankingScore 내부에도 같은 게이트가 있어(이중 안전망) 여기서 빠뜨려도 저장은 안 되지만,
   // 여기서 거르면 드로다운·milestones·composition 계산 자체를 스킵할 수 있다.
-  if (holding.listed_at) {
+  // 2026-08-12 — 랭킹을 legacy 로 내리면서(§5) 이 갱신도 껐다. 아래 블록은 스위치를
+  // true 로 되돌리면 그대로 되살아난다(src/lib/config/legacy.ts).
+  if (LEGACY_RANKING_SYNC && holding.listed_at) {
     after(async () => {
       const [benchmark, liabilities, secMeta, manualAssetsRaw, manualIncome] =
         await Promise.all([

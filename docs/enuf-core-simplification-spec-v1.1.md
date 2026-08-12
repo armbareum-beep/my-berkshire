@@ -125,8 +125,49 @@ legacy 대상 라우트 상당수가 **인터셉트 라우트와 짝으로 존�
 
 1. **네비게이션·카드에서 진입 링크를 제거한다** ← 이것만으로 사용자에겐 사라진 것과 같다
 2. 라우트 파일은 **그 자리에 둔다**
-3. 필요하면 `NEXT_PUBLIC_LEGACY=1` 플래그로 직접 접근을 차단한다
+3. **살아 있는 백그라운드 작업이 있으면 스위치로 끈다** — `src/lib/config/legacy.ts`
 4. 물리 이동·삭제는 **Phase 6**에서 의존성 분석과 함께 수행한다
+
+## 5.2 "숨김"의 실제 비용 — 실사 (2026-08-12)
+
+링크만 끊으면 정말 비용이 0인지 확인했다. **대부분 그렇지만 하나는 아니었다.**
+
+| 기능 | 링크 끊은 뒤 상태 | 비용 |
+|---|---|---|
+| Timeline(연혁) | 순수 뷰. 데이터는 `computeDashboard` 가 이벤트에서 동기 계산 | **0** |
+| Style / 규율 점수 | `/style` · `/growth` 방문 시에만 스냅샷 저장 → 방문 자체가 없음 | **0** |
+| Look-through · CFO 리포트 · Annual Report | 해당 라우트 방문 시에만 계산 | **0** |
+| 라우트 번들 | Next.js 라우트 단위 코드 스플리팅 | 홈 번들에 **영향 없음** |
+| **Ranking** | **홈 방문마다 백그라운드 갱신이 계속 돌고 있었다** | **있음 → 껐다** |
+
+### Ranking 만 살아 있던 이유
+
+`src/app/dashboard/page.tsx` 가 홈 방문 때마다 `after()` 안에서 다음을 수행했다.
+
+```text
+loadDrawdownEpisodes → buildPublicMilestones → computeCompositionPct
+→ computeHoldingsPct → upsertRankingScore(ranking_scores 쓰기)
+```
+
+아무도 볼 수 없는 리더보드를 위한 계산과 DB 쓰기다.
+`holding.listed_at` 게이트가 있어 상장 선언 유저에게만 돌았고, `after()` 라 응답을
+막지는 않았지만 서버 작업과 쓰기는 실재했다.
+
+> 참고: 벤치마크(PME) 조회는 이 블록과 무관하다. 성과 카드(`PerformanceStreamed`)가
+> 같은 프라미스를 쓰므로 랭킹을 꺼도 계속 돈다.
+
+### 결정 — 끈다 (부활 미정 아님, 부활 안 할 수도 있음)
+
+```ts
+// src/lib/config/legacy.ts
+export const LEGACY_RANKING_SYNC: boolean = false;
+```
+
+끈 뒤에도 **`ranking_scores` 테이블과 기존 행은 그대로 둔다**(§23 삭제 금지).
+`/ranking` 을 직접 방문하면 그 페이지에서는 여전히 자기 점수를 갱신한다 —
+라우트는 살려두는 격리 방식(§5.1)과 일관된다.
+
+되돌리려면 스위치 값 하나만 바꾸면 된다.
 
 ---
 
