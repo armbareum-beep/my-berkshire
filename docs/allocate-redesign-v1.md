@@ -1,5 +1,7 @@
 # Allocate 재설계 v1 — 한 화면 한 가지 일
 
+> **상태: Phase 1~5 구현 완료 (2026-08-13).** 아래는 설계 근거와 최종 구조.
+
 > 작성: 2026-08-13
 > 선행 문서: `enuf-core-simplification-spec-v1.1.md` §12~§17 · `spec-vs-prd-reconciliation.md` · `design-strategy-v1.md`
 > 결정 사항: 목표비중 **평면 전환 + 레거시 편집 화면 은퇴** · 홈은 자산 유지(Allocate는 2번째 탭)
@@ -166,7 +168,43 @@
 
 ---
 
-## 5. 순서와 쪼개기
+## 5. 구현하며 계획과 달라진 것
 
-Phase 1 → 2 → 3 → 4 → 5 순서로 **PR 을 나눈다.** Phase 1 은 화면 변화가 없어 단독 머지 가능하고,
-Phase 5 는 앞의 넷이 다 있어야 안전하다. 한 PR 에 몰면 이번처럼 "쌓기"가 반복된다.
+계획대로 안 된 세 가지를 남긴다.
+
+### 5.1 계획 저장 기능을 새 화면으로 옮겼다 (계획에 없던 작업)
+
+Phase 5 에서 레거시 편집기를 은퇴시키자 `saveRebalancePlan` 의 호출자가 사라졌다. 그대로 뒀으면
+**자본배분 계획 진행률**(홈 배너 · `PlanCard`)이 조용히 죽었을 것이다 — 계획을 만들 수 있는 곳이
+없어지므로. 그래서 `/allocate/plan` 에 "계획으로 저장" 버튼을 붙였다.
+
+이를 위해 `AllocateRow.price`(표시통화 현재가)를 추가했다 — 배분 **금액**을 **주수**로 바꿔야
+계획에 저장할 수 있다. 소수점 주식을 만들지 않으려고 버림하고, 시세를 모르는 종목은 계획에서 뺀다.
+
+### 5.2 `BottomTabBar` 의 `match` 에서 `/rebalance` 를 빼지 않았다
+
+계획은 빼라고 했지만, `/rebalance` 를 삭제하지 않고 **안내 화면으로 남겼기 때문에** 빼면 그
+화면에서 활성 탭이 사라진다. 여전히 자본배분 계열 화면이므로 `match` 에 남긴다.
+
+### 5.3 레거시 편집기와 2층 저장 액션을 지웠다
+
+`SleeveRebalanceEditor` · `CategoryRebalanceEditor` · `setTargetWeights` · `setCategoryTargets` 를
+삭제했다. 진입 동선만 끊고 코드를 남기면 은퇴한 2층 모델을 다시 쓰게 된다. Phase 1 에 넣었던
+"평면 데이터 덮어쓰기 방지" 가드도 함께 사라졌다 — 덮어쓸 코드 자체가 없어졌으므로.
+
+`category_targets` **컬럼은 지우지 않는다.** `/allocation/[tag]` 조회와 레거시 데이터 환산이
+계속 읽는다.
+
+---
+
+## 6. 최종 화면 구조
+
+```text
+/allocate            보기   투자 가능 현금(히어로) · 오늘의 1순위 · 배분 순위    카드 3
+/allocate/plan       실행   금액 → 결과(왜 이 금액인지) → 매수 기록 / 계획 저장  탭바 없음
+/allocate/settings   설정   목표비중 · 후보(산업별) · 내 허들 · 투자 가능 현금
+/allocate/universe   →     /allocate/settings 로 리다이렉트(옛 링크 보존)
+/rebalance           안내   계획 진행률 + 배분 설정으로 안내
+/rebalance/[tag]     →     /allocation/[tag] 조회로 리다이렉트
+/allocation/[tag]    조회   현재 자산배분 도넛 — 그대로 유지(편집이 아니라 중복 아님)
+```

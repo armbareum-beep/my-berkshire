@@ -74,28 +74,22 @@ export function UniversePanel({
   return (
     <div className="flex flex-col gap-4">
       <section className="rounded-2xl bg-card p-5 shadow-card">
-        <p className="text-sm font-semibold">
-          후보 {approved.length}종목 / 전체 {rows.length}종목
-        </p>
-        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-          후보만 자본배분 대상이 됩니다. 아직 한 주도 없는 기업도 후보로 넣을 수 있어요 —
-          목표비중을 정해두면 첫 매수부터 배분안에 나옵니다.
-        </p>
-        {/* 후보를 고른 다음 할 일은 늘 목표비중이다 — 그게 없으면 배분될 근거가 없다. */}
-        <div className="mt-4 flex gap-2">
-          <Link
-            href="/search"
-            className="inline-flex h-11 flex-1 items-center justify-center rounded-xl bg-secondary px-4 text-sm font-semibold transition active:scale-[0.98]"
-          >
-            기업 찾기
-          </Link>
-          <Link
-            href="/rebalance"
-            className="inline-flex h-11 flex-1 items-center justify-center rounded-xl bg-secondary px-4 text-sm font-semibold transition active:scale-[0.98]"
-          >
-            목표비중 정하기
-          </Link>
+        <div className="flex items-baseline justify-between">
+          <p className="text-sm font-semibold">후보</p>
+          <p className="text-xs tabular-nums text-muted-foreground">
+            {approved.length}/{rows.length}
+          </p>
         </div>
+        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+          후보만 배분 대상이 됩니다. 아직 한 주도 없는 기업도 넣을 수 있어요 — 목표비중만
+          정해두면 첫 매수부터 배분안에 나옵니다.
+        </p>
+        <Link
+          href="/search"
+          className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-xl bg-secondary px-4 text-sm font-semibold transition active:scale-[0.98]"
+        >
+          기업 찾기
+        </Link>
       </section>
 
       {groups.length === 0 ? (
@@ -160,9 +154,8 @@ export function UniversePanel({
       )}
 
       <p className="px-2 text-xs leading-relaxed text-muted-foreground">
-        이 앱은 좋은 기업인지 평가하지 않아요. 기업을 고르는 건 사람이 하고, 가격과 배분은
-        시스템이 계산합니다. 산업별로 묶어 보여주는 건 어디에 쏠려 있는지 직접 보시라는
-        뜻이에요.
+        이 앱은 좋은 기업인지 평가하지 않아요. 고르는 건 사람이 하고, 가격과 배분은 시스템이
+        계산합니다. 산업별로 묶는 건 어디에 쏠려 있는지 직접 보시라는 뜻이에요.
       </p>
     </div>
   );
