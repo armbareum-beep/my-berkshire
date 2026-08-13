@@ -15,7 +15,11 @@ import {
   type PriceMap,
 } from "./valuation";
 
-const MIN_DAYS_FOR_ANNUALIZED = 90; // 설립 90일 미만은 연환산 금지(명세 4-1)
+/**
+ * 연환산(XIRR) 최소 기간 — **자본이 실제로 굴러간 일수** 기준(명세 4-1).
+ * 달력이 아니라 `capitalWeightedDays` 로 잰다. 벤치마크도 같은 값을 써야 비교가 성립한다.
+ */
+export const MIN_INVESTED_DAYS = 90;
 
 export type ReturnStatus =
   | "xirr" // 연환산 XIRR 표시
@@ -42,6 +46,37 @@ export interface ReturnResult {
   /** 시세 미확보 종목(있으면 price_unavailable 원인). */
   missingSymbols: string[];
   message?: string;
+}
+
+/**
+ * **자본 가중 경과일** — "내 돈이 실제로 일한 기간".
+ *
+ * 연환산(XIRR) 가드를 달력(설립일~오늘)으로 재면 안 된다. 설립 평가액이 0이고 실제 돈은
+ * 최근에 들어온 경우, 달력으로는 90일을 넘겨도 돈은 며칠밖에 안 굴렀다. 그 상태로
+ * 연환산하면 며칠치 수익이 몇백 %로 부풀려진다(수학적으로는 맞지만 의미가 없다).
+ *
+ * ```text
+ * 가중경과일 = Σ(투입액 × 그 돈이 굴러간 일수) ÷ Σ(투입액)
+ * ```
+ *
+ * 투입(설립 평가액 + 입금)만 가중한다 — 출금은 자본을 빼는 것이라 기간을 늘리지 않는다.
+ * 투입이 0이면 0을 반환한다(연환산 불가).
+ */
+export function capitalWeightedDays(
+  holding: HoldingSnapshot,
+  events: InvestmentEvent[],
+  today: string,
+): number {
+  let weighted = 0;
+  let total = 0;
+  const add = (amount: number, date: string) => {
+    if (!(amount > 0)) return;
+    weighted += amount * Math.max(0, daysSince(date, today));
+    total += amount;
+  };
+  add(holding.initialValuation, holding.foundedAt);
+  for (const e of events) if (e.type === "DEPOSIT") add(e.priceOrAmount, e.date);
+  return total > 0 ? weighted / total : 0;
 }
 
 /** 설립평가액(−), 입금(−), 출금(+), 오늘 평가액(+) 으로 flows 구성(명세 1). */
@@ -142,10 +177,13 @@ export function computeReturn(
   const cumulative = cumulativeReturn(holding, events, terminalValue);
   const cagrValue = cagr(holding, events, terminalValue, days);
 
-  // 엣지 1: 설립 90일 미만 → 연환산 금지, 누적수익률만.
+  // 엣지 1: **자본이 90일 미만 굴렀으면** 연환산 금지, 누적수익률만.
+  // 달력(설립일~오늘)이 아니라 자본 가중 경과일로 잰다 — 설립 평가액이 0이고 돈이 최근에
+  // 들어왔으면 달력으로 90일을 넘겨도 실제로는 며칠치 수익이라, 연환산하면 몇백 %가 된다.
   // 기다림이 결핍처럼 느껴지지 않도록 정적 안내 대신 D-day 카운트다운으로 보여준다.
-  if (days < MIN_DAYS_FOR_ANNUALIZED) {
-    const remaining = Math.max(1, MIN_DAYS_FOR_ANNUALIZED - days);
+  const investedDays = capitalWeightedDays(holding, events, today);
+  if (investedDays < MIN_INVESTED_DAYS) {
+    const remaining = Math.max(1, Math.ceil(MIN_INVESTED_DAYS - investedDays));
     return {
       ...base,
       cumulativeReturn: cumulative,

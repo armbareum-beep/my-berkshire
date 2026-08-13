@@ -102,6 +102,8 @@ export function TxnWizard({
   const [amount, setAmount] = useState("");
   /** 환전 실수령액(받는 통화). 비우면 시장환율 계산값을 쓴다. */
   const [toAmount, setToAmount] = useState("");
+  /** 외화 증자·인출의 실제 적용환율(1 외화당 ₩). 비우면 거래일 시장환율. */
+  const [fxRate, setFxRate] = useState("");
   const [date, setDate] = useState(today);
   const [fee, setFee] = useState("");
   const [feeOpen, setFeeOpen] = useState(false);
@@ -203,6 +205,8 @@ export function TxnWizard({
     if (cfg.needsQty) s.push("qty");
     else s.push("amount");
     // 환전은 실수령액을 따로 묻는다 — 증권사 스프레드 때문에 계산값과 다르다.
+    // (외화 증자·인출의 적용환율은 통화가 정해지기 전이라 스텝으로 못 만든다 →
+    //  금액 화면 안에 인라인으로 둔다.)
     if (cfg.key === "EXCHANGE") s.push("toAmount");
     if (mode === "ledger") s.push("date");
     s.push("review");
@@ -236,6 +240,8 @@ export function TxnWizard({
         toCurrency: isExchange ? toCcy : undefined,
         // 비우면 서버가 시장환율로 계산한다(예전 동작 유지).
         toAmount: isExchange && Number(toAmount) > 0 ? Number(toAmount) : null,
+        fxRateOverride:
+          isCash && cashCcy !== "KRW" && Number(fxRate) > 0 ? Number(fxRate) : null,
       });
       if (!res.ok) {
         setError(res.error);
@@ -447,15 +453,53 @@ export function TxnWizard({
     return shell(
       isExchange ? "얼마를 바꿀까요?" : cfg.key === "DIVIDEND" ? "배당을 얼마 받았나요?" : `${cfg.label} 금액은?`,
       isExchange ? `${currencyMeta(cashCcy).label} → ${currencyMeta(toCcy).label}` : undefined,
-      <AmountBody
-        value={amount}
-        onChange={setAmount}
-        prefix={m.symbol}
-        decimal={m.digits > 0}
-        quickAddSteps={stepsCfg.steps}
-        quickAddLabel={stepsCfg.label}
-        hint={hint}
-      />,
+      <>
+        <AmountBody
+          value={amount}
+          onChange={setAmount}
+          prefix={m.symbol}
+          decimal={m.digits > 0}
+          quickAddSteps={stepsCfg.steps}
+          quickAddLabel={stepsCfg.label}
+          hint={hint}
+        />
+        {/* 외화 증자·인출은 증권사 고시환율(스프레드 포함)로 처리된다. 시장환율로 기록하면
+            ₩ 장부가 실제 움직인 돈과 어긋나므로 실제 값을 받는다. 스텝을 따로 두지 않는 건
+            통화가 이 화면에서 정해지기 때문(스텝 목록은 그 전에 만들어진다). */}
+        {isCash && cashCcy !== "KRW" && (
+          <div className="mt-6">
+            <label className="text-sm font-medium">
+              적용 환율 <span className="text-muted-foreground">(선택)</span>
+            </label>
+            <input
+              type="number"
+              inputMode="decimal"
+              step="any"
+              value={fxRate}
+              onChange={(e) => setFxRate(e.target.value)}
+              placeholder={
+                cashRate
+                  ? `시장환율 ${cashRate.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+                  : "1 " + cashCcy + " 당 원"
+              }
+              className="mt-2 h-12 w-full rounded-xl border border-input bg-card px-3 text-base tabular-nums outline-none"
+            />
+            <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+              {Number(fxRate) > 0 && amountN > 0 ? (
+                <>
+                  이 환율로 ₩{" "}
+                  <span className="font-semibold tabular-nums">
+                    {won(amountN * Number(fxRate))}
+                  </span>{" "}
+                  로 기록해요.
+                </>
+              ) : (
+                "증권사 확인창의 적용환율을 넣으면 그 값으로 기록해요. 비우면 거래일 시장환율을 씁니다."
+              )}
+            </p>
+          </div>
+        )}
+      </>,
       nextBtn(
         "다음",
         amountN > 0 && !withdrawShort && (!isExchange || cashCcy !== toCcy),
@@ -549,7 +593,17 @@ export function TxnWizard({
   } else if (isCash) {
     lines.push({ k: "통화", v: currencyMeta(cashCcy).label });
     lines.push({ k: cfg.label + " 금액", v: nativeMoney(amountN, cashCcy) });
-    if (cashPreview) lines.push({ k: "₩ 환산", v: won(cashPreview.krw) });
+    // 적용환율을 넣었으면 그 값으로 환산해 보여준다(시장환율 미리보기 대신).
+    const appliedRate = cashCcy !== "KRW" && Number(fxRate) > 0 ? Number(fxRate) : null;
+    if (appliedRate) {
+      lines.push({
+        k: "적용 환율",
+        v: `1 ${cashCcy} = ₩${appliedRate.toLocaleString(undefined, { maximumFractionDigits: 2 })}`,
+      });
+      lines.push({ k: "₩ 환산", v: won(amountN * appliedRate) });
+    } else if (cashPreview) {
+      lines.push({ k: "₩ 환산", v: won(cashPreview.krw) });
+    }
     if (mode === "ledger") lines.push({ k: "거래일", v: date });
   } else if (isExchange) {
     const typedTo = Number(toAmount) || 0;

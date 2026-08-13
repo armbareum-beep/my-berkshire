@@ -7,7 +7,7 @@
  */
 
 import type { PriceMap } from "./valuation";
-import { getFxToKrw } from "./fx";
+import { getFxBars, getFxToKrw, pickRateOnOrBefore, type FxBar } from "./fx";
 import { financeSource } from "./source";
 import { kisFetch, type KisQuoteResponse } from "./kis/client";
 import { normalizeDomesticPrice, normalizeOverseasPrice } from "./kis/normalize";
@@ -353,7 +353,8 @@ async function fetchCloseSeriesOne(
 
 /**
  * 종목들의 일별 종가 시계열을 **₩ 환산**해 반환(자산추이 재구성용).
- * 외화 종목은 **현재 환율**로 환산(과거 환율 시계열은 추후 — 환율반영 벤치마크와 묶음).
+ * 외화 종목은 **그 날짜의 환율**로 환산한다 — 오늘 환율로 과거까지 곱하면 환율이 움직일
+ * 때마다 지나간 자산이 소급해서 변한다. 과거 봉을 못 찾은 날만 현재 환율로 폴백한다.
  * @param from 시작 YYYY-MM-DD(보통 설립일 14일 전 여유는 호출부에서).
  * @param to   종료 YYYY-MM-DD(오늘).
  * @param interval 봉 간격(기본 일봉). 5년·최대 차트는 "1mo"(월봉)로 가볍게.
@@ -383,25 +384,62 @@ export async function getDailyKrwCloses(
   }
   if (Object.keys(native).length === 0) return { series: {}, available: false };
 
-  // 통화별 현재 환율로 ₩ 환산.
+  // ── ₩ 환산: **그 날짜의 환율**로 ──
+  //
+  // 예전에는 과거 봉까지 전부 "오늘 환율"로 곱했다. 그러면 오늘 환율이 오를 때
+  // **작년 자산까지 소급해서 올라간다** — 이미 지나간 과거가 계속 바뀌는 셈이라 틀렸다.
+  // 각 봉을 그 날짜 환율로 환산하면 과거 구간이 고정되고, 곡선의 기울기에 환율 변동이
+  // 제대로 반영된다(원화 투자자에게 해외 주식 수익률은 환율 포함이 맞다).
   const currencies = [...new Set(Object.values(native).map((v) => v.currency))];
-  const fx = await getFxToKrw(currencies);
+  const foreign = currencies.filter((c) => c !== "KRW");
+  // 현재 환율은 과거 봉을 못 찾았을 때의 폴백으로만 쓴다.
+  const [fx, fxSeries] = await Promise.all([
+    getFxToKrw(currencies),
+    Promise.all(
+      foreign.map((c) => getFxBars(c, from, to).then((bars) => [c, bars] as const)),
+    ),
+  ]);
+  const barsByCcy = new Map<string, FxBar[]>(fxSeries);
 
   const series: Record<string, DailyBar[]> = {};
   for (const [sym, v] of Object.entries(native)) {
-    const rate = v.currency === "KRW" ? 1 : fx[v.currency];
-    if (!rate) continue; // 환율 못 받은 통화 제외(잘못된 ₩ 방지)
-    // 가격 필드만 ₩ 환산, 거래량(수량)은 그대로.
-    series[sym] = v.bars.map((b) => ({
+    const fallback = v.currency === "KRW" ? 1 : fx[v.currency];
+    if (!fallback) continue; // 환율 못 받은 통화 제외(잘못된 ₩ 방지)
+    series[sym] = convertBarsToKrw(
+      v.bars,
+      v.currency === "KRW" ? [] : (barsByCcy.get(v.currency) ?? []),
+      fallback,
+    );
+  }
+  return { series, available: true };
+}
+
+/**
+ * 봉 시계열을 ₩로 환산 — **봉마다 그 날짜의 환율**을 쓴다.
+ *
+ * 하나의 환율로 전 구간을 곱하면 안 된다. 그러면 오늘 환율이 움직일 때마다 과거
+ * 자산까지 소급해서 변한다. 과거는 이미 일어난 일이라 고정되어야 한다.
+ *
+ * @param fxBars 그 통화의 일별 환율. 빈 배열이면 전부 `fallbackRate`(원화 종목은 1).
+ * @param fallbackRate 그 날짜 환율을 못 찾았을 때만 쓰는 값(보통 현재 환율).
+ */
+export function convertBarsToKrw(
+  bars: DailyBar[],
+  fxBars: FxBar[],
+  fallbackRate: number,
+): DailyBar[] {
+  return bars.map((b) => {
+    const rate = pickRateOnOrBefore(fxBars, b.date) ?? fallbackRate;
+    return {
       date: b.date,
       close: b.close * rate,
       ...(b.open != null ? { open: b.open * rate } : {}),
       ...(b.high != null ? { high: b.high * rate } : {}),
       ...(b.low != null ? { low: b.low * rate } : {}),
+      // 거래량은 수량이라 환산하지 않는다.
       ...(b.volume != null ? { volume: b.volume } : {}),
-    }));
-  }
-  return { series, available: true };
+    };
+  });
 }
 
 /**
