@@ -26,6 +26,7 @@ import { DnaYearPanel } from "@/components/stocks/DnaYearPanel";
 import { DiscountRateInput } from "@/components/stocks/DiscountRateInput";
 import { ExpectedReturnCard } from "@/components/stocks/ExpectedReturnCard";
 import { loadExpectedReturnAssumption } from "@/lib/expectedReturnAssumptions";
+import { toNativeEps } from "@/lib/finance/cachedEps";
 import { GrowthRateInput } from "@/components/stocks/GrowthRateInput";
 import { FundamentalsTrend } from "@/components/stocks/FundamentalsTrend";
 import { FinancialHealth } from "@/components/stocks/FinancialHealth";
@@ -280,6 +281,8 @@ export async function StockDetailContent({
         : portfolio.usdKrw && portfolio.usdKrw > 0
           ? price / portfolio.usdKrw
           : null;
+  // 공시 EPS(자동값) — basisEps 는 ₩ 기준(edgar.ts 가 미국 공시를 ₩ 로 환산)이라
+  // 가정 입력 단위(종목 통화)에 맞춰 되돌린다. 아래 basisEps 정의 이후에 계산한다.
   const erValues = {
     currentMetric: erAssumption?.currentMetric ?? null,
     expectedGrowth: erAssumption?.expectedGrowth ?? null,
@@ -314,6 +317,8 @@ export async function StockDetailContent({
   const shares = usingTtm ? fundamentalSet.ttm!.shares : fundamentals?.shares ?? null;
   const basisEps =
     basis?.netIncome != null && shares && shares > 0 ? basis.netIncome / shares : null;
+  // 기대수익률 카드용 자동 이익력 — basisEps 는 ₩ 이므로 종목 통화로 되돌린다(단위 일치).
+  const autoEpsNative = toNativeEps(basisEps, symbol, portfolio.usdKrw);
   // 최신 연도 선택 = 현재가 기준, 과거 연도 = 당시 연말종가 기준.
   const isLatestSel = selection.kind === "year" && selection.year === latestFy;
   const per = usingTtm
@@ -631,6 +636,7 @@ export async function StockDetailContent({
           values={erValues}
           nativePrice={nativePrice}
           currencySymbol={nativeCcy === "KRW" ? "₩" : "$"}
+          autoMetric={autoEpsNative}
         />
       )}
 

@@ -50,6 +50,7 @@ export function ExpectedReturnCard({
   values,
   nativePrice,
   currencySymbol,
+  autoMetric,
 }: {
   symbol: string;
   values: ExpectedReturnValues;
@@ -57,6 +58,8 @@ export function ExpectedReturnCard({
   nativePrice: number | null;
   /** "₩" | "$" — 입력 단위를 화면에 못박아 통화 혼동을 없앤다. */
   currencySymbol: string;
+  /** 공시에서 산출한 주당순이익(종목 통화). 수기값이 없을 때 이걸 쓴다. */
+  autoMetric?: number | null;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -68,8 +71,11 @@ export function ExpectedReturnCard({
   const [years, setYears] = useState(s(values.holdingYears));
   const [required, setRequired] = useState(s(values.requiredReturn, 100));
 
+  // 이익력은 수기값 우선, 없으면 공시값. 성장률·종료배수는 판단이라 자동값이 없다.
+  const effectiveMetric = values.currentMetric ?? autoMetric ?? null;
+  const usingAuto = values.currentMetric == null && autoMetric != null;
   const saved =
-    values.currentMetric != null &&
+    effectiveMetric != null &&
     values.expectedGrowth != null &&
     values.terminalMultiple != null;
 
@@ -77,7 +83,7 @@ export function ExpectedReturnCard({
   const result = saved
     ? computeExpectedReturn(
         {
-          currentMetric: values.currentMetric as number,
+          currentMetric: effectiveMetric as number,
           expectedGrowth: values.expectedGrowth as number,
           terminalMultiple: values.terminalMultiple as number,
           holdingYears: values.holdingYears ?? undefined,
@@ -88,11 +94,16 @@ export function ExpectedReturnCard({
     : null;
 
   function save() {
+    // 비워두면 공시값을 계속 따라간다(실적이 갱신되면 매수가도 자동으로 바뀜).
     const currentMetric = n(metric);
     const expectedGrowth = n(growth, 100);
     const terminalMultiple = n(multiple);
-    if (currentMetric == null || expectedGrowth == null || terminalMultiple == null) {
-      toast.error("이익력 · 성장률 · 종료 배수는 모두 필요해요.");
+    if (currentMetric == null && autoMetric == null) {
+      toast.error("공시 이익이 없어 직접 입력이 필요해요.");
+      return;
+    }
+    if (expectedGrowth == null || terminalMultiple == null) {
+      toast.error("성장률과 종료 배수는 직접 정해야 해요.");
       return;
     }
     start(async () => {
@@ -175,9 +186,13 @@ export function ExpectedReturnCard({
 
           <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
             가정: 이익력 {currencySymbol}
-            {fmt(values.currentMetric as number)} · 성장 {pct(values.expectedGrowth as number)} ·{" "}
-            {result.holdingYears}년 뒤 배수 {values.terminalMultiple}배. 실적이 바뀌면 매수
-            가능가도 따라 바뀝니다. 이건 적정가가 아니라 <b>내 가정으로 계산한 값</b>이에요.
+            {fmt(effectiveMetric as number)}
+            {usingAuto ? " (공시)" : ""} · 성장 {pct(values.expectedGrowth as number)} ·{" "}
+            {result.holdingYears}년 뒤 배수 {values.terminalMultiple}배.
+            {usingAuto
+              ? " 이익력은 공시를 따라가므로 실적이 갱신되면 매수 가능가도 자동으로 바뀝니다."
+              : " 실적이 바뀌면 매수 가능가도 따라 바뀝니다."}{" "}
+            이건 적정가가 아니라 <b>내 가정으로 계산한 값</b>이에요.
           </p>
         </>
       ) : (
@@ -199,10 +214,14 @@ export function ExpectedReturnCard({
         <div className="mt-3 rounded-lg border border-border p-3">
           <Field
             label={`현재 주당 이익 (EPS, ${currencySymbol})`}
-            hint="공시에 적힌 그대로. 종목 통화 기준이에요."
+            hint={
+              autoMetric != null
+                ? `비워두면 공시값 ${currencySymbol}${fmt(autoMetric)} 을 계속 따라가요(실적 갱신 시 자동 반영). 직접 넣으면 그 값이 우선합니다.`
+                : "공시 이익을 아직 못 불러왔어요. 공시에 적힌 값을 종목 통화로 넣어주세요."
+            }
             value={metric}
             onChange={setMetric}
-            placeholder="1.35"
+            placeholder={autoMetric != null ? `공시값 ${fmt(autoMetric)}` : "1.35"}
           />
           <Field
             label="향후 이익 성장률 (연 %)"

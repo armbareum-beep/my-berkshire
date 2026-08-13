@@ -14,6 +14,7 @@ import {
   computeExpectedReturn,
   DEFAULT_REQUIRED_RETURN,
 } from "@/lib/finance/expectedReturn";
+import { loadCachedEps, toNativeEps } from "@/lib/finance/cachedEps";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
 import {
   AllocatePanel,
@@ -46,12 +47,17 @@ export default async function AllocatePage() {
   const displayCcy =
     cookieStore.get("display_ccy")?.value === "USD" ? "USD" : "KRW";
   const data = computeDashboard(portfolio, displayCcy);
-  const [meta, assumptions] = await Promise.all([
+  const [meta, assumptions, cachedEps] = await Promise.all([
     loadSecurityMeta(
       supabase,
       data.allocation.map((a) => a.symbol),
     ),
     loadExpectedReturnAssumptions(supabase, portfolio.holding.id),
+    // 공시 EPS — 캐시만 읽는다(API 호출 없음). 캐시에 없는 종목은 자동값 없이 넘어간다.
+    loadCachedEps(
+      supabase,
+      data.allocation.map((a) => a.symbol),
+    ),
   ]);
 
   const categoryTargets = (portfolio.holding.category_targets ?? {}) as Record<
@@ -85,7 +91,9 @@ export default async function AllocatePage() {
 
   const rows: AllocateRow[] = data.allocation.map((a) => {
     const assumption = assumptions[a.symbol];
-    if (!isComplete(assumption)) {
+    // 이익력은 수기 입력이 우선, 없으면 공시 EPS(종목 통화로 되돌린 값).
+    const autoMetric = toNativeEps(cachedEps[a.symbol], a.symbol, usdKrw);
+    if (!isComplete(assumption, autoMetric)) {
       // 가정이 없으면 순수 비중 기반 배분(스펙 v1.1 §15.3).
       return {
         key: a.symbol,
@@ -98,7 +106,7 @@ export default async function AllocatePage() {
     const requiredReturn = assumption.requiredReturn ?? DEFAULT_REQUIRED_RETURN;
     const er = computeExpectedReturn(
       {
-        currentMetric: assumption.currentMetric as number,
+        currentMetric: (assumption.currentMetric ?? autoMetric) as number,
         expectedGrowth: assumption.expectedGrowth as number,
         terminalMultiple: assumption.terminalMultiple as number,
         holdingYears: assumption.holdingYears ?? undefined,
