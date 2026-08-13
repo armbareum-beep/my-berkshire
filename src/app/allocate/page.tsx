@@ -5,6 +5,15 @@ import { getPortfolio } from "@/lib/portfolio";
 import { computeDashboard } from "@/lib/dashboard";
 import { loadSecurityMeta } from "@/lib/securities";
 import { flattenTargets } from "@/lib/allocate";
+import {
+  isComplete,
+  loadExpectedReturnAssumptions,
+} from "@/lib/expectedReturnAssumptions";
+import {
+  attractivenessFromCagr,
+  computeExpectedReturn,
+  DEFAULT_REQUIRED_RETURN,
+} from "@/lib/finance/expectedReturn";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
 import {
   AllocatePanel,
@@ -37,10 +46,13 @@ export default async function AllocatePage() {
   const displayCcy =
     cookieStore.get("display_ccy")?.value === "USD" ? "USD" : "KRW";
   const data = computeDashboard(portfolio, displayCcy);
-  const meta = await loadSecurityMeta(
-    supabase,
-    data.allocation.map((a) => a.symbol),
-  );
+  const [meta, assumptions] = await Promise.all([
+    loadSecurityMeta(
+      supabase,
+      data.allocation.map((a) => a.symbol),
+    ),
+    loadExpectedReturnAssumptions(supabase, portfolio.holding.id),
+  ]);
 
   const categoryTargets = (portfolio.holding.category_targets ?? {}) as Record<
     string,
@@ -60,13 +72,51 @@ export default async function AllocatePage() {
     withinTargets,
   );
 
-  const rows: AllocateRow[] = data.allocation.map((a) => ({
-    key: a.symbol,
-    symbol: a.symbol,
-    label: a.name,
-    value: a.value,
-    target: flat[a.symbol] ?? 0,
-  }));
+  // 기대수익률은 **종목 통화** 기준으로 계산해야 한다. portfolio.prices 는 ₩ 이고
+  // 가정의 이익력(EPS)은 종목 통화라, 외화 종목은 ₩ 가격을 되돌려야 1400배 어긋나지 않는다.
+  // 환율을 모르면 계산하지 않는다 → attractiveness 는 중립 1.0 으로 남는다(가짜 정밀 금지).
+  const usdKrw = portfolio.usdKrw;
+  const nativePrice = (symbol: string): number | null => {
+    const krw = portfolio.prices[symbol];
+    if (!(krw > 0)) return null;
+    if ((meta[symbol]?.currency ?? "KRW") === "KRW") return krw;
+    return usdKrw && usdKrw > 0 ? krw / usdKrw : null;
+  };
+
+  const rows: AllocateRow[] = data.allocation.map((a) => {
+    const assumption = assumptions[a.symbol];
+    if (!isComplete(assumption)) {
+      // 가정이 없으면 순수 비중 기반 배분(스펙 v1.1 §15.3).
+      return {
+        key: a.symbol,
+        symbol: a.symbol,
+        label: a.name,
+        value: a.value,
+        target: flat[a.symbol] ?? 0,
+      };
+    }
+    const requiredReturn = assumption.requiredReturn ?? DEFAULT_REQUIRED_RETURN;
+    const er = computeExpectedReturn(
+      {
+        currentMetric: assumption.currentMetric as number,
+        expectedGrowth: assumption.expectedGrowth as number,
+        terminalMultiple: assumption.terminalMultiple as number,
+        holdingYears: assumption.holdingYears ?? undefined,
+        requiredReturn: assumption.requiredReturn ?? undefined,
+      },
+      nativePrice(a.symbol),
+    );
+    return {
+      key: a.symbol,
+      symbol: a.symbol,
+      label: a.name,
+      value: a.value,
+      target: flat[a.symbol] ?? 0,
+      attractiveness: attractivenessFromCagr(er?.expectedCagr ?? null, requiredReturn),
+      expectedCagr: er?.expectedCagr ?? null,
+      requiredReturn,
+    };
+  });
 
   const hasTargets = rows.some((r) => r.target > 0);
 
