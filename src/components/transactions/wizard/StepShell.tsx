@@ -15,6 +15,7 @@ export function StepShell({
   subtitle,
   children,
   footer,
+  className,
 }: {
   kind: string;
   total: number;
@@ -24,9 +25,11 @@ export function StepShell({
   subtitle?: React.ReactNode;
   children?: React.ReactNode;
   footer?: React.ReactNode;
+  /** 아래 여백 보정 등 화면별 덧칠. 탭바를 함께 띄우는 화면이 쓴다. */
+  className?: string;
 }) {
   return (
-    <main className="flex min-h-dvh flex-col p-6 pb-8">
+    <main className={`flex min-h-dvh flex-col p-6 pb-8 ${className ?? ""}`}>
       <div className="flex items-center gap-3">
         <button
           type="button"

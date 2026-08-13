@@ -81,7 +81,7 @@ function rank(status: AllocateStatus): number {
 
 /**
  * 순위 계산. 배분 금액이 아니라 **상태와 매력도**로 줄을 세운다 —
- * 금액은 다음 화면(`/allocate/plan`)에서 정해지므로 여기서는 아직 없다.
+ * 금액은 배분 레일(`/allocate`)의 1단계에서 정해지므로 여기서는 아직 없다.
  */
 export function rankRows(rows: AllocateRow[]): RankedRow[] {
   // 투자금 0 으로 돌려 상태만 얻는다(캡·목표 판정은 투자금과 무관하게 성립).
