@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -5,12 +6,18 @@ import { getPortfolio } from "@/lib/portfolio";
 import { computeDashboard } from "@/lib/dashboard";
 import { loadSecurityMeta } from "@/lib/securities";
 import { flattenTargets } from "@/lib/allocate";
+import {
+  approvedSymbols,
+  loadUniverseStatuses,
+  resolveUniverse,
+} from "@/lib/universe";
 import { loadExpectedReturnAssumptions } from "@/lib/expectedReturnAssumptions";
 import {
   attractivenessFromCagr,
   computeExpectedReturn,
-  DEFAULT_REQUIRED_RETURN,
 } from "@/lib/finance/expectedReturn";
+import { effectiveHurdle, houseHurdle } from "@/lib/hurdle";
+import { HurdleCard } from "@/components/allocate/HurdleCard";
 import {
   loadCachedEps,
   nativeCurrencyOf,
@@ -52,18 +59,26 @@ export default async function AllocatePage() {
   const displayCcy =
     cookieStore.get("display_ccy")?.value === "USD" ? "USD" : "KRW";
   const data = computeDashboard(portfolio, displayCcy);
+
+  // 후보 = 보유 ∪ APPROVED 관심종목(PRD §3.1). 미보유 후보는 평가액 0 으로 참여한다 —
+  // 목표비중만 정해두면 첫 매수부터 배분안에 나온다.
+  const heldSymbols = data.allocation.map((a) => a.symbol);
+  const statuses = await loadUniverseStatuses(supabase, portfolio.holding.id);
+  const candidates = approvedSymbols(resolveUniverse(heldSymbols, statuses));
+
   const [meta, assumptions, cachedEps] = await Promise.all([
-    loadSecurityMeta(
-      supabase,
-      data.allocation.map((a) => a.symbol),
-    ),
+    loadSecurityMeta(supabase, candidates),
     loadExpectedReturnAssumptions(supabase, portfolio.holding.id),
     // 공시 EPS — 캐시만 읽는다(API 호출 없음). 캐시에 없는 종목은 자동값 없이 넘어간다.
-    loadCachedEps(
-      supabase,
-      data.allocation.map((a) => a.symbol),
-    ),
+    loadCachedEps(supabase, candidates),
   ]);
+
+  const heldValue: Record<string, number> = {};
+  const heldName: Record<string, string> = {};
+  for (const a of data.allocation) {
+    heldValue[a.symbol] = a.value;
+    heldName[a.symbol] = a.name;
+  }
 
   const categoryTargets = (portfolio.holding.category_targets ?? {}) as Record<
     string,
@@ -74,10 +89,13 @@ export default async function AllocatePage() {
     number
   >;
 
+  // 전사 기본 요구수익률("난이도"). 종목별 값이 없는 종목에만 적용된다.
+  const house = houseHurdle(portfolio.holding.required_return);
+
   const flat = flattenTargets(
-    data.allocation.map((a) => ({
-      symbol: a.symbol,
-      assetType: meta[a.symbol]?.assetType ?? "주식",
+    candidates.map((symbol) => ({
+      symbol,
+      assetType: meta[symbol]?.assetType ?? "주식",
     })),
     categoryTargets,
     withinTargets,
@@ -111,12 +129,15 @@ export default async function AllocatePage() {
     return null;
   };
 
-  const rows: AllocateRow[] = data.allocation.map((a) => {
-    const assumption = assumptions[a.symbol];
+  const rows: AllocateRow[] = candidates.map((symbol) => {
+    // 미보유 후보는 평가액 0 — 비중 0 이라 자연히 BUY 후보가 된다.
+    const value = heldValue[symbol] ?? 0;
+    const label = heldName[symbol] ?? meta[symbol]?.name ?? symbol;
+    const assumption = assumptions[symbol];
     const pair = metricAndPrice(
-      a.symbol,
+      symbol,
       assumption?.currentMetric ?? null,
-      cachedEps[a.symbol],
+      cachedEps[symbol],
     );
     // 성장률·종료배수는 판단이라 자동값이 없다 — 둘 중 하나라도 없으면 비중 기반 배분.
     const usable =
@@ -127,30 +148,31 @@ export default async function AllocatePage() {
     if (!usable) {
       // 가정이 없으면 순수 비중 기반 배분(스펙 v1.1 §15.3).
       return {
-        key: a.symbol,
-        symbol: a.symbol,
-        label: a.name,
-        value: a.value,
-        target: flat[a.symbol] ?? 0,
+        key: symbol,
+        symbol,
+        label,
+        value,
+        target: flat[symbol] ?? 0,
       };
     }
-    const requiredReturn = assumption.requiredReturn ?? DEFAULT_REQUIRED_RETURN;
+    // 종목별 값 > 전사 기본값("난이도") > 코드 기본값 12%.
+    const requiredReturn = effectiveHurdle(assumption.requiredReturn, house);
     const er = computeExpectedReturn(
       {
         currentMetric: pair.metric,
         expectedGrowth: assumption.expectedGrowth as number,
         terminalMultiple: assumption.terminalMultiple as number,
         holdingYears: assumption.holdingYears ?? undefined,
-        requiredReturn: assumption.requiredReturn ?? undefined,
+        requiredReturn,
       },
       pair.price,
     );
     return {
-      key: a.symbol,
-      symbol: a.symbol,
-      label: a.name,
-      value: a.value,
-      target: flat[a.symbol] ?? 0,
+      key: symbol,
+      symbol,
+      label,
+      value,
+      target: flat[symbol] ?? 0,
       attractiveness: attractivenessFromCagr(er?.expectedCagr ?? null, requiredReturn),
       // 엔진이 매수 상한을 정할 때 쓰는 값(PRD §6.2). 표시에도 같은 값을 쓴다.
       expectedCagr: er?.expectedCagr ?? null,
@@ -164,15 +186,31 @@ export default async function AllocatePage() {
 
   const hasTargets = rows.some((r) => r.target > 0);
 
+  // 허들 통과 현황 — 가정이 있는 종목만 분모에 넣는다(모르는 것을 실패로 세지 않는다).
+  const judged = rows.filter((r) => r.expectedCagr != null);
+  const passing = judged.filter(
+    (r) => (r.expectedCagr as number) >= (r.requiredReturn ?? house),
+  ).length;
+
   return (
     <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
       <BottomTabBar />
-      <div>
-        <h1 className="text-2xl font-extrabold tracking-tight">자본배분</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          새로 생긴 돈을 목표비중과 집중도 한도에 맞춰 나눕니다.
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-extrabold tracking-tight">자본배분</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            새로 생긴 돈을 목표비중과 집중도 한도에 맞춰 나눕니다.
+          </p>
+        </div>
+        <Link
+          href="/allocate/universe"
+          className="mt-1 shrink-0 rounded-full bg-secondary px-3 py-1.5 text-xs font-semibold transition active:scale-[0.97]"
+        >
+          후보 {candidates.length}
+        </Link>
       </div>
+
+      <HurdleCard rate={house} passing={passing} total={judged.length} />
 
       {data.priceAvailable ? (
         <AllocatePanel

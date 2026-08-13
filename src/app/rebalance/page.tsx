@@ -5,6 +5,11 @@ import { getPortfolio } from "@/lib/portfolio";
 import { computeDashboard } from "@/lib/dashboard";
 import { loadSecurityMeta } from "@/lib/securities";
 import { groupAllocationByType } from "@/lib/allocation";
+import {
+  approvedSymbols,
+  loadUniverseStatuses,
+  resolveUniverse,
+} from "@/lib/universe";
 import { BackButton } from "@/components/BackButton";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
 import { SegmentedTabs } from "@/components/ui/SegmentedTabs";
@@ -31,10 +36,31 @@ export default async function RebalancePage() {
   const displayCcy =
     cookieStore.get("display_ccy")?.value === "USD" ? "USD" : "KRW";
   const data = computeDashboard(portfolio, displayCcy);
-  const meta = await loadSecurityMeta(
-    supabase,
-    data.allocation.map((a) => a.symbol),
+
+  // 자본배분 후보 중 아직 한 주도 없는 종목도 목표비중을 정할 수 있어야 한다 —
+  // 목표비중이 없으면 `/allocate` 가 배분해줄 근거가 없어 후보로 넣은 의미가 사라진다.
+  // 평가액 0 짜리 슬라이스로 끼워 넣는다(비중 계산에 아무 영향 없음).
+  const heldSymbols = data.allocation.map((a) => a.symbol);
+  const statuses = await loadUniverseStatuses(supabase, portfolio.holding.id);
+  const pending = approvedSymbols(resolveUniverse(heldSymbols, statuses)).filter(
+    (s) => !heldSymbols.includes(s),
   );
+
+  const meta = await loadSecurityMeta(supabase, [...heldSymbols, ...pending]);
+
+  const allocation = [
+    ...data.allocation,
+    ...pending.map((symbol) => ({
+      symbol,
+      name: meta[symbol]?.name ?? symbol,
+      quantity: 0,
+      price: 0,
+      value: 0,
+      weight: 0,
+      avgCost: 0,
+      changeRate: null,
+    })),
+  ];
 
   // 1단계(유형) 목표 — category_targets["assetType:*"], 2단계(유형 내 종목) — target_weights
   const catTargets = (portfolio.holding.category_targets ?? {}) as Record<
@@ -51,7 +77,7 @@ export default async function RebalancePage() {
       : 0;
 
   // 유형 슬리브 구성(주식/ETF/원자재/코인) — 보유 유형만
-  const sleeves: Sleeve[] = groupAllocationByType(data.allocation, meta).map(
+  const sleeves: Sleeve[] = groupAllocationByType(allocation, meta).map(
     (g) => ({
       type: g.type,
       value: g.slices.reduce((s, a) => s + a.value, 0),

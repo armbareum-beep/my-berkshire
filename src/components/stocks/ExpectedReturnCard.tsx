@@ -51,6 +51,7 @@ export function ExpectedReturnCard({
   nativePrice,
   currencySymbol,
   autoMetric,
+  houseRequiredReturn = DEFAULT_REQUIRED_RETURN,
 }: {
   symbol: string;
   values: ExpectedReturnValues;
@@ -60,6 +61,11 @@ export function ExpectedReturnCard({
   currencySymbol: string;
   /** 공시에서 산출한 주당순이익(종목 통화). 수기값이 없을 때 이걸 쓴다. */
   autoMetric?: number | null;
+  /**
+   * 전사 기본 요구수익률(`/allocate` 의 "내 허들"). 이 종목에 따로 정한 값이 없으면 이걸 쓴다.
+   * 여기와 자본배분이 다른 숫자를 쓰면 "왜 저기선 안 산다고 하지?"가 된다.
+   */
+  houseRequiredReturn?: number;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -79,7 +85,7 @@ export function ExpectedReturnCard({
     values.expectedGrowth != null &&
     values.terminalMultiple != null;
 
-  const requiredReturn = values.requiredReturn ?? DEFAULT_REQUIRED_RETURN;
+  const requiredReturn = values.requiredReturn ?? houseRequiredReturn;
   const result = saved
     ? computeExpectedReturn(
         {
@@ -87,7 +93,7 @@ export function ExpectedReturnCard({
           expectedGrowth: values.expectedGrowth as number,
           terminalMultiple: values.terminalMultiple as number,
           holdingYears: values.holdingYears ?? undefined,
-          requiredReturn: values.requiredReturn ?? undefined,
+          requiredReturn,
         },
         nativePrice,
       )
@@ -244,11 +250,11 @@ export function ExpectedReturnCard({
             placeholder={String(DEFAULT_HOLDING_YEARS)}
           />
           <Field
-            label={`요구수익률 (%) · 기본 ${DEFAULT_REQUIRED_RETURN * 100}`}
-            hint="이 수익률에 못 미치면 자본배분에서 매수 후보에서 빠져요."
+            label={`요구수익률 (%) · 내 허들 ${+(houseRequiredReturn * 100).toFixed(2)}`}
+            hint="비워두면 자본배분의 '내 허들'을 따라갑니다. 이 수익률에 못 미치면 매수 후보에서 빠져요."
             value={required}
             onChange={setRequired}
-            placeholder={String(DEFAULT_REQUIRED_RETURN * 100)}
+            placeholder={String(+(houseRequiredReturn * 100).toFixed(2))}
           />
 
           <div className="mt-3 flex gap-2">

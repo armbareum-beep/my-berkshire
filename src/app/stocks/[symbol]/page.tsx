@@ -26,6 +26,7 @@ import { DnaYearPanel } from "@/components/stocks/DnaYearPanel";
 import { DiscountRateInput } from "@/components/stocks/DiscountRateInput";
 import { ExpectedReturnCard } from "@/components/stocks/ExpectedReturnCard";
 import { loadExpectedReturnAssumption } from "@/lib/expectedReturnAssumptions";
+import { houseHurdle } from "@/lib/hurdle";
 import { toNativeEps } from "@/lib/finance/cachedEps";
 import { GrowthRateInput } from "@/components/stocks/GrowthRateInput";
 import { FundamentalsTrend } from "@/components/stocks/FundamentalsTrend";
@@ -634,6 +635,7 @@ export async function StockDetailContent({
         <ExpectedReturnCard
           symbol={symbol}
           values={erValues}
+          houseRequiredReturn={houseHurdle(portfolio.holding.required_return)}
           nativePrice={nativePrice}
           currencySymbol={nativeCcy === "KRW" ? "₩" : "$"}
           autoMetric={autoEpsNative}
