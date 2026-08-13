@@ -10,13 +10,17 @@
  * 소스: 야후 `^KS11`(KOSPI) 일별 종가. 토스 교체 시 fetchKospiSeries 만 바꾼다.
  */
 
-import { xirr, daysSince, type Flow } from "./xirr";
+import { xirr, type Flow } from "./xirr";
 import {
   totalDeposits,
   totalWithdrawals,
   type InvestmentEvent,
 } from "./valuation";
-import type { HoldingSnapshot } from "./returns";
+import {
+  capitalWeightedDays,
+  MIN_INVESTED_DAYS,
+  type HoldingSnapshot,
+} from "./returns";
 import type { Currency } from "../format";
 
 /** 표시 통화별 비교 지수 — 원화=KOSPI, 달러=S&P 500. */
@@ -196,8 +200,10 @@ export async function computeBenchmarkFor(
         invested
       : null;
 
-  const days = daysSince(holding.foundedAt, today);
-  if (days < 90) {
+  // 달력이 아니라 **자본 가중 경과일**로 잰다 — 내 XIRR 과 같은 규칙이어야 비교가 성립한다.
+  // (설립 평가액이 0이고 돈이 최근에 들어왔으면 달력 90일을 넘겨도 며칠치 수익이라
+  //  연환산이 몇백 %로 터진다. 벤치마크는 같은 흐름을 쓰므로 똑같이 터진다.)
+  if (capitalWeightedDays(holding, events, today) < MIN_INVESTED_DAYS) {
     return {
       status: "ok",
       label: index.label,
@@ -268,6 +274,8 @@ export function indexSummaryFromSeries(
         invested
       : null;
   const benchmarkXirr =
-    daysSince(holding.foundedAt, today) < 90 ? null : xirr(flows);
+    capitalWeightedDays(holding, events, today) < MIN_INVESTED_DAYS
+      ? null
+      : xirr(flows);
   return { benchmarkXirr, benchmarkCumulative };
 }

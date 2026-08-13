@@ -159,6 +159,13 @@ export interface RecordInput {
    * 매수가 가능해짐), 통장에 찍힌 금액을 그대로 넣는 경로를 연다.
    */
   toAmount?: number | null;
+  /**
+   * 증권사가 실제 적용한 환율(1 외화당 ₩). 비우면 거래일 시장환율을 쓴다.
+   *
+   * 외화 증자·인출은 증권사 고시환율(스프레드 포함)로 처리되는데, 시장환율로 기록하면
+   * ₩ 장부가 실제 움직인 돈과 어긋난다. 매수(#58)·환전과 같은 이유로 실제 값을 받는다.
+   */
+  fxRateOverride?: number | null;
 }
 
 /**
@@ -318,7 +325,12 @@ export async function recordEvent(input: RecordInput): Promise<Result> {
 
     if (currency !== "KRW") {
       const fx = await getFxToKrwOn([currency], date, today);
-      const rate = fx[currency];
+      // 사용자가 실제 적용환율을 넣었으면 그게 진실이다(시장환율보다 우선).
+      const override = input.fxRateOverride;
+      const rate =
+        override != null && Number.isFinite(override) && override > 0
+          ? override
+          : fx[currency];
       if (!rate)
         return {
           ok: false,
@@ -332,7 +344,12 @@ export async function recordEvent(input: RecordInput): Promise<Result> {
     currency = input.currency ?? "KRW";
     if (currency !== "KRW") {
       const fx = await getFxToKrwOn([currency], date, today);
-      const rate = fx[currency];
+      // 사용자가 실제 적용환율을 넣었으면 그게 진실이다(시장환율보다 우선).
+      const override = input.fxRateOverride;
+      const rate =
+        override != null && Number.isFinite(override) && override > 0
+          ? override
+          : fx[currency];
       if (!rate)
         return {
           ok: false,
