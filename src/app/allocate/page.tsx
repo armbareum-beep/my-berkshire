@@ -202,12 +202,22 @@ export default async function AllocatePage() {
             새로 생긴 돈을 목표비중과 집중도 한도에 맞춰 나눕니다.
           </p>
         </div>
-        <Link
-          href="/allocate/universe"
-          className="mt-1 shrink-0 rounded-full bg-secondary px-3 py-1.5 text-xs font-semibold transition active:scale-[0.97]"
-        >
-          후보 {candidates.length}
-        </Link>
+        {/* 배분의 두 입력값으로 가는 문. 목표비중이 이미 있으면 AllocatePanel 의 빈 상태
+            안내가 사라져서 `/rebalance` 로 갈 길이 아예 없었다 — 그래서 여기 상설로 둔다. */}
+        <div className="mt-1 flex shrink-0 gap-1.5">
+          <Link
+            href="/rebalance"
+            className="rounded-full bg-secondary px-3 py-1.5 text-xs font-semibold transition active:scale-[0.97]"
+          >
+            목표비중
+          </Link>
+          <Link
+            href="/allocate/universe"
+            className="rounded-full bg-secondary px-3 py-1.5 text-xs font-semibold transition active:scale-[0.97]"
+          >
+            후보 {candidates.length}
+          </Link>
+        </div>
       </div>
 
       <HurdleCard rate={house} passing={passing} total={judged.length} />
