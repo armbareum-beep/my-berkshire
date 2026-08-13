@@ -33,6 +33,18 @@ export const DEFAULT_REQUIRED_RETURN = 0.12;
 /** 기준 지표 — 주당 이익력을 무엇으로 볼지. */
 export type BaseMetric = "EPS" | "FCF";
 
+/**
+ * 이 모형을 쓸 수 있는 자산유형인가.
+ *
+ * 식이 `주당이익 × (1+g)^Y × 종료 PER` 이라 **개별기업에만** 성립한다. ETF·코인·원자재는
+ * 주당이익이 없거나 의미가 다르다. 종목 상세가 ETF 에서 기대수익률 카드를 숨기는 것과
+ * 같은 규칙이고, 배분 화면도 이걸 따라야 "가정 없음"이 잘못 찍히지 않는다
+ * (ETF 는 가정을 **안 넣은** 게 아니라 **넣을 수 없는** 것이다).
+ */
+export function valuationApplies(assetType: string | null | undefined): boolean {
+  return (assetType ?? "주식") === "주식";
+}
+
 export interface ExpectedReturnInput {
   /** 현재 이익력(주당). EPS 또는 주당 FCF. 종목 통화 기준. */
   currentMetric: number;

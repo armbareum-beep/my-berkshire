@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { SymbolAvatar } from "@/components/onboarding/SymbolPicker";
 import { pct } from "@/lib/format";
-import type { RankedRow } from "@/lib/allocateRanking";
+import { valuationApplies } from "@/lib/finance/expectedReturn";
+import { groupRanked, type RankedRow } from "@/lib/allocateRanking";
 import { STATUS_META } from "./statusMeta";
 
 /**
@@ -15,11 +16,37 @@ import { STATUS_META } from "./statusMeta";
 
 export function AllocateRanking({ ranked }: { ranked: RankedRow[] }) {
   // 순위에는 금액이 없다 — 통화가 필요한 곳은 다음 화면(`/allocate/plan`)뿐이다.
+  const { stocks, others } = groupRanked(ranked);
+
   return (
     <section className="rounded-2xl bg-card p-5 shadow-card">
       <p className="text-sm font-semibold">배분 순위</p>
+
+      {stocks.length > 0 && others.length > 0 && (
+        <p className="mt-1 text-xs text-muted-foreground">개별주</p>
+      )}
+      <RankList rows={stocks} offset={0} />
+
+      {others.length > 0 && (
+        <>
+          <p className="mt-4 text-xs text-muted-foreground">
+            ETF · 기타 — 기대수익률 모형을 쓰지 않아요
+          </p>
+          <RankList rows={others} offset={stocks.length} />
+        </>
+      )}
+    </section>
+  );
+}
+
+/**
+ * 순위 목록 한 덩어리. `offset` 은 앞 그룹의 개수 — 번호가 이어지게 한다
+ * (그룹이 갈려도 전체에서 몇 번째인지가 배분 순서다).
+ */
+function RankList({ rows, offset }: { rows: RankedRow[]; offset: number }) {
+  return (
       <ul className="mt-3 flex flex-col gap-0.5">
-        {ranked.map(({ row, leg }, i) => {
+        {rows.map(({ row, leg }, i) => {
           const meta = STATUS_META[leg.status];
           const buyable = leg.status === "BUY" || leg.status === "STRETCH";
           return (
@@ -32,7 +59,7 @@ export function AllocateRanking({ ranked }: { ranked: RankedRow[] }) {
                 }
               >
                 <span className="w-4 shrink-0 text-center text-xs font-bold tabular-nums text-muted-foreground">
-                  {i + 1}
+                  {offset + i + 1}
                 </span>
                 <SymbolAvatar symbol={row.symbol} name={row.label} size="md" />
                 <div className="min-w-0 flex-1">
@@ -46,9 +73,10 @@ export function AllocateRanking({ ranked }: { ranked: RankedRow[] }) {
                     <p className="text-sm font-bold tabular-nums">
                       {pct(row.expectedCagr)}
                     </p>
-                  ) : (
+                  ) : valuationApplies(row.assetType) ? (
+                    // 개별주인데 비어 있으면 "넣어야 하는데 안 넣은" 것이다.
                     <p className="text-xs text-muted-foreground">가정 없음</p>
-                  )}
+                  ) : null}
                   <span
                     className={`mt-0.5 inline-block rounded-full px-1.5 py-0.5 text-[10px] font-bold ${meta.tone}`}
                   >
@@ -60,6 +88,5 @@ export function AllocateRanking({ ranked }: { ranked: RankedRow[] }) {
           );
         })}
       </ul>
-    </section>
   );
 }

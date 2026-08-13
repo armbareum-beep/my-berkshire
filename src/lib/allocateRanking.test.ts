@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rankRows } from "./allocateRanking";
+import { groupRanked, rankRows } from "./allocateRanking";
 import type { AllocateRow } from "./allocateData";
 
 function row(
@@ -16,6 +16,7 @@ function row(
     target,
     held: value > 0,
     price: 100,
+    assetType: "주식",
     ...extra,
   };
 }
@@ -71,5 +72,37 @@ describe("rankRows — 살 수 있는 것이 먼저 (PRD §6.1)", () => {
   it("모든 행이 leg 를 갖는다 — 화면에서 종목이 조용히 사라지지 않게", () => {
     const rows = [row("A", 100, 0.5), row("B", 100, 0.5)];
     expect(rankRows(rows)).toHaveLength(rows.length);
+  });
+});
+
+describe("groupRanked — 개별주와 ETF 를 가른다", () => {
+  it("자산유형으로 나눈다 — ETF·코인·원자재는 기대수익률 모형 밖", () => {
+    const ranked = rankRows([
+      row("005930", 100, 0.3),
+      row("278530", 100, 0.3, { assetType: "ETF" }),
+      row("BTC-USD", 100, 0.2, { assetType: "코인" }),
+      row("411060", 100, 0.2, { assetType: "원자재" }),
+    ]);
+    const { stocks, others } = groupRanked(ranked);
+    expect(stocks.map((r) => r.row.symbol)).toEqual(["005930"]);
+    expect(others.map((r) => r.row.symbol).sort()).toEqual([
+      "278530",
+      "411060",
+      "BTC-USD",
+    ]);
+  });
+
+  it("나누어도 전체 개수는 보존된다 — 종목이 조용히 사라지지 않게", () => {
+    const ranked = rankRows([
+      row("A", 100, 0.5),
+      row("B", 100, 0.5, { assetType: "ETF" }),
+    ]);
+    const { stocks, others } = groupRanked(ranked);
+    expect(stocks.length + others.length).toBe(ranked.length);
+  });
+
+  it("자산유형을 모르면 개별주로 본다 — 기존 동작(기본값 주식)", () => {
+    const ranked = rankRows([row("A", 100, 1)]);
+    expect(groupRanked(ranked).stocks).toHaveLength(1);
   });
 });

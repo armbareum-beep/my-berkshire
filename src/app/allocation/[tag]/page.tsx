@@ -8,6 +8,7 @@ import { computeDashboard } from "@/lib/dashboard";
 import { loadSecurityMeta, backfillSectors } from "@/lib/securities";
 import { companyCashPools } from "@/lib/finance/valuation";
 import { tagLabel } from "@/lib/allocation";
+import { readTargets } from "@/lib/targetWeights";
 import { BackButton } from "@/components/BackButton";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
 import { StockRow } from "@/components/ui/StockRow";
@@ -119,6 +120,39 @@ export default async function AllocationDetailPage({
       return b.value - a.value;
     });
 
+  // ── 카테고리별 목표비중 — **종목 목표에서 파생한다** ──
+  //
+  // 국가·산업 목표를 따로 저장하지 않는다. 그러면 같은 것을 두 곳에서 정하게 되어
+  // 은퇴시킨 2층 구조가 되돌아온다(스펙 §13.2). 진실은 종목 목표비중 하나뿐이고,
+  // 국가·산업은 그걸 묶어서 보는 **렌즈**다.
+  //
+  // 보유하지 않은 종목의 목표도 포함해야 한다 — "아직 안 샀지만 미국 20% 목표"가
+  // 빠지면 목표 합이 실제와 달라진다. 그래서 meta 를 목표 심볼까지 넓혀 읽는다.
+  const flatTargets = readTargets(
+    portfolio.holding.target_weights,
+    (portfolio.holding.category_targets ?? {}) as Record<string, number>,
+    data.allocation.map((a) => ({
+      symbol: a.symbol,
+      assetType: meta[a.symbol]?.assetType ?? "주식",
+    })),
+  );
+  const targetSymbols = Object.keys(flatTargets).filter((sym) => !meta[sym]);
+  if (targetSymbols.length > 0) {
+    const extra = await loadSecurityMeta(supabase, targetSymbols);
+    for (const [sym, rec] of Object.entries(extra)) if (rec) meta[sym] = rec;
+  }
+
+  const targetByLabel = new Map<string, number>();
+  let targetSum = 0;
+  for (const [sym, rule] of Object.entries(flatTargets)) {
+    const label = tagLabel(meta[sym], cfg.key);
+    targetByLabel.set(label, (targetByLabel.get(label) ?? 0) + rule.target);
+    targetSum += rule.target;
+  }
+  // 목표 합이 100% 미만이면 나머지는 현금이라는 뜻이다(스펙 §16.2).
+  if (targetSum < 1 - 1e-9) targetByLabel.set("현금", (targetByLabel.get("현금") ?? 0) + (1 - targetSum));
+  const hasTargets = targetSum > 0;
+
   // ?only=한국 → 해당 국가만 표시 (홈 카드 국가 탭에서 진입)
   const categories = onlyLabel
     ? allCategories.filter((c) => c.label === onlyLabel)
@@ -192,6 +226,12 @@ export default async function AllocationDetailPage({
                   <span className="min-w-0 flex-1 truncate font-medium">{c.label}</span>
                   <span className="shrink-0 tabular-nums text-muted-foreground">
                     {pct(c.weight)}
+                    {/* 목표는 종목 목표비중을 이 기준으로 묶은 값이다(따로 정하지 않는다). */}
+                    {hasTargets && !tabItems && targetByLabel.has(c.label) && (
+                      <span className="ml-1 text-[11px]">
+                        / 목표 {pct(targetByLabel.get(c.label) as number)}
+                      </span>
+                    )}
                   </span>
                 </li>
               ))}

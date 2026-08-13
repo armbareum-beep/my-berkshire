@@ -8,11 +8,35 @@
  * 화면(`components/allocate/AllocateRanking.tsx`)은 이 결과를 그리기만 한다.
  */
 import { planAllocation, type AllocateLeg, type AllocateStatus } from "./allocate";
+import { valuationApplies } from "./finance/expectedReturn";
 import type { AllocateRow } from "./allocateData";
 
 export interface RankedRow {
   row: AllocateRow;
   leg: AllocateLeg;
+}
+
+/**
+ * 개별주와 ETF·기타를 갈라서 준다.
+ *
+ * 기대수익률 모형은 개별기업에만 성립하는데(`valuationApplies`), 한 목록에 섞어놓으면
+ * ETF 마다 "가정 없음"이 찍혀 **안 넣은 것처럼** 보인다. ETF 는 가정을 안 넣은 게 아니라
+ * 넣을 수 없는 것이라, 같은 줄에 세우면 둘 다 안 읽힌다.
+ *
+ * 배분 계산 자체는 전부 함께 돌린다 — 나누는 건 **보여주는 방식**뿐이다.
+ */
+export interface RankedGroups {
+  /** 기대수익률로 줄 세울 수 있는 것. */
+  stocks: RankedRow[];
+  /** ETF·코인·원자재 — 목표비중만으로 판단한다. */
+  others: RankedRow[];
+}
+
+export function groupRanked(ranked: RankedRow[]): RankedGroups {
+  return {
+    stocks: ranked.filter((r) => valuationApplies(r.row.assetType)),
+    others: ranked.filter((r) => !valuationApplies(r.row.assetType)),
+  };
 }
 
 /**
