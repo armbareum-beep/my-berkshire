@@ -81,12 +81,21 @@ export function UniversePanel({
           후보만 자본배분 대상이 됩니다. 아직 한 주도 없는 기업도 후보로 넣을 수 있어요 —
           목표비중을 정해두면 첫 매수부터 배분안에 나옵니다.
         </p>
-        <Link
-          href="/search"
-          className="mt-4 inline-flex h-11 items-center justify-center rounded-xl bg-secondary px-5 text-sm font-semibold transition active:scale-[0.98]"
-        >
-          기업 찾아서 추가하기
-        </Link>
+        {/* 후보를 고른 다음 할 일은 늘 목표비중이다 — 그게 없으면 배분될 근거가 없다. */}
+        <div className="mt-4 flex gap-2">
+          <Link
+            href="/search"
+            className="inline-flex h-11 flex-1 items-center justify-center rounded-xl bg-secondary px-4 text-sm font-semibold transition active:scale-[0.98]"
+          >
+            기업 찾기
+          </Link>
+          <Link
+            href="/rebalance"
+            className="inline-flex h-11 flex-1 items-center justify-center rounded-xl bg-secondary px-4 text-sm font-semibold transition active:scale-[0.98]"
+          >
+            목표비중 정하기
+          </Link>
+        </div>
       </section>
 
       {groups.length === 0 ? (
