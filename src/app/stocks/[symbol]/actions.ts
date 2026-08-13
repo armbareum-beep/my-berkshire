@@ -96,7 +96,16 @@ export async function clearManualFundamentals(
 /** valuation_assumptions(종목당 1행) 부분 upsert 헬퍼 — 한 필드만 갱신, 다른 필드 보존. */
 async function upsertAssumption(
   symbol: string,
-  patch: { discount_rate?: number | null; growth_rate?: number | null },
+  patch: {
+    discount_rate?: number | null;
+    growth_rate?: number | null;
+    er_base_metric?: string | null;
+    er_current_metric?: number | null;
+    er_expected_growth?: number | null;
+    er_terminal_multiple?: number | null;
+    er_holding_years?: number | null;
+    er_required_return?: number | null;
+  },
 ): Promise<Result> {
   const supabase = await createClient();
   const {
@@ -144,4 +153,64 @@ export async function setGrowthRate(
   if (rate != null && !(rate >= 0 && rate < 1))
     return { ok: false, error: "성장률은 0~100% 미만이어야 합니다." };
   return upsertAssumption(symbol, { growth_rate: rate });
+}
+
+/** 기대수익률 모형 가정(PRD v0.3 §3.2). 화면에서 한 번에 저장한다. */
+export interface ExpectedReturnPatch {
+  /** 현재 주당 이익력 — **종목 통화** 기준(공시에 적힌 그대로). */
+  currentMetric: number | null;
+  /** 향후 N년 이익 CAGR(소수). */
+  expectedGrowth: number | null;
+  /** 종료 시점 배수(PER/PFCF). */
+  terminalMultiple: number | null;
+  /** 보유기간(년). null = 5. */
+  holdingYears: number | null;
+  /** 요구수익률(소수). null = 12%. */
+  requiredReturn: number | null;
+  /** 이익력 기준. null = EPS. */
+  baseMetric: "EPS" | "FCF" | null;
+}
+
+/**
+ * 기대수익률 가정 저장 — 매수가 = EPS × (1+g)^Y × 종료배수 ÷ (1+요구수익률)^Y.
+ *
+ * ⚠️ 같은 테이블의 `growth_rate`(고든 영구성장률)·`discount_rate`(버핏식 할인율)와
+ * **다른 모형**이다. 그래서 `er_` 컬럼에 따로 쓴다 — 섞으면 조용히 틀린 값이 나온다.
+ */
+export async function setExpectedReturn(
+  symbol: string,
+  patch: ExpectedReturnPatch,
+): Promise<Result> {
+  const { currentMetric, expectedGrowth, terminalMultiple } = patch;
+  if (currentMetric != null && !(currentMetric > 0))
+    return { ok: false, error: "이익력은 0보다 커야 합니다(적자면 이 모형을 쓸 수 없어요)." };
+  if (expectedGrowth != null && !(expectedGrowth > -1))
+    return { ok: false, error: "성장률은 −100%보다 커야 합니다." };
+  if (terminalMultiple != null && !(terminalMultiple > 0))
+    return { ok: false, error: "종료 배수는 0보다 커야 합니다." };
+  if (patch.holdingYears != null && !(patch.holdingYears > 0 && patch.holdingYears <= 50))
+    return { ok: false, error: "보유기간은 1~50년으로 입력하세요." };
+  if (patch.requiredReturn != null && !(patch.requiredReturn > 0 && patch.requiredReturn <= 1))
+    return { ok: false, error: "요구수익률은 0~100% 사이여야 합니다." };
+
+  return upsertAssumption(symbol, {
+    er_current_metric: currentMetric,
+    er_expected_growth: expectedGrowth,
+    er_terminal_multiple: terminalMultiple,
+    er_holding_years: patch.holdingYears,
+    er_required_return: patch.requiredReturn,
+    er_base_metric: patch.baseMetric,
+  });
+}
+
+/** 기대수익률 가정 전체 삭제 — 그 종목은 다시 비중 기반 배분으로 돌아간다. */
+export async function clearExpectedReturn(symbol: string): Promise<Result> {
+  return setExpectedReturn(symbol, {
+    currentMetric: null,
+    expectedGrowth: null,
+    terminalMultiple: null,
+    holdingYears: null,
+    requiredReturn: null,
+    baseMetric: null,
+  });
 }

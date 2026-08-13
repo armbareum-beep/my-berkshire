@@ -24,6 +24,8 @@ import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
 import { DisclosureList } from "@/components/disclosures/DisclosureList";
 import { DnaYearPanel } from "@/components/stocks/DnaYearPanel";
 import { DiscountRateInput } from "@/components/stocks/DiscountRateInput";
+import { ExpectedReturnCard } from "@/components/stocks/ExpectedReturnCard";
+import { loadExpectedReturnAssumption } from "@/lib/expectedReturnAssumptions";
 import { GrowthRateInput } from "@/components/stocks/GrowthRateInput";
 import { FundamentalsTrend } from "@/components/stocks/FundamentalsTrend";
 import { FinancialHealth } from "@/components/stocks/FinancialHealth";
@@ -260,10 +262,31 @@ export async function StockDetailContent({
   );
 
   // 가정(할인율·성장률, 연도 무관) + 연도별 금액(D&A·유지CapEx) 분리 로드 — 서로 독립이라 병렬.
-  const [assumptions, magnitudes] = await Promise.all([
+  // 기대수익률 가정은 전부 수기 입력이라 공시(fundamentals) 유무와 무관하게 항상 읽는다.
+  const [assumptions, magnitudes, erAssumption] = await Promise.all([
     assumptionsPromise,
     magnitudesPromise,
+    loadExpectedReturnAssumption(supabase, portfolio.holding.id, symbol),
   ]);
+
+  // 기대수익률은 **종목 통화** 기준으로 계산한다(사용자가 공시에 적힌 EPS 를 그대로 넣으므로).
+  // price 는 ₩ 이라 외화 종목은 되돌린다. 환율을 모르면 null → 카드가 매수가만 보여준다.
+  const nativeCcy: "KRW" | "USD" = /^\d{6}$/.test(symbol) ? "KRW" : "USD";
+  const nativePrice =
+    price == null
+      ? null
+      : nativeCcy === "KRW"
+        ? price
+        : portfolio.usdKrw && portfolio.usdKrw > 0
+          ? price / portfolio.usdKrw
+          : null;
+  const erValues = {
+    currentMetric: erAssumption?.currentMetric ?? null,
+    expectedGrowth: erAssumption?.expectedGrowth ?? null,
+    terminalMultiple: erAssumption?.terminalMultiple ?? null,
+    holdingYears: erAssumption?.holdingYears ?? null,
+    requiredReturn: erAssumption?.requiredReturn ?? null,
+  };
 
   // 기준(basis) — 연도 선택(?fy=). 기본 = 최신 연도. 다년 평균·추세는 "최근 실적 추이"가 담당.
   const latestYear = series[0]?.year ?? Number(today.slice(0, 4)) - 1;
@@ -598,6 +621,17 @@ export async function StockDetailContent({
           avgCost={held && avgCost > 0 ? avgCost : null}
         />
       </Suspense>
+      )}
+
+      {/* 기대수익률 — 가정 전부 수기라 공시(fundamentals) 유무와 무관하게 노출한다.
+          여기 저장한 가정이 /allocate 의 배분 우선순위에도 그대로 쓰인다. */}
+      {view === "overview" && !isEtf && (
+        <ExpectedReturnCard
+          symbol={symbol}
+          values={erValues}
+          nativePrice={nativePrice}
+          currencySymbol={nativeCcy === "KRW" ? "₩" : "$"}
+        />
       )}
 
       {view === "overview" && fundamentals && (
