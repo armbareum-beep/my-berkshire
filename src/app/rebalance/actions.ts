@@ -8,6 +8,7 @@ import { cumulativeBought, parsePlan, type RebalancePlan } from "@/lib/plan";
 import type { InvestmentEvent } from "@/lib/finance/valuation";
 import { getActiveHolding } from "@/lib/holdings";
 import type { Json } from "@/lib/supabase/database.types";
+import { isFlatFormat } from "@/lib/targetWeights";
 
 type Result = { ok: true } | { ok: false; error: string };
 
@@ -51,6 +52,16 @@ export async function setTargetWeights(
 
   const holding = await getActiveHolding(supabase);
   if (!holding) return { ok: false, error: "회사를 찾을 수 없습니다." };
+
+  // 평면 목표비중(스펙 §13.2)으로 넘어간 사용자를 2층 형식으로 되돌리지 않는다.
+  // 이 화면은 "유형 안에서의 비중"을 저장하는데, 그대로 쓰면 전체 대비로 저장된 평면
+  // 값이 통째로 날아간다. 레거시 화면이 은퇴할 때까지 남는 안전장치다.
+  if (isFlatFormat(holding.target_weights)) {
+    return {
+      ok: false,
+      error: "목표비중이 새 형식으로 저장돼 있어요. 자본배분 화면에서 수정해주세요.",
+    };
+  }
 
   // 음수·NaN 제거, 0 은 버림(설정 안 한 것으로)
   const clean: Record<string, number> = {};

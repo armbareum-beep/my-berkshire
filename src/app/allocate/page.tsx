@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getPortfolio } from "@/lib/portfolio";
 import { computeDashboard } from "@/lib/dashboard";
 import { loadSecurityMeta } from "@/lib/securities";
-import { flattenTargets } from "@/lib/allocate";
+import { readTargets } from "@/lib/targetWeights";
 import {
   approvedSymbols,
   loadUniverseStatuses,
@@ -80,25 +80,18 @@ export default async function AllocatePage() {
     heldName[a.symbol] = a.name;
   }
 
-  const categoryTargets = (portfolio.holding.category_targets ?? {}) as Record<
-    string,
-    number
-  >;
-  const withinTargets = (portfolio.holding.target_weights ?? {}) as Record<
-    string,
-    number
-  >;
-
   // 전사 기본 요구수익률("난이도"). 종목별 값이 없는 종목에만 적용된다.
   const house = houseHurdle(portfolio.holding.required_return);
 
-  const flat = flattenTargets(
+  // 목표비중 — 저장 형식(레거시 2층 / 평면)을 `targetWeights.ts` 가 흡수한다.
+  // 레거시면 읽기 시점에 1회 환산되므로 이 화면의 결과는 지금과 같다(스펙 §13.2).
+  const targets = readTargets(
+    portfolio.holding.target_weights,
+    (portfolio.holding.category_targets ?? {}) as Record<string, number>,
     candidates.map((symbol) => ({
       symbol,
       assetType: meta[symbol]?.assetType ?? "주식",
     })),
-    categoryTargets,
-    withinTargets,
   );
 
   // 기대 CAGR = (EPS × (1+g)^Y × 배수 ÷ 가격)^(1/Y) − 1 은 **통화 무관**이다.
@@ -133,6 +126,9 @@ export default async function AllocatePage() {
     // 미보유 후보는 평가액 0 — 비중 0 이라 자연히 BUY 후보가 된다.
     const value = heldValue[symbol] ?? 0;
     const label = heldName[symbol] ?? meta[symbol]?.name ?? symbol;
+    // 캡 오버라이드는 평면 저장에만 있다. 미지정이면 엔진이 기본 배수(1.25/1.50)를 쓴다.
+    const rule = targets[symbol];
+    const caps = { softCap: rule?.softCap, hardCap: rule?.hardCap };
     const assumption = assumptions[symbol];
     const pair = metricAndPrice(
       symbol,
@@ -152,7 +148,8 @@ export default async function AllocatePage() {
         symbol,
         label,
         value,
-        target: flat[symbol] ?? 0,
+        target: rule?.target ?? 0,
+        ...caps,
       };
     }
     // 종목별 값 > 전사 기본값("난이도") > 코드 기본값 12%.
@@ -172,7 +169,8 @@ export default async function AllocatePage() {
       symbol,
       label,
       value,
-      target: flat[symbol] ?? 0,
+      target: rule?.target ?? 0,
+      ...caps,
       attractiveness: attractivenessFromCagr(er?.expectedCagr ?? null, requiredReturn),
       // 엔진이 매수 상한을 정할 때 쓰는 값(PRD §6.2). 표시에도 같은 값을 쓴다.
       expectedCagr: er?.expectedCagr ?? null,
