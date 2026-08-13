@@ -351,6 +351,7 @@ export type Database = {
           id: string
           initial_capital: number
           initial_valuation: number
+          investable_cash: number | null
           listed_at: string | null
           listed_name: string | null
           mode: Database["public"]["Enums"]["holding_mode"]
@@ -372,6 +373,7 @@ export type Database = {
           id?: string
           initial_capital?: number
           initial_valuation?: number
+          investable_cash?: number | null
           listed_at?: string | null
           listed_name?: string | null
           mode: Database["public"]["Enums"]["holding_mode"]
@@ -393,6 +395,7 @@ export type Database = {
           id?: string
           initial_capital?: number
           initial_valuation?: number
+          investable_cash?: number | null
           listed_at?: string | null
           listed_name?: string | null
           mode?: Database["public"]["Enums"]["holding_mode"]

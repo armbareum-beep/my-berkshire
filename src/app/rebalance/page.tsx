@@ -1,25 +1,23 @@
-import { cookies } from "next/headers";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getPortfolio } from "@/lib/portfolio";
-import { computeDashboard } from "@/lib/dashboard";
-import { loadSecurityMeta } from "@/lib/securities";
-import { groupAllocationByType } from "@/lib/allocation";
-import {
-  approvedSymbols,
-  loadUniverseStatuses,
-  resolveUniverse,
-} from "@/lib/universe";
 import { BackButton } from "@/components/BackButton";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
-import { SegmentedTabs } from "@/components/ui/SegmentedTabs";
 import { parsePlan, planProgress } from "@/lib/plan";
 import { PlanCard } from "@/components/dashboard/PlanCard";
-import {
-  SleeveRebalanceEditor,
-  type Sleeve,
-} from "@/components/dashboard/SleeveRebalanceEditor";
 
+/**
+ * `/rebalance` — 종목별 목표비중 편집은 `/allocate/settings` 로 이사했다
+ * (`docs/allocate-redesign-v1.md` Phase 5).
+ *
+ * 2층 구조(유형 목표 × 유형 내 종목)가 "목표비중 설정이 어렵다"의 원인이었다. META 를
+ * 24% 로 만들려면 두 숫자를 맞춰야 했다. 평면 전환(스펙 §13.2)으로 종목당 숫자 하나가 됐다.
+ *
+ * 화면을 지우지 않고 안내로 남기는 이유: 사용자가 저장해둔 링크와 홈 배너의 계획 진행률이
+ * 여기에 걸려 있다. 2층 저장 액션(`setTargetWeights`·`setCategoryTargets`)과 편집기
+ * 컴포넌트는 호출자가 사라져 함께 지웠다 — 남겨두면 은퇴한 모델을 다시 쓰게 된다.
+ */
 export default async function RebalancePage() {
   const supabase = await createClient();
   const {
@@ -27,73 +25,10 @@ export default async function RebalancePage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [portfolio, cookieStore] = await Promise.all([
-    getPortfolio(supabase),
-    cookies(),
-  ]);
+  const portfolio = await getPortfolio(supabase);
   if (!portfolio) redirect("/onboarding");
 
-  const displayCcy =
-    cookieStore.get("display_ccy")?.value === "USD" ? "USD" : "KRW";
-  const data = computeDashboard(portfolio, displayCcy);
-
-  // 자본배분 후보 중 아직 한 주도 없는 종목도 목표비중을 정할 수 있어야 한다 —
-  // 목표비중이 없으면 `/allocate` 가 배분해줄 근거가 없어 후보로 넣은 의미가 사라진다.
-  // 평가액 0 짜리 슬라이스로 끼워 넣는다(비중 계산에 아무 영향 없음).
-  const heldSymbols = data.allocation.map((a) => a.symbol);
-  const statuses = await loadUniverseStatuses(supabase, portfolio.holding.id);
-  const pending = approvedSymbols(resolveUniverse(heldSymbols, statuses)).filter(
-    (s) => !heldSymbols.includes(s),
-  );
-
-  const meta = await loadSecurityMeta(supabase, [...heldSymbols, ...pending]);
-
-  const allocation = [
-    ...data.allocation,
-    ...pending.map((symbol) => ({
-      symbol,
-      name: meta[symbol]?.name ?? symbol,
-      quantity: 0,
-      price: 0,
-      value: 0,
-      weight: 0,
-      avgCost: 0,
-      changeRate: null,
-    })),
-  ];
-
-  // 1단계(유형) 목표 — category_targets["assetType:*"], 2단계(유형 내 종목) — target_weights
-  const catTargets = (portfolio.holding.category_targets ?? {}) as Record<
-    string,
-    number
-  >;
-  const within = (portfolio.holding.target_weights ?? {}) as Record<
-    string,
-    number
-  >;
-  const typeTargetOf = (type: string) =>
-    typeof catTargets[`assetType:${type}`] === "number"
-      ? catTargets[`assetType:${type}`]
-      : 0;
-
-  // 유형 슬리브 구성(주식/ETF/원자재/코인) — 보유 유형만
-  const sleeves: Sleeve[] = groupAllocationByType(allocation, meta).map(
-    (g) => ({
-      type: g.type,
-      value: g.slices.reduce((s, a) => s + a.value, 0),
-      typeTarget: typeTargetOf(g.type),
-      items: g.slices.map((a) => ({
-        symbol: a.symbol,
-        name: a.name,
-        value: a.value,
-        price: a.price,
-        withinTarget:
-          typeof within[a.symbol] === "number" ? within[a.symbol] : 0,
-      })),
-    }),
-  );
-
-  // 저장된 자본배분 계획(있으면 진행률 카드)
+  // 저장된 자본배분 계획(있으면 진행률 카드) — 홈 배너가 이 화면을 가리킨다.
   const plan = parsePlan(portfolio.holding.active_plan);
   const progress = plan ? planProgress(plan, portfolio.events) : null;
 
@@ -102,35 +37,33 @@ export default async function RebalancePage() {
       <BottomTabBar />
       <BackButton />
       <div>
-        <h1 className="text-2xl font-extrabold tracking-tight">목표비중 · 리밸런싱</h1>
+        <h1 className="text-2xl font-extrabold tracking-tight">리밸런싱</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          유형 목표를 정하고(주식·ETF·금·현금…), 유형 안에서 종목 목표를 정합니다.
+          목표비중은 배분 설정으로 옮겼어요.
         </p>
       </div>
 
-      {/* 리밸런싱 기준 전환 — 중립 세그먼트(솔리드 파랑은 메인 액션에만) */}
-      <SegmentedTabs
-        tabs={[
-          { label: "종목별", href: "/rebalance", active: true },
-          { label: "국가별", href: "/rebalance/country", active: false },
-          { label: "산업별", href: "/rebalance/sector", active: false },
-        ]}
-      />
-
       {progress && <PlanCard progress={progress} />}
 
-      {data.priceAvailable ? (
-        <SleeveRebalanceEditor
-          sleeves={sleeves}
-          cashValue={data.cash}
-          cashTarget={typeTargetOf("현금")}
-          currency={data.currency}
-        />
-      ) : (
-        <div className="rounded-2xl bg-card p-6 text-center shadow-card">
-          <p className="text-sm text-muted-foreground">시세 갱신 필요 — 잠시 후 다시 시도하세요.</p>
-        </div>
-      )}
+      <section className="rounded-2xl bg-card p-6 text-center shadow-card">
+        <p className="text-sm font-semibold">목표비중은 이제 한 곳에서 정해요</p>
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+          유형 목표와 종목 목표를 따로 맞출 필요 없이, 종목마다 숫자 하나만 정하면 됩니다.
+        </p>
+        <Link
+          href="/allocate/settings"
+          className="mt-5 inline-flex h-11 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground transition active:scale-[0.98]"
+        >
+          배분 설정 열기
+        </Link>
+      </section>
+
+      <Link
+        href="/allocation/type"
+        className="px-2 text-center text-xs font-medium text-muted-foreground underline"
+      >
+        지금 자산배분 보기 (유형·국가·산업별)
+      </Link>
     </main>
   );
 }
