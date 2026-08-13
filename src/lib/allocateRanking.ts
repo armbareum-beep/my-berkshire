@@ -19,24 +19,42 @@ export interface RankedRow {
 /**
  * 개별주와 ETF·기타를 갈라서 준다.
  *
- * 기대수익률 모형은 개별기업에만 성립하는데(`valuationApplies`), 한 목록에 섞어놓으면
- * ETF 마다 "가정 없음"이 찍혀 **안 넣은 것처럼** 보인다. ETF 는 가정을 안 넣은 게 아니라
- * 넣을 수 없는 것이라, 같은 줄에 세우면 둘 다 안 읽힌다.
+ * ## 왜 나누고, 왜 번호를 따로 매기나
  *
- * 배분 계산 자체는 전부 함께 돌린다 — 나누는 건 **보여주는 방식**뿐이다.
+ * 둘은 **정렬 기준이 다르다** — 주식은 기대수익률, ETF 는 목표 미달. 기대수익률 모형은
+ * 개별기업에만 성립하기 때문이다(`valuationApplies`).
+ *
+ * 그래서 **한 줄로 세울 수 없다.** 예전엔 한 목록에 담고 "가정 있는 게 먼저"로 처리했는데,
+ * 그건 근거가 아니라 편의였다 — 목표에 20%p 모자란 ETF 가 허들을 겨우 넘긴 주식보다 뒤로
+ * 갈 이유가 없다. 번호를 이어붙이는 것도 같은 거짓말이라, **각 묶음이 1번부터** 센다.
+ *
+ * 배분 계산 자체는 전부 함께 돌린다(`planAllocation`) — 나누는 건 **보여주는 방식**뿐이다.
  */
 export interface RankedGroups {
-  /** 기대수익률로 줄 세울 수 있는 것. */
+  /** 기대수익률 순. */
   stocks: RankedRow[];
-  /** ETF·코인·원자재 — 목표비중만으로 판단한다. */
+  /** ETF·코인·원자재 — 목표 미달 순. */
   others: RankedRow[];
 }
 
+/** 목표까지 얼마나 모자란가(%p, 소수). 음수면 이미 넘긴 것. */
+export function targetGap(r: RankedRow): number {
+  return r.leg.targetWeight - r.leg.currentWeight;
+}
+
 export function groupRanked(ranked: RankedRow[]): RankedGroups {
-  return {
-    stocks: ranked.filter((r) => valuationApplies(r.row.assetType)),
-    others: ranked.filter((r) => !valuationApplies(r.row.assetType)),
-  };
+  const stocks: RankedRow[] = [];
+  const others: RankedRow[] = [];
+  for (const r of ranked) {
+    (valuationApplies(r.row.assetType) ? stocks : others).push(r);
+  }
+  // `rankRows` 의 전역 정렬은 주식 기준이다. ETF 묶음은 자기 기준으로 다시 세운다 —
+  // 기대수익률이 없는 것들끼리는 목표 미달이 큰 쪽이 먼저다.
+  others.sort((a, b) => {
+    const byStatus = rank(a.leg.status) - rank(b.leg.status);
+    return byStatus !== 0 ? byStatus : targetGap(b) - targetGap(a);
+  });
+  return { stocks, others };
 }
 
 /**

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { groupRanked, rankRows } from "./allocateRanking";
+import { groupRanked, rankRows, targetGap } from "./allocateRanking";
 import type { AllocateRow } from "./allocateData";
 
 function row(
@@ -104,5 +104,38 @@ describe("groupRanked — 개별주와 ETF 를 가른다", () => {
   it("자산유형을 모르면 개별주로 본다 — 기존 동작(기본값 주식)", () => {
     const ranked = rankRows([row("A", 100, 1)]);
     expect(groupRanked(ranked).stocks).toHaveLength(1);
+  });
+});
+
+describe("groupRanked — 묶음마다 자기 기준으로 센다", () => {
+  it("ETF 묶음은 목표 미달이 큰 순 — 전역 정렬(주식 기준)을 그대로 쓰지 않는다", () => {
+    // 총 1000. A: 목표 60%·현재 10% → 미달 50%p, B: 목표 30%·현재 20% → 미달 10%p
+    const ranked = rankRows([
+      row("B", 200, 0.3, { assetType: "ETF" }),
+      row("A", 100, 0.6, { assetType: "ETF" }),
+      row("C", 700, 0.1, { assetType: "ETF" }),
+    ]);
+    const { others } = groupRanked(ranked);
+    expect(others.map((r) => r.row.symbol)[0]).toBe("A");
+  });
+
+  it("targetGap 은 목표 − 현재 — 넘겼으면 음수", () => {
+    const ranked = rankRows([row("A", 100, 0.5), row("B", 900, 0.5)]);
+    const a = ranked.find((r) => r.row.symbol === "A")!;
+    const b = ranked.find((r) => r.row.symbol === "B")!;
+    expect(targetGap(a)).toBeCloseTo(0.4); // 목표 50% − 현재 10%
+    expect(targetGap(b)).toBeCloseTo(-0.4); // 목표 50% − 현재 90%
+  });
+
+  it("주식 묶음은 전역 정렬(기대수익률 순)을 유지한다", () => {
+    const ranked = rankRows([
+      row("LOW", 0, 0.3, { expectedCagr: 0.09, requiredReturn: 0.12 }),
+      row("HIGH", 0, 0.3, { expectedCagr: 0.22, requiredReturn: 0.12 }),
+      row("ETF", 0, 0.4, { assetType: "ETF" }),
+    ]);
+    expect(groupRanked(ranked).stocks.map((r) => r.row.symbol)).toEqual([
+      "HIGH",
+      "LOW",
+    ]);
   });
 });

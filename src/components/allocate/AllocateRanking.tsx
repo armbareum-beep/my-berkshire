@@ -5,7 +5,7 @@ import Link from "next/link";
 import { SymbolAvatar } from "@/components/onboarding/SymbolPicker";
 import { pct } from "@/lib/format";
 import { valuationApplies } from "@/lib/finance/expectedReturn";
-import { groupRanked, type RankedRow } from "@/lib/allocateRanking";
+import { groupRanked, targetGap, type RankedRow } from "@/lib/allocateRanking";
 import { STATUS_META } from "./statusMeta";
 
 /**
@@ -16,9 +16,14 @@ import { STATUS_META } from "./statusMeta";
  *
  * ## 개별주와 ETF 를 옆으로 넘긴다
  *
- * 둘은 판단 기준이 다르다 — 개별주는 기대수익률, ETF 는 목표비중만. 한 층에 이어 붙이면
+ * 둘은 **정렬 기준이 다르다** — 주식은 기대수익률, ETF 는 목표 미달. 한 층에 이어 붙이면
  * 스크롤이 길어지고 지금 어느 기준으로 보는 중인지 흐려진다. **한 번에 한 기준만** 보이게
  * 옆으로 넘긴다.
+ *
+ * 두 가지를 지킨다.
+ *   · 각 장이 **자기 정렬 기준을 라벨로 밝힌다** ("기대수익률 순" / "목표 미달 순")
+ *   · 번호는 **장마다 1번부터** — 이어붙이면 "ETF 10번이 주식 9번보다 후순위"라는 뜻이
+ *     되는데, 기준이 다르니 그런 비교는 성립하지 않는다
  *
  * 구현은 **CSS scroll-snap** 이다 — 라이브러리를 더하지 않고 모바일 관성 스크롤이 그대로
  * 산다(§5 "과한 연출 금지"). JS 는 두 가지만 한다: 지금 몇 번째 장인지 표시, 탭을 누르면
@@ -30,12 +35,19 @@ export function AllocateRanking({ ranked }: { ranked: RankedRow[] }) {
   const { stocks, others } = groupRanked(ranked);
 
   const pages = [
-    { key: "stocks", label: "개별주", rows: stocks, note: null as string | null },
+    {
+      key: "stocks",
+      label: "주식",
+      rows: stocks,
+      basis: "기대수익률 순",
+      note: null as string | null,
+    },
     {
       key: "others",
       label: "ETF · 기타",
       rows: others,
-      note: "기대수익률 모형을 쓰지 않아요 — 목표비중으로만 판단합니다",
+      basis: "목표 미달 순",
+      note: "기대수익률 모형을 쓸 수 없어 목표비중으로만 판단해요",
     },
   ].filter((p) => p.rows.length > 0);
 
@@ -48,13 +60,16 @@ export function AllocateRanking({ ranked }: { ranked: RankedRow[] }) {
   if (pages.length === 1) {
     return (
       <section className="rounded-2xl bg-card p-5 shadow-card">
-        <p className="text-sm font-semibold">배분 순위</p>
+        <div className="flex items-baseline justify-between gap-3">
+          <p className="text-sm font-semibold">살 곳 순위</p>
+          <p className="text-[11px] text-muted-foreground">{pages[0].basis}</p>
+        </div>
         {pages[0].note && (
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
             {pages[0].note}
           </p>
         )}
-        <RankList rows={pages[0].rows} offset={0} />
+        <RankList rows={pages[0].rows} />
       </section>
     );
   }
@@ -68,7 +83,7 @@ export function AllocateRanking({ ranked }: { ranked: RankedRow[] }) {
   return (
     <section className="rounded-2xl bg-card p-5 shadow-card">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-semibold">배분 순위</p>
+        <p className="text-sm font-semibold">살 곳 순위</p>
         <div className="flex gap-1 rounded-lg bg-secondary p-0.5">
           {pages.map((p, i) => (
             <button
@@ -99,18 +114,18 @@ export function AllocateRanking({ ranked }: { ranked: RankedRow[] }) {
         }}
         className="-mx-1 flex snap-x snap-mandatory overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
-        {pages.map((p, i) => (
+        {pages.map((p) => (
           <div key={p.key} className="w-full shrink-0 snap-start px-1">
+            <p className="mt-2 text-[11px] font-semibold text-muted-foreground">
+              {p.basis}
+            </p>
             {p.note && (
-              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+              <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
                 {p.note}
               </p>
             )}
-            {/* 번호는 앞 장에서 이어진다 — 장이 갈려도 전체에서 몇 번째인지가 배분 순서다. */}
-            <RankList
-              rows={p.rows}
-              offset={pages.slice(0, i).reduce((s, q) => s + q.rows.length, 0)}
-            />
+            {/* 번호는 장마다 1번부터 — 기준이 다른 둘을 이어 세면 비교 가능한 척이 된다. */}
+            <RankList rows={p.rows} />
           </div>
         ))}
       </div>
@@ -118,14 +133,12 @@ export function AllocateRanking({ ranked }: { ranked: RankedRow[] }) {
   );
 }
 
-/**
- * 순위 목록 한 덩어리. `offset` 은 앞 장의 개수 — 번호가 이어지게 한다
- * (장이 갈려도 전체에서 몇 번째인지가 배분 순서다).
- */
-function RankList({ rows, offset }: { rows: RankedRow[]; offset: number }) {
+/** 순위 목록 한 덩어리. 번호는 이 묶음 안에서 1번부터 센다. */
+function RankList({ rows }: { rows: RankedRow[] }) {
   return (
     <ul className="mt-3 flex flex-col gap-0.5">
-      {rows.map(({ row, leg }, i) => {
+      {rows.map((ranked, i) => {
+        const { row, leg } = ranked;
         const meta = STATUS_META[leg.status];
         const buyable = leg.status === "BUY" || leg.status === "STRETCH";
         return (
@@ -138,7 +151,7 @@ function RankList({ rows, offset }: { rows: RankedRow[]; offset: number }) {
               }
             >
               <span className="w-4 shrink-0 text-center text-xs font-bold tabular-nums text-muted-foreground">
-                {offset + i + 1}
+                {i + 1}
               </span>
               <SymbolAvatar symbol={row.symbol} name={row.label} size="md" />
               <div className="min-w-0 flex-1">
@@ -153,9 +166,15 @@ function RankList({ rows, offset }: { rows: RankedRow[]; offset: number }) {
                     {pct(row.expectedCagr)}
                   </p>
                 ) : valuationApplies(row.assetType) ? (
-                  // 개별주인데 비어 있으면 "넣어야 하는데 안 넣은" 것이다.
+                  // 주식인데 비어 있으면 "넣어야 하는데 안 넣은" 것이다.
                   <p className="text-xs text-muted-foreground">가정 없음</p>
-                ) : null}
+                ) : (
+                  // ETF·기타는 이 묶음의 정렬 근거(목표 미달)를 그대로 보여준다.
+                  // 빈칸으로 두면 왜 이 순서인지 알 수 없다.
+                  <p className="text-sm font-bold tabular-nums">
+                    {gapLabel(targetGap(ranked))}
+                  </p>
+                )}
                 <span
                   className={`mt-0.5 inline-block rounded-full px-1.5 py-0.5 text-[10px] font-bold ${meta.tone}`}
                 >
@@ -168,4 +187,10 @@ function RankList({ rows, offset }: { rows: RankedRow[]; offset: number }) {
       })}
     </ul>
   );
+}
+
+/** 목표 미달을 %p 로. 이미 넘겼으면 부호를 붙여 "초과"임을 드러낸다. */
+function gapLabel(gap: number): string {
+  if (Math.abs(gap) < 0.0001) return "목표 도달";
+  return `${gap > 0 ? "−" : "+"}${pct(Math.abs(gap))}`;
 }
