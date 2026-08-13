@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { PieChart } from "lucide-react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -108,17 +107,8 @@ export default async function StockAllocationPage() {
             </ul>
           </section>
 
-          {/* 종목별 목표비중·리밸런싱 */}
-          <Link
-            href="/rebalance"
-            className="flex items-center justify-between rounded-2xl bg-card p-5 shadow-card transition active:scale-[0.99]"
-          >
-            <span className="text-sm font-semibold">
-              종목별 목표비중 · 리밸런싱
-            </span>
-            <span className="text-muted-foreground">›</span>
-          </Link>
-
+          {/* 목표비중·리밸런싱 버튼이 있던 자리. /rebalance 편집은 은퇴했고 목표비중은
+              /allocate/settings 에서 정한다 — 이 화면은 보기 전용으로 남긴다. */}
           {/* 전체 종목 목록 */}
           <section className="rounded-2xl bg-card p-5 shadow-card">
             <ul className="flex flex-col gap-2">

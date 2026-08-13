@@ -198,17 +198,9 @@ export default async function AllocationDetailPage({
             </ul>
           </section>
 
-          {/* 이 기준으로 목표비중·리밸런싱 — 유형은 계층형 종목별(/rebalance)이 담당 */}
-          <Link
-            href={tag === "type" ? "/rebalance" : `/rebalance/${tag}`}
-            className="flex items-center justify-between rounded-2xl bg-card p-5 shadow-card transition active:scale-[0.99]"
-          >
-            <span className="text-sm font-semibold">
-              {cfg.title.replace(" 자산배분", "")} 목표비중 · 리밸런싱
-            </span>
-            <span className="text-muted-foreground">›</span>
-          </Link>
-
+          {/* 목표비중·리밸런싱 버튼이 있던 자리. 국가별·산업별 목표비중은 은퇴했고
+              (/rebalance/[tag] 는 이제 이 화면으로 되돌아온다) 목표비중은 종목당 숫자
+              하나로 /allocate/settings 에서 정한다. 제자리를 도는 버튼이라 지웠다. */}
           {/* 카테고리별 구성종목 */}
           {!onlyLabel ? (
             // 전체 뷰: 컴팩트 카드 → 탭 → 드랍시트
