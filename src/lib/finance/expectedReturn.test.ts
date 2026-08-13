@@ -176,6 +176,42 @@ describe("computeExpectedReturn — 실적이 바뀌면 매수가가 따라 오�
   });
 });
 
+describe("기대 CAGR은 통화 무관 — 배분에 환산이 필요 없다", () => {
+  // CAGR = (EPS × (1+g)^Y × M ÷ P)^(1/Y) − 1 에서 EPS/P 는 비율이라
+  // 둘을 같은 배수로 환산하면 상쇄된다. g·M·Y 는 무차원.
+  const assume = { expectedGrowth: 0.3, terminalMultiple: 25 };
+  const fx = 1382.5;
+
+  it("₩ 짝과 $ 짝이 같은 CAGR을 준다", () => {
+    const usd = computeExpectedReturn({ ...assume, currentMetric: 1.35 }, 158)!;
+    const krw = computeExpectedReturn(
+      { ...assume, currentMetric: 1.35 * fx },
+      158 * fx,
+    )!;
+    expect(krw.expectedCagr).toBeCloseTo(usd.expectedCagr!, 9);
+    expect(krw.buyable).toBe(usd.buyable);
+  });
+
+  it("매수가는 반대로 통화를 따라간다 — 표시에는 환산이 필요하다", () => {
+    const usd = computeExpectedReturn({ ...assume, currentMetric: 1.35 }, 158)!;
+    const krw = computeExpectedReturn(
+      { ...assume, currentMetric: 1.35 * fx },
+      158 * fx,
+    )!;
+    expect(krw.buyPrice).toBeCloseTo(usd.buyPrice * fx, 6);
+  });
+
+  it("짝이 어긋나면 결과가 무너진다 — 섞으면 안 되는 이유", () => {
+    // ₩ EPS 와 $ 가격을 섞으면 환율 배수만큼 부풀려진다.
+    const mixed = computeExpectedReturn(
+      { ...assume, currentMetric: 1.35 * fx },
+      158,
+    )!;
+    const correct = computeExpectedReturn({ ...assume, currentMetric: 1.35 }, 158)!;
+    expect(mixed.expectedCagr!).toBeGreaterThan(correct.expectedCagr! + 1);
+  });
+});
+
 describe("attractivenessFromCagr — allocate 연결", () => {
   it("가정이 없으면 중립 1.0 (비중 기반 배분 유지)", () => {
     expect(attractivenessFromCagr(null)).toBe(1);

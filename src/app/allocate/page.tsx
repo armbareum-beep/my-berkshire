@@ -5,10 +5,7 @@ import { getPortfolio } from "@/lib/portfolio";
 import { computeDashboard } from "@/lib/dashboard";
 import { loadSecurityMeta } from "@/lib/securities";
 import { flattenTargets } from "@/lib/allocate";
-import {
-  isComplete,
-  loadExpectedReturnAssumptions,
-} from "@/lib/expectedReturnAssumptions";
+import { loadExpectedReturnAssumptions } from "@/lib/expectedReturnAssumptions";
 import {
   attractivenessFromCagr,
   computeExpectedReturn,
@@ -78,22 +75,45 @@ export default async function AllocatePage() {
     withinTargets,
   );
 
-  // 기대수익률은 **종목 통화** 기준으로 계산해야 한다. portfolio.prices 는 ₩ 이고
-  // 가정의 이익력(EPS)은 종목 통화라, 외화 종목은 ₩ 가격을 되돌려야 1400배 어긋나지 않는다.
-  // 환율을 모르면 계산하지 않는다 → attractiveness 는 중립 1.0 으로 남는다(가짜 정밀 금지).
+  // 기대 CAGR = (EPS × (1+g)^Y × 배수 ÷ 가격)^(1/Y) − 1 은 **통화 무관**이다.
+  // EPS/가격이 비율이라 둘을 같은 통화로만 맞추면 환산해도 답이 같다(환율이 상쇄).
+  // 그래서 환산하지 않고 **짝만 맞춘다**:
+  //
+  //   수기 이익력 있음 → 사용자가 종목 통화로 넣었으므로 가격도 종목 통화로 (환율 필요)
+  //   수기 없음(공시)  → 공시 EPS 도 가격도 이미 ₩ 이므로 **환율 없이** 그대로 (해외 포함)
+  //
+  // 후자가 기본 경로다. 환율을 못 가져와도 해외 종목 밸류에이션이 살아 있다.
   const usdKrw = portfolio.usdKrw;
-  const nativePrice = (symbol: string): number | null => {
-    const krw = portfolio.prices[symbol];
-    if (!(krw > 0)) return null;
-    if ((meta[symbol]?.currency ?? "KRW") === "KRW") return krw;
-    return usdKrw && usdKrw > 0 ? krw / usdKrw : null;
+  const metricAndPrice = (
+    symbol: string,
+    manual: number | null,
+    autoKrw: number | undefined,
+  ): { metric: number; price: number | null } | null => {
+    const priceKrw = portfolio.prices[symbol];
+    if (manual != null && manual > 0) {
+      // 수기값은 종목 통화 → 가격을 되돌려 짝을 맞춘다.
+      const native = toNativeEps(priceKrw, symbol, usdKrw);
+      return { metric: manual, price: native };
+    }
+    if (autoKrw != null && autoKrw > 0)
+      return { metric: autoKrw, price: priceKrw > 0 ? priceKrw : null };
+    return null;
   };
 
   const rows: AllocateRow[] = data.allocation.map((a) => {
     const assumption = assumptions[a.symbol];
-    // 이익력은 수기 입력이 우선, 없으면 공시 EPS(종목 통화로 되돌린 값).
-    const autoMetric = toNativeEps(cachedEps[a.symbol], a.symbol, usdKrw);
-    if (!isComplete(assumption, autoMetric)) {
+    const pair = metricAndPrice(
+      a.symbol,
+      assumption?.currentMetric ?? null,
+      cachedEps[a.symbol],
+    );
+    // 성장률·종료배수는 판단이라 자동값이 없다 — 둘 중 하나라도 없으면 비중 기반 배분.
+    const usable =
+      pair != null &&
+      assumption?.expectedGrowth != null &&
+      assumption?.terminalMultiple != null &&
+      assumption.terminalMultiple > 0;
+    if (!usable) {
       // 가정이 없으면 순수 비중 기반 배분(스펙 v1.1 §15.3).
       return {
         key: a.symbol,
@@ -106,13 +126,13 @@ export default async function AllocatePage() {
     const requiredReturn = assumption.requiredReturn ?? DEFAULT_REQUIRED_RETURN;
     const er = computeExpectedReturn(
       {
-        currentMetric: (assumption.currentMetric ?? autoMetric) as number,
+        currentMetric: pair.metric,
         expectedGrowth: assumption.expectedGrowth as number,
         terminalMultiple: assumption.terminalMultiple as number,
         holdingYears: assumption.holdingYears ?? undefined,
         requiredReturn: assumption.requiredReturn ?? undefined,
       },
-      nativePrice(a.symbol),
+      pair.price,
     );
     return {
       key: a.symbol,
