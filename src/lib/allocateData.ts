@@ -37,6 +37,8 @@ export interface AllocateRow extends AllocateTarget {
   held: boolean;
   /** 현재가(표시통화). 배분 금액을 주수로 바꿀 때 쓴다. 모르면 0. */
   price: number;
+  /** 자산유형(주식/ETF/코인/원자재…). 밸류에이션 적용 여부를 가른다. */
+  assetType: string;
 }
 
 export interface AllocateData {
@@ -149,6 +151,7 @@ export async function loadAllocateData(
       held,
       // 미보유 후보는 dashboard 에 없으므로 원본 시세(₩)를 직접 환산한다.
       price: heldPrice[symbol] ?? (portfolio.prices[symbol] ?? 0) * factor,
+      assetType: meta[symbol]?.assetType ?? "주식",
       target: rule?.target ?? 0,
       softCap: rule?.softCap,
       hardCap: rule?.hardCap,
