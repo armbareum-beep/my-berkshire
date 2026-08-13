@@ -3,7 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { cashBalance, type InvestmentEvent } from "@/lib/finance/valuation";
 import { getPrices } from "@/lib/finance/prices";
-import { getFxToKrw } from "@/lib/finance/fx";
+import { getFxToKrw, getFxToKrwOn } from "@/lib/finance/fx";
 import { upsertSecurities, normalizeSymbol } from "@/lib/securities";
 import { todayKST } from "@/lib/date";
 import type { AccountType } from "@/lib/config/tax";
@@ -316,7 +316,8 @@ export async function recordFirstBuy(input: BuyInput): Promise<ActionResult> {
       price = mp;
     }
     if (currency !== "KRW") {
-      const fx = await getFxToKrw([currency]);
+      // 거래일 기준 환율 — 소급 입력에 오늘 환율을 쓰면 원가가 어긋난다.
+      const fx = await getFxToKrwOn([currency], date, todayKST());
       const rate = fx[currency];
       if (!rate)
         return {
