@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   approvedSymbols,
-  groupBySector,
   resolveUniverse,
   type UniverseStatusMap,
 } from "./universe";
@@ -45,37 +44,5 @@ describe("resolveUniverse — 행이 없을 때의 규칙 (PRD §3.1)", () => {
 
   it("보유도 저장도 없으면 빈 목록", () => {
     expect(resolveUniverse([], {})).toEqual([]);
-  });
-});
-
-describe("groupBySector — 산업별 묶음", () => {
-  const sectors: Record<string, string> = {
-    "005930": "반도체",
-    SK: "반도체",
-    META: "플랫폼",
-  };
-
-  it("섹터별로 묶고 종목 많은 순으로 정렬한다", () => {
-    const groups = groupBySector(
-      [{ symbol: "META" }, { symbol: "005930" }, { symbol: "SK" }],
-      (s) => sectors[s],
-    );
-    expect(groups.map((g) => g.sector)).toEqual(["반도체", "플랫폼"]);
-    expect(groups[0].items.map((i) => i.symbol)).toEqual(["005930", "SK"]);
-  });
-
-  it("섹터를 모르는 종목은 미분류로 모아 맨 뒤에 둔다 — 추측하지 않는다", () => {
-    const groups = groupBySector(
-      [{ symbol: "UNKNOWN1" }, { symbol: "UNKNOWN2" }, { symbol: "META" }],
-      (s) => sectors[s],
-    );
-    // 미분류가 2개로 더 많지만 그래도 맨 뒤다.
-    expect(groups[groups.length - 1].sector).toBe("미분류");
-    expect(groups[groups.length - 1].items).toHaveLength(2);
-  });
-
-  it("빈 문자열 섹터도 미분류로 취급한다", () => {
-    const groups = groupBySector([{ symbol: "X" }], () => "");
-    expect(groups[0].sector).toBe("미분류");
   });
 });

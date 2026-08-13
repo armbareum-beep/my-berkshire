@@ -1,10 +1,9 @@
+import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getPortfolio } from "@/lib/portfolio";
-import { computeDashboard } from "@/lib/dashboard";
-import { backfillSectors, loadSecurityMeta } from "@/lib/securities";
-import { loadUniverseStatuses, resolveUniverse } from "@/lib/universe";
+import { loadSecurityMeta } from "@/lib/securities";
 import { readTargets } from "@/lib/targetWeights";
 import { loadAllocateData } from "@/lib/allocateData";
 import { planAllocation } from "@/lib/allocate";
@@ -16,19 +15,25 @@ import {
   TargetWeightEditor,
   type TargetRow,
 } from "@/components/allocate/TargetWeightEditor";
-import {
-  UniversePanel,
-  type UniverseRow,
-} from "@/components/allocate/UniversePanel";
 
 /**
  * `/allocate/settings` — 배분을 움직이는 **입력값을 한 곳에** 모은 화면.
  *
- * 재설계 전에는 목표비중(레거시 `/rebalance`) · 후보(`/allocate/universe`) ·
- * 허들(`/allocate` 본문)이 세 화면에 흩어져 있었다. 배분 결과가 마음에 안 들 때
- * 무엇을 만져야 하는지 알 수 없었던 이유다.
+ * ## 후보 목록을 걷어낸 이유
  *
- * 순서는 **영향이 큰 것부터** — 목표비중 > 후보 > 허들 > 투자 가능 현금.
+ * 한때 여기엔 "후보(Approved Universe)"를 산업별로 고르는 섹션이 따로 있었다. 그런데
+ * 목표비중을 검색형으로 바꾸면서(#66) **비중을 정하면 자동으로 후보가 되도록** 했다.
+ * 그 순간 후보 섹션은 같은 것을 두 번 묻는 자리가 됐다 — 같은 종목이 한 화면에 두 번
+ * 나오고, 그중 하나는 산업별로 길게 늘어선 리스트였다.
+ *
+ * 그래서 규칙을 하나로 줄인다.
+ *
+ * > **목표비중을 정한 종목이 배분 대상이다. 안 정했으면 대상이 아니다.**
+ *
+ * "배분에서 빼기"도 따로 필요 없다 — 목표비중을 0으로 두면 배분되지 않는다.
+ * 산업별 쏠림을 보는 일은 조회 화면(`/allocation/sector`)이 이미 한다.
+ *
+ * 순서는 영향이 큰 것부터 — 목표비중 > 허들 > 투자 가능 현금.
  */
 export default async function AllocateSettingsPage() {
   const supabase = await createClient();
@@ -48,42 +53,7 @@ export default async function AllocateSettingsPage() {
   const data = await loadAllocateData(supabase, displayCcy);
   if (!data) redirect("/onboarding");
 
-  // ── 후보 목록(산업별) — 보유 + 관심 전부를 보여줘야 고를 수 있다 ──
-  const dashboard = computeDashboard(portfolio, displayCcy);
-  const held = dashboard.allocation.map((a) => a.symbol);
-  const statuses = await loadUniverseStatuses(supabase, portfolio.holding.id);
-  const entries = resolveUniverse(held, statuses);
-
-  // 산업 태그는 후보 화면의 뼈대라 없으면 채워온다(멱등, 이미 있는 종목은 건너뜀).
-  let meta = await loadSecurityMeta(
-    supabase,
-    entries.map((e) => e.symbol),
-  );
-  const filled = await backfillSectors(supabase, meta);
-  if (Object.keys(filled).length > 0) {
-    meta = Object.fromEntries(
-      Object.entries(meta).map(([symbol, m]) => [
-        symbol,
-        m ? { ...m, sector: m.sector ?? filled[symbol] ?? null } : m,
-      ]),
-    );
-  }
-
-  const valueOf: Record<string, number> = {};
-  for (const a of dashboard.allocation) valueOf[a.symbol] = a.value;
-
-  const universeRows: UniverseRow[] = entries.map((e) => ({
-    symbol: e.symbol,
-    name: meta[e.symbol]?.name ?? e.symbol,
-    status: e.status,
-    held: e.held,
-    value: valueOf[e.symbol] ?? 0,
-    sector: meta[e.symbol]?.sector ?? null,
-  }));
-
-  // ── 목표비중 ──
-  // 후보 + **후보가 아닌데 목표비중이 남아 있는 종목**. 후자를 빼면 저장된 값이 화면에서
-  // 사라져 지울 수도 없는 유령이 된다(후보에서 뺐다고 목표비중이 지워지지는 않는다).
+  // 현재 비중은 엔진에서 그대로 받아 쓴다(화면이 따로 계산하면 두 숫자가 갈린다).
   const legs = planAllocation(data.rows, 0).legs;
   const weightOf = new Map(legs.map((l) => [l.key, l.currentWeight]));
   const targetRows: TargetRow[] = data.rows.map((r) => ({
@@ -94,21 +64,31 @@ export default async function AllocateSettingsPage() {
     held: r.held,
   }));
 
+  // 후보가 아닌데 목표비중이 남아 있는 종목도 넣는다 — 빼면 저장된 값이 보이지도
+  // 지워지지도 않는 유령이 된다.
   const candidateSet = new Set(data.rows.map((r) => r.symbol));
   const storedTargets = readTargets(
     portfolio.holding.target_weights,
     (portfolio.holding.category_targets ?? {}) as Record<string, number>,
     [],
   );
-  for (const [symbol, rule] of Object.entries(storedTargets)) {
-    if (candidateSet.has(symbol) || rule.target <= 0) continue;
-    targetRows.push({
-      symbol,
-      label: meta[symbol]?.name ?? symbol,
-      target: rule.target,
-      currentWeight: 0,
-      held: false,
-    });
+  const orphans = Object.entries(storedTargets).filter(
+    ([symbol, rule]) => !candidateSet.has(symbol) && rule.target > 0,
+  );
+  if (orphans.length > 0) {
+    const meta = await loadSecurityMeta(
+      supabase,
+      orphans.map(([symbol]) => symbol),
+    );
+    for (const [symbol, rule] of orphans) {
+      targetRows.push({
+        symbol,
+        label: meta[symbol]?.name ?? symbol,
+        target: rule.target,
+        currentWeight: 0,
+        held: false,
+      });
+    }
   }
 
   return (
@@ -124,8 +104,6 @@ export default async function AllocateSettingsPage() {
 
       <TargetWeightEditor rows={targetRows} />
 
-      <UniversePanel rows={universeRows} currency={data.currency} />
-
       <HurdleCard rate={data.house} passing={data.passing} total={data.judged} />
 
       <InvestableCashCard
@@ -134,6 +112,13 @@ export default async function AllocateSettingsPage() {
         currency={data.currency}
         isSet={data.investableCashSet}
       />
+
+      <Link
+        href="/allocation/sector"
+        className="px-2 text-center text-xs font-medium text-muted-foreground underline"
+      >
+        산업·국가별로 지금 어디에 쏠려 있는지 보기
+      </Link>
     </main>
   );
 }

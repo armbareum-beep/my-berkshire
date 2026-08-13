@@ -37,7 +37,7 @@ export function TargetWeightEditor({ rows }: { rows: TargetRow[] }) {
   const [searching, setSearching] = useState(false);
 
   const set = useMemo(() => rows.filter((r) => r.target > 0), [rows]);
-  // 후보인데 목표비중이 없는 종목 — 배분되지 않으므로 알려는 준다.
+  // 목표비중이 없는 종목 — 배분되지 않는다는 사실만 알린다.
   const unset = useMemo(() => rows.filter((r) => r.target <= 0), [rows]);
 
   const total = set.reduce((s, r) => s + r.target, 0);
@@ -97,7 +97,7 @@ export function TargetWeightEditor({ rows }: { rows: TargetRow[] }) {
       {unset.length > 0 && (
         <div className="mt-4 border-t border-border pt-3">
           <p className="text-[11px] leading-relaxed text-muted-foreground">
-            목표비중이 없어 배분되지 않는 후보 {unset.length}종목:{" "}
+            목표비중이 없어 배분되지 않는 {unset.length}종목:{" "}
             {unset.map((r) => r.label).join(" · ")}
           </p>
         </div>

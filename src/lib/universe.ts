@@ -67,32 +67,6 @@ export function approvedSymbols(entries: UniverseEntry[]): string[] {
   return entries.filter((e) => e.status === "APPROVED").map((e) => e.symbol);
 }
 
-/**
- * 산업(섹터)별 묶음 — 화면에서 "무엇을 고를지"를 산업 단위로 보게 한다.
- * 섹터를 모르는 종목은 `unknownLabel` 그룹으로 모아 맨 뒤에 둔다(추측하지 않는다).
- */
-export function groupBySector<T extends { symbol: string }>(
-  items: T[],
-  sectorOf: (symbol: string) => string | null | undefined,
-  unknownLabel = "미분류",
-): { sector: string; items: T[] }[] {
-  const groups = new Map<string, T[]>();
-  for (const item of items) {
-    const key = sectorOf(item.symbol) || unknownLabel;
-    const list = groups.get(key);
-    if (list) list.push(item);
-    else groups.set(key, [item]);
-  }
-  return [...groups.entries()]
-    .map(([sector, list]) => ({ sector, items: list }))
-    .sort((a, b) => {
-      // 미분류는 항상 맨 뒤. 나머지는 종목 많은 순 → 이름순.
-      if (a.sector === unknownLabel) return 1;
-      if (b.sector === unknownLabel) return -1;
-      return b.items.length - a.items.length || a.sector.localeCompare(b.sector);
-    });
-}
-
 /** 저장된 후보 상태(symbol → status). 컬럼이 아직 없으면 빈 맵. */
 export async function loadUniverseStatuses(
   supabase: SupabaseClient<Database>,
