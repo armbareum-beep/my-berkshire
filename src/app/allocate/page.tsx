@@ -11,7 +11,11 @@ import {
   computeExpectedReturn,
   DEFAULT_REQUIRED_RETURN,
 } from "@/lib/finance/expectedReturn";
-import { loadCachedEps, toNativeEps } from "@/lib/finance/cachedEps";
+import {
+  loadCachedEps,
+  nativeCurrencyOf,
+  toNativeEps,
+} from "@/lib/finance/cachedEps";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
 import {
   AllocatePanel,
@@ -21,9 +25,13 @@ import {
 /**
  * `/allocate` — 새 돈을 어디에 얼마나 넣을지 정하는 화면.
  *
- * 스펙 v1.1 §12~§16 과 Capital Allocator PRD v0.3 §6~§8 이 **합의하는 범위**만 구현했다
- * (대조표: `docs/spec-vs-prd-reconciliation.md`). 밸류에이션(Expected CAGR)은 아직 붙이지
- * 않았고, 엔진에 `attractiveness` 훅만 열어뒀다 — 채택이 결정되면 여기에 물린다.
+ * 스펙 v1.1 §12~§16 과 Capital Allocator PRD v0.3 §6~§8 을 구현한다
+ * (대조표: `docs/spec-vs-prd-reconciliation.md`).
+ *
+ * 밸류에이션(Expected CAGR)은 두 방향으로 배분에 들어간다.
+ *   · `attractiveness` — 후보 사이의 **순서**를 바꾼다 (PRD §6.1)
+ *   · `expectedCagr`   — 목표 초과 허들을 넘기면 **매수 상한**을 Soft Cap 까지 연다 (PRD §6.2)
+ * 가정을 넣지 않은 종목은 둘 다 중립이라 순수 비중 기반으로 동작한다(스펙 v1.1 §15.3).
  *
  * 목표비중은 기존 `/rebalance` 의 2층 저장 형식(유형 → 유형 내 종목)을 읽어 평면으로
  * 환산한다. 별도 테이블을 만들지 않는다(스펙 §13.2).
@@ -84,19 +92,22 @@ export default async function AllocatePage() {
   //
   // 후자가 기본 경로다. 환율을 못 가져와도 해외 종목 밸류에이션이 살아 있다.
   const usdKrw = portfolio.usdKrw;
+  //
+  // `ccy` 는 그 짝이 어느 통화로 맞춰졌는지다 — 매수가·현재가를 화면에 찍을 때 필요하다.
+  // 공시 경로는 해외 종목이어도 ₩ 라는 점이 함정이라 통화를 따로 들고 다닌다.
   const metricAndPrice = (
     symbol: string,
     manual: number | null,
     autoKrw: number | undefined,
-  ): { metric: number; price: number | null } | null => {
+  ): { metric: number; price: number | null; ccy: "KRW" | "USD" } | null => {
     const priceKrw = portfolio.prices[symbol];
     if (manual != null && manual > 0) {
       // 수기값은 종목 통화 → 가격을 되돌려 짝을 맞춘다.
       const native = toNativeEps(priceKrw, symbol, usdKrw);
-      return { metric: manual, price: native };
+      return { metric: manual, price: native, ccy: nativeCurrencyOf(symbol) };
     }
     if (autoKrw != null && autoKrw > 0)
-      return { metric: autoKrw, price: priceKrw > 0 ? priceKrw : null };
+      return { metric: autoKrw, price: priceKrw > 0 ? priceKrw : null, ccy: "KRW" };
     return null;
   };
 
@@ -141,8 +152,13 @@ export default async function AllocatePage() {
       value: a.value,
       target: flat[a.symbol] ?? 0,
       attractiveness: attractivenessFromCagr(er?.expectedCagr ?? null, requiredReturn),
+      // 엔진이 매수 상한을 정할 때 쓰는 값(PRD §6.2). 표시에도 같은 값을 쓴다.
       expectedCagr: er?.expectedCagr ?? null,
       requiredReturn,
+      // 아래 셋은 표시 전용 — "매수가 $149 / 현재 $158" 문장을 만들기 위한 것(PRD §19).
+      buyPrice: er?.buyPrice ?? null,
+      nativePrice: pair.price,
+      nativeCcy: pair.ccy,
     };
   });
 

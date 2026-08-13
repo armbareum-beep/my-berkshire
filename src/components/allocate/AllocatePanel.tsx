@@ -13,6 +13,7 @@ import { SymbolAvatar } from "@/components/onboarding/SymbolPicker";
 import { money, moneyCompact, pct, type Currency } from "@/lib/format";
 import {
   planAllocation,
+  type AllocateLeg,
   type AllocateStatus,
   type AllocateTarget,
 } from "@/lib/allocate";
@@ -28,6 +29,11 @@ const STATUS_META: Record<
     label: "BUY",
     tone: "bg-accent text-primary",
     note: "목표비중 미달",
+  },
+  STRETCH: {
+    label: "BUY+",
+    tone: "bg-accent text-primary",
+    note: "기대수익률이 높아 목표 초과 매수",
   },
   TRIM_PRIORITY: {
     label: "LOW",
@@ -53,10 +59,12 @@ const STATUS_META: Record<
 
 export interface AllocateRow extends AllocateTarget {
   symbol: string;
-  /** 현재가 기준 기대 CAGR(소수). 가정이 없거나 계산 불가면 undefined/null. */
-  expectedCagr?: number | null;
-  /** 그 종목에 적용된 요구수익률(소수). 표시용. */
-  requiredReturn?: number;
+  /** 요구수익률을 만족하는 최대 매수가(종목 통화). 표시용. */
+  buyPrice?: number | null;
+  /** 현재가(`buyPrice` 와 같은 통화). 표시용. */
+  nativePrice?: number | null;
+  /** 위 두 가격의 통화 — 공시 경로는 해외 종목이어도 ₩ 다. */
+  nativeCcy?: "KRW" | "USD";
 }
 
 /**
@@ -93,6 +101,22 @@ export function AllocatePanel({
     return m;
   }, [rows]);
   const anyCagr = Object.keys(cagrOf).length > 0;
+
+  // 기대수익률 순위 — PRD §6.1·§11. 가정이 있는 종목이 위, 없는 종목은 아래에 모은다.
+  // (가정이 없으면 "0%"가 아니라 "아직 모른다"이므로 섞어서 줄 세우면 거짓말이 된다.)
+  const ranked = useMemo(() => {
+    const withCagr = rows.filter((r) => r.expectedCagr != null);
+    const without = rows.filter((r) => r.expectedCagr == null);
+    withCagr.sort((a, b) => (b.expectedCagr ?? 0) - (a.expectedCagr ?? 0));
+    without.sort((a, b) => b.value - a.value);
+    return { withCagr, without };
+  }, [rows]);
+
+  const legOf = useMemo(() => {
+    const m: Record<string, AllocateLeg> = {};
+    for (const leg of plan.legs) m[leg.key] = leg;
+    return m;
+  }, [plan.legs]);
 
   // 배분액이 있는 것 먼저, 그다음 금액 큰 순 → 살 것이 위로 온다.
   const sorted = useMemo(
@@ -168,60 +192,87 @@ export function AllocatePanel({
               const meta = STATUS_META[leg.status];
               const buying = leg.amount > 0;
               return (
-                <li
-                  key={leg.key}
-                  className={
-                    "flex items-center gap-3 rounded-xl px-2 py-2.5 " +
-                    (buying ? "" : "opacity-55")
-                  }
-                >
-                  <SymbolAvatar symbol={leg.key} name={leg.label} size="md" />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
-                      <p className="truncate text-sm font-semibold">{leg.label}</p>
-                      <span
-                        className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${meta.tone}`}
-                      >
-                        {meta.label}
-                      </span>
-                    </div>
-                    <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
-                      {pct(leg.currentWeight)} → 목표 {pct(leg.targetWeight)}
-                      {buying && ` · 후 ${pct(leg.weightAfter)}`}
-                    </p>
-                    {cagrOf[leg.key]?.cagr != null && (
-                      <p className="mt-0.5 text-xs tabular-nums">
+                <li key={leg.key}>
+                  <Link
+                    href={`/stocks/${leg.key}`}
+                    className={
+                      "flex items-center gap-3 rounded-xl px-2 py-2.5 transition active:scale-[0.99] " +
+                      (buying ? "" : "opacity-55")
+                    }
+                  >
+                    <SymbolAvatar symbol={leg.key} name={leg.label} size="md" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <p className="truncate text-sm font-semibold">{leg.label}</p>
                         <span
-                          style={{
-                            color:
-                              cagrOf[leg.key].cagr! >= cagrOf[leg.key].required
-                                ? "var(--primary)"
-                                : "var(--muted-foreground)",
-                          }}
+                          className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${meta.tone}`}
                         >
-                          기대 {pct(cagrOf[leg.key].cagr!)}
+                          {meta.label}
                         </span>
-                        <span className="text-muted-foreground">
-                          {" "}
-                          / 요구 {pct(cagrOf[leg.key].required)}
-                        </span>
+                      </div>
+                      <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
+                        {pct(leg.currentWeight)} → 목표 {pct(leg.targetWeight)}
+                        {/* 상한이 목표보다 크면 밸류에이션이 문을 더 열어준 것이다(PRD §6.2). */}
+                        {leg.ceilingWeight > leg.targetWeight &&
+                          ` (한도 ${pct(leg.ceilingWeight)})`}
+                        {buying && ` · 후 ${pct(leg.weightAfter)}`}
                       </p>
-                    )}
-                  </div>
-                  <div className="shrink-0 text-right">
-                    {buying ? (
-                      <p className="text-sm font-bold tabular-nums">
-                        {money(leg.amount, currency)}
-                      </p>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">{meta.note}</p>
-                    )}
-                  </div>
+                      {cagrOf[leg.key]?.cagr != null && (
+                        <p className="mt-0.5 text-xs tabular-nums">
+                          <span
+                            style={{
+                              color:
+                                cagrOf[leg.key].cagr! >= cagrOf[leg.key].required
+                                  ? "var(--primary)"
+                                  : "var(--muted-foreground)",
+                            }}
+                          >
+                            기대 {pct(cagrOf[leg.key].cagr!)}
+                          </span>
+                          <span className="text-muted-foreground">
+                            {" "}
+                            / 요구 {pct(cagrOf[leg.key].required)}
+                          </span>
+                        </p>
+                      )}
+                    </div>
+                    <div className="shrink-0 text-right">
+                      {buying ? (
+                        <p className="text-sm font-bold tabular-nums">
+                          {money(leg.amount, currency)}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">{meta.note}</p>
+                      )}
+                    </div>
+                  </Link>
                 </li>
               );
             })}
           </ul>
         )}
+      </section>
+
+      {/* ── 기대수익률 순위 (PRD §6.1·§11) ── */}
+      <section className="rounded-2xl bg-card p-5 shadow-card">
+        <div className="flex items-baseline justify-between">
+          <p className="text-sm font-semibold">기대수익률 순위</p>
+          <p className="text-xs text-muted-foreground">내 가정 기준</p>
+        </div>
+        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+          {anyCagr
+            ? "요구수익률 + 3%p를 넘기면 목표비중을 넘겨서까지 삽니다. 못 넘기면 목표비중까지만."
+            : "종목마다 이익·성장 가정을 넣으면 이 순위로 배분 우선순위와 매수 한도가 정해져요."}
+        </p>
+
+        <ul className="mt-4 flex flex-col gap-1">
+          {ranked.withCagr.map((r, i) => (
+            <RankRow key={r.key} rank={i + 1} row={r} leg={legOf[r.key]} currency={currency} />
+          ))}
+          {ranked.without.map((r) => (
+            <RankRow key={r.key} row={r} leg={legOf[r.key]} currency={currency} />
+          ))}
+        </ul>
       </section>
 
       {/* ── 실행 ── */}
@@ -242,5 +293,95 @@ export function AllocatePanel({
           : " 종목 상세에서 이익·성장 가정을 넣으면 기대수익률까지 반영해 배분해요."}
       </p>
     </div>
+  );
+}
+
+/** 소수점: 큰 값은 정수, 작은 값은 2자리. 원화·달러 둘 다 읽히게. */
+function price(v: number, ccy: "KRW" | "USD"): string {
+  const unit = ccy === "KRW" ? "₩" : "$";
+  const n = Math.abs(v) >= 1000 ? Math.round(v).toLocaleString() : (+v.toFixed(2)).toLocaleString();
+  return `${unit}${n}`;
+}
+
+/**
+ * 순위 한 줄. 가정이 있으면 기대 CAGR·매수가를, 없으면 입력 유도를 보여준다.
+ *
+ * 종목 상세로 링크를 건다 — 가정을 고치는 곳이 거기이고, 이 화면에서 "왜 안 사지?"의
+ * 답이 대부분 가정이기 때문이다.
+ */
+function RankRow({
+  rank,
+  row,
+  leg,
+  currency,
+}: {
+  rank?: number;
+  row: AllocateRow;
+  leg?: AllocateLeg;
+  currency: Currency;
+}) {
+  const meta = leg ? STATUS_META[leg.status] : null;
+  const cagr = row.expectedCagr;
+  const required = row.requiredReturn ?? 0.12;
+  const ccy = row.nativeCcy ?? (currency === "USD" ? "USD" : "KRW");
+  const clears = cagr != null && cagr >= required;
+
+  return (
+    <li>
+      <Link
+        href={`/stocks/${row.symbol}`}
+        className="flex items-center gap-3 rounded-xl px-2 py-2.5 transition active:scale-[0.99]"
+      >
+        <span className="w-4 shrink-0 text-center text-xs font-bold tabular-nums text-muted-foreground">
+          {rank ?? "–"}
+        </span>
+        <SymbolAvatar symbol={row.symbol} name={row.label} size="md" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <p className="truncate text-sm font-semibold">{row.label}</p>
+            {meta && (
+              <span
+                className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${meta.tone}`}
+              >
+                {meta.label}
+              </span>
+            )}
+          </div>
+          {cagr != null ? (
+            <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
+              {row.buyPrice != null && row.nativePrice != null ? (
+                <>
+                  매수가 {price(row.buyPrice, ccy)} · 현재 {price(row.nativePrice, ccy)}
+                </>
+              ) : (
+                <>요구 {pct(required)}</>
+              )}
+            </p>
+          ) : (
+            <p className="mt-0.5 text-xs text-primary underline">
+              가정 입력하고 밸류에이션 반영하기
+            </p>
+          )}
+        </div>
+        <div className="shrink-0 text-right">
+          {cagr != null ? (
+            <>
+              <p
+                className="text-sm font-bold tabular-nums"
+                style={{ color: clears ? "var(--primary)" : "var(--muted-foreground)" }}
+              >
+                {pct(cagr)}
+              </p>
+              <p className="text-[11px] tabular-nums text-muted-foreground">
+                {leg ? `${pct(leg.currentWeight)} / 목표 ` : "목표 "}
+                {pct(row.target)}
+              </p>
+            </>
+          ) : (
+            <p className="text-xs text-muted-foreground">가정 없음</p>
+          )}
+        </div>
+      </Link>
+    </li>
   );
 }

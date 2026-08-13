@@ -245,11 +245,33 @@ score_i = gap_i × weightPriority_i × attractiveness_i
 ## 홈 결정 후
 3. 홈 화면 확정 → My Berkshire 통합(스펙 Phase 4) 또는 Allocator 홈(PRD Phase 2)
 
-## 밸류에이션 채택 시에만
-4. `valuation_assumptions` 에 `terminal_multiple` · `holding_years` · `base_metric` · `expected_eps_cagr` 추가
+## 밸류에이션 — 채택됨 (2026-08-13)
+4. ✅ `valuation_assumptions` 에 `er_*` 컬럼 추가 (`20260813010000_expected_return_assumptions.sql`)
    - 기존 `growth_rate`(고든 영구성장률)와 **의미가 다르므로 별도 컬럼**
-5. Dynamic Buy Price + Expected CAGR 계산 (PRD §4·§5)
-6. `attractiveness` 훅에 연결 → Buy Ranking
+5. ✅ Dynamic Buy Price + Expected CAGR 계산 (PRD §4·§5) — `src/lib/finance/expectedReturn.ts`
+6. ✅ `attractiveness` 훅 연결 + Buy Ranking (PRD §6.1·§11) — `/allocate`
+
+### 6.1 밸류에이션이 비중을 움직이는 두 경로
+
+§4.2 의 통합안은 `attractiveness` 하나만 열어뒀는데, 그것만으로는 **순서**만 바뀐다.
+매수 상한이 늘 목표비중이라 기대수익률이 아무리 높아도 목표비중을 넘겨 살 수 없었다.
+
+그래서 PRD §6.2("목표비중 초과 시 요구수익률 12% → 15%")를 상한 규칙으로 구현했다.
+
+| 경로 | 무엇을 바꾸나 | 어디에 |
+|---|---|---|
+| `attractiveness` | 후보 사이의 배분 **순서**(가중치) | `expectedReturn.ts:attractivenessFromCagr` |
+| 매수 상한(`ceiling`) | 목표비중 → Soft Cap 까지 **한도 확장** | `allocate.ts:ceilingOf` |
+
+```text
+기대 CAGR < 요구수익률          → 후보 제외 (attractiveness 0)
+요구수익률 ~ 요구+3%p           → 목표비중까지만 매수
+요구+3%p 이상                   → Soft Cap 까지 매수 (STRETCH)
+Soft Cap ~ Hard Cap             → 감액 (기존 규칙 유지)
+Hard Cap 이상                   → 차단. 밸류에이션으로도 뚫리지 않는다
+```
+
+가정을 넣지 않은 종목은 상한이 목표비중 그대로라 **스펙 §15 의 동작이 보존된다.**
 
 ## 하지 않을 것 (두 문서 공통)
 - DB 초기화 · 기존 데이터 삭제 · 계산 엔진 폐기 · 전체 기능 동시 이전
