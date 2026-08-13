@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -325,6 +326,48 @@ export default async function ReturnsPage() {
       </section>
 
       <FrictionCard friction={data.friction} drag={data.drag} currency={cur} />
+
+      <RestorePastCard foundedAt={portfolio.holding.founded_at} />
     </main>
+  );
+}
+
+/**
+ * 과거 성과 복원 안내 — 스펙 v1.1 §9.7.
+ *
+ * 전체 XIRR 은 외부 현금흐름만으로 결정되므로(§9.1) 과거를 되살리는 데 필요한 건
+ * **입출금 날짜·금액뿐**이다. 매매 내역은 복원할 필요가 없다 — 그래서 증권사 파일
+ * 가져오기를 홈에서 내렸고(§5.3), 대신 이 자리를 안내 지점으로 둔다.
+ *
+ * 입력 자체는 기존 `+ 기록 → 입금/출금`(장부 모드는 날짜 지정 가능)이 이미 할 수 있다.
+ * 없던 건 "여기서 하면 된다"는 안내였다.
+ */
+function RestorePastCard({ foundedAt }: { foundedAt: string }) {
+  return (
+    <section className="rounded-2xl bg-card p-5 shadow-card">
+      <p className="text-sm font-semibold">과거 성과도 복원할 수 있어요</p>
+      <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+        지금은 <span className="font-semibold">{foundedAt}</span> 부터 계산하고 있어요.
+        그 이전 입금·출금을 넣으면 수익률이 그만큼 앞당겨 계산됩니다.
+      </p>
+      <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+        필요한 건 <span className="font-semibold">입출금 날짜와 금액</span>뿐이에요 —
+        언제 무엇을 샀는지는 수익률에 쓰이지 않으니 매매 내역을 되살릴 필요가 없습니다.
+      </p>
+      <div className="mt-4 flex gap-2">
+        <Link
+          href="/transactions?type=DEPOSIT&from=/returns"
+          className="flex h-11 flex-1 items-center justify-center rounded-xl bg-primary text-sm font-semibold text-primary-foreground transition active:scale-[0.98]"
+        >
+          과거 입금 넣기
+        </Link>
+        <Link
+          href="/transactions?type=WITHDRAWAL&from=/returns"
+          className="flex h-11 flex-1 items-center justify-center rounded-xl bg-secondary text-sm font-semibold transition active:scale-[0.98]"
+        >
+          과거 출금 넣기
+        </Link>
+      </div>
+    </section>
   );
 }
