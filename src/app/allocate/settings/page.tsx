@@ -5,6 +5,7 @@ import { getPortfolio } from "@/lib/portfolio";
 import { computeDashboard } from "@/lib/dashboard";
 import { backfillSectors, loadSecurityMeta } from "@/lib/securities";
 import { loadUniverseStatuses, resolveUniverse } from "@/lib/universe";
+import { readTargets } from "@/lib/targetWeights";
 import { loadAllocateData } from "@/lib/allocateData";
 import { planAllocation } from "@/lib/allocate";
 import { BackButton } from "@/components/BackButton";
@@ -80,7 +81,9 @@ export default async function AllocateSettingsPage() {
     sector: meta[e.symbol]?.sector ?? null,
   }));
 
-  // ── 목표비중 — 후보 종목만. 현재 비중은 엔진에서 그대로 받아 쓴다 ──
+  // ── 목표비중 ──
+  // 후보 + **후보가 아닌데 목표비중이 남아 있는 종목**. 후자를 빼면 저장된 값이 화면에서
+  // 사라져 지울 수도 없는 유령이 된다(후보에서 뺐다고 목표비중이 지워지지는 않는다).
   const legs = planAllocation(data.rows, 0).legs;
   const weightOf = new Map(legs.map((l) => [l.key, l.currentWeight]));
   const targetRows: TargetRow[] = data.rows.map((r) => ({
@@ -90,6 +93,23 @@ export default async function AllocateSettingsPage() {
     currentWeight: weightOf.get(r.key) ?? 0,
     held: r.held,
   }));
+
+  const candidateSet = new Set(data.rows.map((r) => r.symbol));
+  const storedTargets = readTargets(
+    portfolio.holding.target_weights,
+    (portfolio.holding.category_targets ?? {}) as Record<string, number>,
+    [],
+  );
+  for (const [symbol, rule] of Object.entries(storedTargets)) {
+    if (candidateSet.has(symbol) || rule.target <= 0) continue;
+    targetRows.push({
+      symbol,
+      label: meta[symbol]?.name ?? symbol,
+      target: rule.target,
+      currentWeight: 0,
+      held: false,
+    });
+  }
 
   return (
     <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
