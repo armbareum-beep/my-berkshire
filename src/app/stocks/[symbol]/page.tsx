@@ -27,6 +27,7 @@ import { DiscountRateInput } from "@/components/stocks/DiscountRateInput";
 import { ExpectedReturnCard } from "@/components/stocks/ExpectedReturnCard";
 import { loadExpectedReturnAssumption } from "@/lib/expectedReturnAssumptions";
 import { houseHurdle } from "@/lib/hurdle";
+import { epsGrowthAnchor, multipleBand } from "@/lib/finance/pastAnchors";
 import { toNativeEps } from "@/lib/finance/cachedEps";
 import { GrowthRateInput } from "@/components/stocks/GrowthRateInput";
 import { FundamentalsTrend } from "@/components/stocks/FundamentalsTrend";
@@ -404,6 +405,19 @@ export async function StockDetailContent({
     const dir = cur > avg * 1.05 ? "높음 — 다소 비싼 구간" : cur < avg * 0.95 ? "낮음 — 다소 싼 구간" : "평균 수준";
     return `최근 ${spanYears + 1}년 평균 ${avg.toFixed(unit === "배" ? 1 : 2)}${unit} 대비 ${dir}`;
   };
+  // 기대수익률 마법사에 넘길 **과거 사실**. 예측이 아니라 앵커다(pastAnchors.ts).
+  // EPS = 순이익 / 주식수 — 연도별 시리즈에서 그대로 뽑는다.
+  const growthAnchor = epsGrowthAnchor(
+    series.map((f) => ({
+      year: f.year,
+      eps:
+        f.netIncome != null && f.shares != null && f.shares > 0
+          ? f.netIncome / f.shares
+          : null,
+    })),
+  );
+  const perBand = multipleBand(perByYear.values());
+
   const perContext = multipleContext(per, avgOf(perByYear), "배");
   const pbrContext = multipleContext(pbr, avgOf(pbrByYear), "배");
   const psrContext = multipleContext(psr, avgOf(psrByYear), "배");
@@ -636,6 +650,9 @@ export async function StockDetailContent({
           symbol={symbol}
           values={erValues}
           houseRequiredReturn={houseHurdle(portfolio.holding.required_return)}
+          growthAnchor={growthAnchor}
+          perBand={perBand}
+          currentPer={per}
           nativePrice={nativePrice}
           currencySymbol={nativeCcy === "KRW" ? "₩" : "$"}
           autoMetric={autoEpsNative}
