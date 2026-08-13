@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   flattenTargets,
   planAllocation,
+  overweightHurdle,
   HARD_CAP_MULTIPLE,
+  OVERWEIGHT_PREMIUM,
   SOFT_CAP_MULTIPLE,
   type AllocateTarget,
 } from "./allocate";
@@ -164,6 +166,84 @@ describe("planAllocation — 밸류에이션 훅", () => {
     );
     expect(plan.legs.find((l) => l.key === "A")!.amount).toBe(0);
     expect(plan.legs.find((l) => l.key === "B")!.amount).toBeGreaterThan(0);
+  });
+});
+
+describe("planAllocation — 밸류에이션이 비중 상한을 움직인다 (PRD §6.2)", () => {
+  it("초과 허들을 넘기면 목표비중을 넘겨 Soft Cap 까지 산다", () => {
+    // A: 목표 20% → soft 25%. 현재 22% 라 기존 규칙이면 부족분 0(= 못 산다).
+    // 기대 CAGR 20% > 허들 15% → 상한이 25% 로 열려 부족분이 생긴다.
+    const rows: AllocateTarget[] = [
+      t("A", 220, 0.2, { expectedCagr: 0.2, requiredReturn: 0.12 }),
+      t("B", 780, 0.8),
+    ];
+    const plan = planAllocation(rows, 100);
+    const a = plan.legs.find((l) => l.key === "A")!;
+
+    expect(a.status).toBe("STRETCH");
+    expect(a.ceilingWeight).toBeCloseTo(0.25);
+    expect(a.amount).toBeGreaterThan(0);
+    expect(a.weightAfter).toBeGreaterThan(a.targetWeight);
+    expect(a.weightAfter).toBeLessThanOrEqual(0.25 + 1e-9);
+  });
+
+  it("허들에 못 미치면 상한은 목표비중 그대로다", () => {
+    // 기대 CAGR 14% < 허들 15% → 목표 초과분은 못 산다(기존 동작).
+    const plan = planAllocation(
+      [t("A", 220, 0.2, { expectedCagr: 0.14, requiredReturn: 0.12 }), t("B", 780, 0.8)],
+      100,
+    );
+    const a = plan.legs.find((l) => l.key === "A")!;
+
+    expect(a.ceilingWeight).toBeCloseTo(0.2);
+    expect(a.amount).toBe(0);
+    expect(a.status).toBe("FILLED");
+  });
+
+  it("Hard Cap 은 밸류에이션으로도 뚫리지 않는다", () => {
+    // 목표 10% → hard 15%. 현재 20%, 기대 CAGR 40% 라도 차단.
+    const plan = planAllocation(
+      [t("A", 200, 0.1, { expectedCagr: 0.4, requiredReturn: 0.12 }), t("B", 800, 0.9)],
+      100,
+    );
+    const a = plan.legs.find((l) => l.key === "A")!;
+
+    expect(a.status).toBe("BLOCKED");
+    expect(a.amount).toBe(0);
+  });
+
+  it("가정이 없는 종목은 상한이 목표비중이라 기존 동작이 그대로다", () => {
+    const before = planAllocation([t("A", 220, 0.2), t("B", 780, 0.8)], 500);
+    const after = planAllocation(
+      [t("A", 220, 0.2, { expectedCagr: null }), t("B", 780, 0.8)],
+      500,
+    );
+    expect(after.legs.map((l) => l.amount)).toEqual(before.legs.map((l) => l.amount));
+    expect(after.legs[0].ceilingWeight).toBeCloseTo(0.2);
+  });
+
+  it("Soft Cap 구간은 밸류에이션이 좋아도 Soft Cap 을 넘지 못한다", () => {
+    // 목표 20% → soft 25%. 현재 26% = soft 초과 구간.
+    // 상한이 열려도 그 상한이 soft(25%)라 결과 비중은 캡 아래로 수렴한다.
+    const plan = planAllocation(
+      [t("A", 260, 0.2, { expectedCagr: 0.4, requiredReturn: 0.12 }), t("B", 740, 0.8)],
+      100,
+    );
+    const a = plan.legs.find((l) => l.key === "A")!;
+    const b = plan.legs.find((l) => l.key === "B")!;
+
+    expect(a.status).toBe("WAIT"); // STRETCH 로 승격되지 않는다
+    expect(a.weightAfter).toBeLessThanOrEqual(0.25 + 1e-9);
+    expect(a.amount).toBeLessThan(b.amount); // 감액 — 우선순위가 크게 깎인다
+  });
+
+  it("초과 허들은 요구수익률 + 3%p, 직접 지정하면 그게 우선한다", () => {
+    expect(OVERWEIGHT_PREMIUM).toBe(0.03);
+    expect(overweightHurdle({ requiredReturn: 0.12 })).toBeCloseTo(0.15);
+    expect(overweightHurdle({})).toBeCloseTo(0.15);
+    expect(
+      overweightHurdle({ requiredReturn: 0.12, overweightRequiredReturn: 0.25 }),
+    ).toBeCloseTo(0.25);
   });
 });
 

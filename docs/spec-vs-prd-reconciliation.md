@@ -139,7 +139,7 @@ PRD §18 의 MVP 13개를 현재 코드와 대조했다.
 
 | # | MVP 항목 | 상태 | 근거 |
 |---|---|---|---|
-| 1 | Approved Universe | **부분** — `watchlist` 테이블 존재, status(APPROVED/WATCH) 없음 | `src/lib/watchlist.ts` |
+| 1 | Approved Universe | ~~부분~~ → **있음** (2026-08-13) — `watchlist.status` 추가, `/allocate/universe` | `src/lib/universe.ts` |
 | 2 | 현재 가격 | **있음** | `src/lib/finance/prices.ts`, KIS/Yahoo |
 | 3 | EPS / FCF | **있음** — TTM 파이프라인까지 | `fundamentals_cache`, `docs/ttm-valuation-plan-v1.md` |
 | 4 | Expected Growth | **부분** — `valuation_assumptions.growth_rate` 는 고든 영구성장률(g<1), EPS CAGR 아님 | `20260616260000_per_year_fundamentals.sql` |
@@ -267,11 +267,70 @@ score_i = gap_i × weightPriority_i × attractiveness_i
 ## 홈 결정 후
 3. 홈 화면 확정 → My Berkshire 통합(스펙 Phase 4) 또는 Allocator 홈(PRD Phase 2)
 
-## 밸류에이션 채택 시에만
-4. `valuation_assumptions` 에 `terminal_multiple` · `holding_years` · `base_metric` · `expected_eps_cagr` 추가
+## 밸류에이션 — 채택됨 (2026-08-13)
+4. ✅ `valuation_assumptions` 에 `er_*` 컬럼 추가 (`20260813010000_expected_return_assumptions.sql`)
    - 기존 `growth_rate`(고든 영구성장률)와 **의미가 다르므로 별도 컬럼**
-5. Dynamic Buy Price + Expected CAGR 계산 (PRD §4·§5)
-6. `attractiveness` 훅에 연결 → Buy Ranking
+5. ✅ Dynamic Buy Price + Expected CAGR 계산 (PRD §4·§5) — `src/lib/finance/expectedReturn.ts`
+6. ✅ `attractiveness` 훅 연결 + Buy Ranking (PRD §6.1·§11) — `/allocate`
+
+### 6.1 밸류에이션이 비중을 움직이는 두 경로
+
+§4.2 의 통합안은 `attractiveness` 하나만 열어뒀는데, 그것만으로는 **순서**만 바뀐다.
+매수 상한이 늘 목표비중이라 기대수익률이 아무리 높아도 목표비중을 넘겨 살 수 없었다.
+
+그래서 PRD §6.2("목표비중 초과 시 요구수익률 12% → 15%")를 상한 규칙으로 구현했다.
+
+| 경로 | 무엇을 바꾸나 | 어디에 |
+|---|---|---|
+| `attractiveness` | 후보 사이의 배분 **순서**(가중치) | `expectedReturn.ts:attractivenessFromCagr` |
+| 매수 상한(`ceiling`) | 목표비중 → Soft Cap 까지 **한도 확장** | `allocate.ts:ceilingOf` |
+
+```text
+기대 CAGR < 요구수익률          → 후보 제외 (attractiveness 0)
+요구수익률 ~ 요구+3%p           → 목표비중까지만 매수
+요구+3%p 이상                   → Soft Cap 까지 매수 (STRETCH)
+Soft Cap ~ Hard Cap             → 감액 (기존 규칙 유지)
+Hard Cap 이상                   → 차단. 밸류에이션으로도 뚫리지 않는다
+```
+
+가정을 넣지 않은 종목은 상한이 목표비중 그대로라 **스펙 §15 의 동작이 보존된다.**
+
+### 6.2 요구수익률 = 난이도 (게이미피케이션)
+
+요구수익률을 "난이도 설정"으로 프레이밍한다(`src/lib/hurdle.ts`, `/allocate` 의 **내 허들**).
+관대 8% / 표준 12% / 엄격 15% + 직접 입력. 올리면 통과 종목이 줄고 현금이 늘어난다.
+
+`docs/gamification-honest-roman-v1.md` §2 의 축하 매트릭스 통과 여부:
+
+| | 판정 |
+|---|---|
+| 허들을 **정하는 것** | ✅ 결정(통제 가능) — 축하·연출 대상 |
+| 허들을 못 넘겨 **안 사는 것** | ✅ 인내(통제 가능) |
+| 허들을 **넘긴 종목이 생긴 것** | ❌ 주가 하락의 결과일 수 있음 — 시장발이라 축하하지 않는다 |
+
+그래서 `hurdle.ts` 는 난이도를 **표시만** 하고 어떤 축하 신호도 만들지 않는다.
+통과 현황("N종목 중 M종목 통과")도 0이면 0으로 정직하게 보여준다.
+
+우선순위는 **종목별 > 전사 기본값 > 코드 기본값 12%** — 전사 설정이 개별 판단을 덮지 않는다.
+
+### 6.3 Approved Universe — 후보를 사람이 고른다 (PRD §3.1)
+
+그동안 자본배분 후보는 **보유 종목으로 고정**이었다. 아직 한 주도 없는 기업은 후보에
+넣을 수 없었고(= 첫 매수를 계획할 수 없었고), 정리하기로 한 보유 종목을 뺄 수도 없었다.
+둘 다 "기업 선택은 인간의 영역"이라는 PRD 전제와 어긋난다.
+
+신규 테이블(`investment_universe`) 대신 기존 `watchlist` 에 `status` 를 얹었다(스펙 §13.2).
+
+```text
+보유 O · 행 없음   → APPROVED   (지금까지의 동작 보존)
+보유 O · WATCH     → 후보 제외   (명시적으로 뺀 것)
+보유 X · APPROVED  → 후보 포함   (아직 안 샀지만 사고 싶은 기업)
+보유 X · 행 없음   → 후보 아님
+```
+
+`/allocate/universe` 에서 **산업(섹터)별로 묶어** 고른다 — 어디에 쏠려 있는지 사람이 보고
+판단하라는 것이지, 앱이 기업의 질을 평가하는 게 아니다. 미보유 후보도 `/rebalance` 에
+평가액 0 으로 나타나 목표비중을 정할 수 있다(목표비중이 없으면 후보로 넣은 의미가 없다).
 
 ## 하지 않을 것 (두 문서 공통)
 - DB 초기화 · 기존 데이터 삭제 · 계산 엔진 폐기 · 전체 기능 동시 이전

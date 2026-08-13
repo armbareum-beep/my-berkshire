@@ -126,8 +126,9 @@ export function computeExpectedReturn(
  *
  * `slope` 는 스프레드 1%p 당 가중치 증가폭. 기본 10 이면 +5%p 초과 시 계수 1.5.
  *
- * ⚠️ PRD §6.2 의 "목표비중 초과 시 요구수익률을 12%→15% 로 올린다"는 여기서 처리하지 않는다.
- * 그 역할은 이미 `allocate.ts` 의 비중 구간 계수(`PRIORITY`)가 하고 있어 이중 적용이 된다.
+ * PRD §6.2 의 "목표비중 초과 시 요구수익률을 12%→15% 로 올린다"는 여기가 아니라
+ * `allocate.ts` 가 처리한다 — 매력도(순서)가 아니라 **매수 상한(비중)** 을 움직이는
+ * 규칙이라 배분 엔진 쪽이 자리다(`ceilingOf`, `OVERWEIGHT_PREMIUM`).
  */
 export function attractivenessFromCagr(
   expectedCagr: number | null,

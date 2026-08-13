@@ -356,6 +356,7 @@ export type Database = {
           mode: Database["public"]["Enums"]["holding_mode"]
           name: string
           portfolio_revision: number
+          required_return: number | null
           target_weights: Json
           user_id: string
         }
@@ -376,6 +377,7 @@ export type Database = {
           mode: Database["public"]["Enums"]["holding_mode"]
           name: string
           portfolio_revision?: number
+          required_return?: number | null
           target_weights?: Json
           user_id?: string
         }
@@ -396,6 +398,7 @@ export type Database = {
           mode?: Database["public"]["Enums"]["holding_mode"]
           name?: string
           portfolio_revision?: number
+          required_return?: number | null
           target_weights?: Json
           user_id?: string
         }
@@ -937,18 +940,21 @@ export type Database = {
           created_at: string
           holding_id: string
           id: string
+          status: string
           symbol: string
         }
         Insert: {
           created_at?: string
           holding_id: string
           id?: string
+          status?: string
           symbol: string
         }
         Update: {
           created_at?: string
           holding_id?: string
           id?: string
+          status?: string
           symbol?: string
         }
         Relationships: [

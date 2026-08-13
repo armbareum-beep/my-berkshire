@@ -13,15 +13,53 @@
  * 물리고, 채택하지 않으면 1.0(중립)이라 순수 비중 기반으로 동작한다. 어느 쪽이든 이 엔진은
  * 그대로 쓴다.
  *
+ * ## 밸류에이션이 "비중까지" 움직이는 지점 — PRD §6.2
+ *
+ * `attractiveness` 만으로는 **순서**만 바뀐다. 매수 상한이 늘 목표비중이라
+ * 기대수익률이 아무리 높아도 목표비중을 넘겨 살 수 없기 때문이다.
+ *
+ * PRD §6.2 는 여기서 한 걸음 더 간다.
+ *
+ * ```text
+ * Target 이하        → 기본 요구수익률로 매수
+ * Target ~ Soft Cap  → 매수 가능하되 **더 높은 기대수익률을 요구**(예: 12% → 15%)
+ * Soft ~ Hard Cap    → 신규자금 투입 금지
+ * Hard Cap 이상      → 추가매수 절대 금지
+ * ```
+ *
+ * 그래서 매수 상한(`ceiling`)을 종목마다 다르게 잡는다 — 초과 허들을 넘긴 종목만
+ * Soft Cap 까지 열어준다. 이게 "밸류에이션대로 비중이 조절된다"의 실체다.
+ * 가정이 없는 종목의 상한은 그대로 목표비중이라 기존 동작이 바뀌지 않는다.
+ *
  * 기존 `rebalance.ts:planInvestment` 와의 차이는 **잔여금 처리 하나**다.
  * 거긴 부족분을 다 채우고 남으면 목표비중 비례로 마저 뿌린다(전액 투자).
  * 여긴 부족분까지만 채우고 남는 건 현금으로 남긴다 — PRD §8 "매력적인 기회가 부족하면
  * 현금을 남긴다". 기존 리밸런싱 화면의 동작은 건드리지 않았다.
  */
 
+import { DEFAULT_REQUIRED_RETURN } from "./finance/expectedReturn";
+
 /** 캡 기본 배수 — 스펙 §14, PRD §3.2 (두 문서 동일). */
 export const SOFT_CAP_MULTIPLE = 1.25;
 export const HARD_CAP_MULTIPLE = 1.5;
+
+/**
+ * 목표비중을 넘겨 살 때 얹는 요구수익률 프리미엄 — PRD §6.2 의 "12% → 15%".
+ * 기본 요구수익률에 더한다(비율이 아니라 %p 가산 — 요구수익률이 낮은 종목이
+ * 자동으로 유리해지지 않게).
+ */
+export const OVERWEIGHT_PREMIUM = 0.03;
+
+/** 목표 초과 매수 허들. `overweightRequiredReturn` 을 직접 주면 그게 우선한다. */
+export function overweightHurdle(t: {
+  requiredReturn?: number;
+  overweightRequiredReturn?: number;
+}): number {
+  return (
+    t.overweightRequiredReturn ??
+    (t.requiredReturn ?? DEFAULT_REQUIRED_RETURN) + OVERWEIGHT_PREMIUM
+  );
+}
 
 /**
  * 비중 구간별 우선순위 계수.
@@ -56,11 +94,22 @@ export interface AllocateTarget {
    * 0 이면 후보에서 빠진다 — "기대수익률이 요구수익률에 못 미침".
    */
   attractiveness?: number;
+  /**
+   * 현재가 기준 기대 CAGR(소수). **매수 상한**을 목표비중에서 Soft Cap 까지
+   * 열어줄지 판단하는 데 쓴다(PRD §6.2). null/미지정 = 가정 없음 → 상한은 목표비중.
+   */
+  expectedCagr?: number | null;
+  /** 이 종목의 요구수익률(소수). 미지정 시 12%. */
+  requiredReturn?: number;
+  /** 목표 초과 매수 허들(소수). 미지정 시 요구수익률 + 3%p. */
+  overweightRequiredReturn?: number;
 }
 
 export type AllocateStatus =
   /** 목표비중 미달 — 정상 매수. */
   | "BUY"
+  /** 목표를 넘었지만 기대수익률이 초과 허들을 넘겨 Soft Cap 까지 더 산다(PRD §6.2). */
+  | "STRETCH"
   /** 목표는 넘었지만 Soft Cap 미만 — 우선순위 낮춰 매수. */
   | "TRIM_PRIORITY"
   /** Soft Cap 이상 Hard Cap 미만 — 사실상 대기. */
@@ -80,6 +129,8 @@ export interface AllocateLeg {
   targetWeight: number;
   /** 배분 후 예상 비중 0~1. */
   weightAfter: number;
+  /** 이번 배분에서 허용한 최대 비중 — 목표비중, 또는 허들을 넘겼으면 Soft Cap. */
+  ceilingWeight: number;
   status: AllocateStatus;
 }
 
@@ -98,6 +149,22 @@ function capsOf(t: AllocateTarget) {
   };
 }
 
+/**
+ * 이번 배분에서 이 종목을 어디까지 채울 수 있나 — PRD §6.2.
+ *
+ * 기본은 목표비중. 기대 CAGR 이 **초과 허들**(기본 요구수익률 + 3%p)을 넘으면
+ * Soft Cap 까지 열어준다. 가정이 없으면(= expectedCagr null) 늘 목표비중이라
+ * 밸류에이션을 쓰지 않는 사용자의 동작은 그대로다.
+ */
+function ceilingOf(t: AllocateTarget): { ceiling: number; stretched: boolean } {
+  const cagr = t.expectedCagr;
+  if (cagr == null || !Number.isFinite(cagr)) return { ceiling: t.target, stretched: false };
+  if (cagr < overweightHurdle(t)) return { ceiling: t.target, stretched: false };
+  const { soft } = capsOf(t);
+  // soft 를 목표보다 낮게 설정한 사용자도 있으므로 목표 아래로는 내려가지 않는다.
+  return { ceiling: Math.max(t.target, soft), stretched: soft > t.target };
+}
+
 /** 현재 비중으로 상태·우선순위 계수를 판정. gap 이 0이면 FILLED 로 덮어쓴다. */
 function classify(
   currentWeight: number,
@@ -114,7 +181,8 @@ function classify(
 /**
  * 신규자금 배분 계획.
  *
- * · 목표 평가액 = (현재 총액 + 투자금) × 목표비중
+ * · 매수 상한 = 목표비중, 단 기대 CAGR 이 초과 허들을 넘으면 Soft Cap (PRD §6.2)
+ * · 목표 평가액 = (현재 총액 + 투자금) × 매수 상한
  * · 부족분 = max(0, 목표 − 현재), 여기에 캡 계수·매력도를 곱해 가중치를 만든다
  * · 투자금을 가중 부족분 비례로 나누되, **각 칸의 실제 부족분을 넘지 않는다**
  * · 남는 돈은 현금으로 남긴다(PRD §8)
@@ -132,15 +200,28 @@ export function planAllocation(
   const rows = targets.map((t) => {
     // 분모가 0이면(첫 투자) 비중은 0 — 전부 BUY 후보가 된다.
     const currentWeight = portfolioValue > 0 ? t.value / portfolioValue : 0;
-    const { status, priority } = classify(currentWeight, t);
-    const gap = Math.max(0, future * t.target - t.value);
+    const base = classify(currentWeight, t);
+    const { ceiling, stretched } = ceilingOf(t);
+    const gap = Math.max(0, future * ceiling - t.value);
     const attractiveness = t.attractiveness ?? 1;
+
+    // 초과 허들을 넘긴 종목이 목표를 넘어서 사는 경우: 우선순위를 깎지 않는다.
+    // 이미 더 높은 요구수익률을 통과했으므로 여기서 또 깎으면 이중 페널티다(PRD §6.2).
+    const promoted = stretched && base.status === "TRIM_PRIORITY";
+    const status: AllocateStatus = promoted ? "STRETCH" : base.status;
+    const priority = promoted ? PRIORITY.normal : base.priority;
+
     return {
       t,
       currentWeight,
+      ceiling,
       gap,
-      // gap 이 0이면 살 것이 없다는 뜻이라 캡 판정보다 이 사실이 우선한다.
-      status: gap <= 0 && status !== "BLOCKED" ? ("FILLED" as AllocateStatus) : status,
+      // gap 이 0이면 살 것이 없다는 뜻. 단 캡에 걸려 못 사는 것(WAIT/BLOCKED)까지
+      // FILLED 로 덮으면 이유가 사라지므로, 목표를 채운 경우에만 바꿔 말한다.
+      status:
+        gap <= 0 && (status === "BUY" || status === "TRIM_PRIORITY" || status === "STRETCH")
+          ? ("FILLED" as AllocateStatus)
+          : status,
       weight: gap * priority * Math.max(0, attractiveness),
     };
   });
@@ -164,6 +245,7 @@ export function planAllocation(
     currentWeight: r.currentWeight,
     targetWeight: r.t.target,
     weightAfter: future > 0 ? (r.t.value + amounts[i]) / future : 0,
+    ceilingWeight: r.ceiling,
     status: r.status,
   }));
 
