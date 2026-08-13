@@ -11,14 +11,21 @@
  *
  * 저장은 기존 `watchlist` 테이블에 상태 컬럼 하나로 한다(스펙 v1.1 §13.2 신규 테이블 없음).
  *
- * ## 행이 없을 때의 규칙
+ ## 판정 규칙
  *
  * ```text
- * 보유 O · 행 없음   → APPROVED   (지금까지의 동작 보존)
- * 보유 O · WATCH     → 후보 제외   (명시적으로 뺀 것)
- * 보유 X · APPROVED  → 후보 포함   (아직 안 샀지만 사고 싶은 기업)
- * 보유 X · 행 없음   → 후보 아님
+ * 보유 O            → 항상 후보 (status 무시)
+ * 보유 X · APPROVED → 후보      (아직 안 샀지만 사고 싶은 기업)
+ * 보유 X · 그 외    → 후보 아님
  * ```
+ *
+ * ⚠️ **보유 종목은 status 로 빼지 않는다.** 한때 "보유 O · WATCH = 명시적 제외"로 뒀는데,
+ * `watchlist` 행은 대부분 **관심종목 기능**이 만든 것이지 "배분에서 빼겠다"는 결정이 아니다.
+ * 상태 컬럼을 얹으며 기존 행을 전부 `WATCH` 기본값으로 채운 탓에, 관심종목에 담아둔
+ * 보유 주식이 자본배분에서 **조용히 사라졌다**(16종목 중 9종목이 빠져 ETF만 남는 사례).
+ *
+ * 게다가 "배분에서 빼기"는 이제 **목표비중 0** 이 한다 — 부족분이 0 이라 배분되지 않는다.
+ * 같은 일을 하는 두 번째 스위치를 둘 이유가 없다.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./supabase/database.types";
@@ -30,11 +37,10 @@ export type UniverseStatusMap = Record<string, UniverseStatus>;
 
 export interface UniverseEntry {
   symbol: string;
+  /** 배분 후보 판정 결과. 보유 종목은 저장된 status 와 무관하게 늘 APPROVED 다. */
   status: UniverseStatus;
   /** 한 주라도 들고 있는가. */
   held: boolean;
-  /** 상태가 저장되지 않아 보유 여부로 판정된 종목인가(= 아직 사용자가 고른 적 없음). */
-  implicit: boolean;
 }
 
 /**
@@ -50,11 +56,14 @@ export function resolveUniverse(
 
   const entries: UniverseEntry[] = [];
   for (const symbol of symbols) {
-    const saved = statuses[symbol];
     const isHeld = held.has(symbol);
-    // 저장된 상태가 없으면 보유 여부가 곧 판정이다.
-    const status: UniverseStatus = saved ?? (isHeld ? "APPROVED" : "WATCH");
-    entries.push({ symbol, status, held: isHeld, implicit: saved == null });
+    // 보유하면 무조건 후보. 미보유는 저장된 상태를 따르고, 없으면 후보가 아니다.
+    const status: UniverseStatus = isHeld
+      ? "APPROVED"
+      : statuses[symbol] === "APPROVED"
+        ? "APPROVED"
+        : "WATCH";
+    entries.push({ symbol, status, held: isHeld });
   }
 
   return entries.sort((a, b) =>

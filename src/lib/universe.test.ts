@@ -5,17 +5,23 @@ import {
   type UniverseStatusMap,
 } from "./universe";
 
-describe("resolveUniverse — 행이 없을 때의 규칙 (PRD §3.1)", () => {
-  it("보유 중이고 저장된 상태가 없으면 후보다 — 기존 동작 보존", () => {
+describe("resolveUniverse — 판정 규칙 (PRD §3.1)", () => {
+  it("보유 중이면 후보다", () => {
     const entries = resolveUniverse(["AAPL", "005930"], {});
     expect(approvedSymbols(entries).sort()).toEqual(["005930", "AAPL"]);
-    expect(entries.every((e) => e.implicit)).toBe(true);
   });
 
-  it("보유 중이어도 WATCH 로 내리면 후보에서 빠진다", () => {
+  it("보유 중이면 WATCH 행이 있어도 후보다 — 관심종목 표시로 배분에서 빠지지 않는다", () => {
+    // `watchlist` 행은 대부분 관심종목 기능이 만든 것이라 "배분 제외" 의사가 아니다.
+    // 이걸 제외로 읽으면 관심종목에 담아둔 보유 주식이 조용히 사라진다(실제로 그랬다).
     const entries = resolveUniverse(["AAPL", "005930"], { AAPL: "WATCH" });
-    expect(approvedSymbols(entries)).toEqual(["005930"]);
-    expect(entries.find((e) => e.symbol === "AAPL")!.implicit).toBe(false);
+    expect(approvedSymbols(entries).sort()).toEqual(["005930", "AAPL"]);
+  });
+
+  it("배분에서 빼는 건 목표비중 0 이 한다 — 여기서는 빼지 않는다", () => {
+    const entries = resolveUniverse(["AAPL"], { AAPL: "WATCH" });
+    expect(entries[0].status).toBe("APPROVED");
+    expect(entries[0].held).toBe(true);
   });
 
   it("보유하지 않아도 APPROVED 면 후보다 — 아직 안 산 기업", () => {

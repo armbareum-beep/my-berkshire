@@ -130,7 +130,20 @@
 | `holdings.required_return` | 전사 기본 요구수익률. null = 12% |
 | `holdings.investable_cash` | 투자 가능 현금 **₩ 저장**, 읽을 때 환산. null = 보유 현금 전액 |
 | `holdings.target_weights` | 목표비중. **평면**(`{"META":{"target":0.15}}`) 또는 레거시 2층(숫자) |
-| `watchlist.status` | `APPROVED`(배분 후보) / `WATCH`(관심만). 화면에서 직접 토글하지 않는다 — 목표비중을 정하면 자동 승격 |
+| `watchlist.status` | **미보유 종목에만 의미가 있다** — `APPROVED` 면 후보. 보유 종목은 status 와 무관하게 늘 후보. 화면에서 직접 토글하지 않고 목표비중을 정하면 자동 승격 |
+
+### 배분 후보 판정 (`universe.ts:resolveUniverse`)
+
+```text
+보유 O            → 항상 후보 (status 무시)
+보유 X · APPROVED → 후보
+보유 X · 그 외    → 후보 아님
+```
+
+⚠️ **보유 종목을 status 로 빼지 않는다.** 한때 "보유 O · WATCH = 명시적 제외"로 뒀는데,
+`watchlist` 행은 대부분 **관심종목 기능**이 만든 것이지 배분 제외 의사가 아니다. 상태 컬럼을
+얹으며 기존 행을 전부 `WATCH` 기본값으로 채운 탓에 관심종목에 담아둔 보유 주식이 자본배분에서
+**조용히 사라졌다**(16종목 중 9종목이 빠져 ETF만 남은 사례).
 
 ### 배분 대상은 목표비중 하나로 정해진다
 
