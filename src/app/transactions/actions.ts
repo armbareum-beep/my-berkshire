@@ -479,6 +479,13 @@ export async function recordBuys(input: {
   accountId?: string | null;
   date: string;
   fundingSource: "cash" | "deposit";
+  /**
+   * 증권사가 실제 적용한 환율(통화 → 1 외화당 ₩). 비우면 시장환율을 쓴다.
+   *
+   * 원화주문(통합증거금)은 증권사 고시환율이 적용돼 시장환율과 다르다. 시장환율로
+   * 기록하면 ₩ 원가가 실제 결제액과 어긋나므로, 주문 확인창의 적용환율을 그대로 받는다.
+   */
+  fxOverride?: Record<string, number> | null;
 }): Promise<Result> {
   const ctx = await loadCtx();
   if ("error" in ctx) return { ok: false, error: ctx.error };
@@ -519,6 +526,10 @@ export async function recordBuys(input: {
     ...new Set(Object.values(ccyOf).filter((c) => c !== "KRW")),
   ];
   const fx = foreignCcys.length ? await getFxToKrw(foreignCcys) : {};
+  // 사용자가 적용환율을 넣었으면 그게 진실이다 — 시장환율보다 우선한다.
+  // 터무니없는 값(0 이하·비유한)은 무시하고 시장환율로 폴백한다.
+  for (const [ccy, rate] of Object.entries(input.fxOverride ?? {}))
+    if (Number.isFinite(rate) && rate > 0) fx[ccy] = rate;
   for (const c of foreignCcys)
     if (!fx[c])
       return {
