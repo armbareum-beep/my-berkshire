@@ -53,6 +53,10 @@ const STATUS_META: Record<
 
 export interface AllocateRow extends AllocateTarget {
   symbol: string;
+  /** 현재가 기준 기대 CAGR(소수). 가정이 없거나 계산 불가면 undefined/null. */
+  expectedCagr?: number | null;
+  /** 그 종목에 적용된 요구수익률(소수). 표시용. */
+  requiredReturn?: number;
 }
 
 /**
@@ -79,6 +83,16 @@ export function AllocatePanel({
   const steps = currency === "USD" ? USD_STEPS : WON_STEPS;
 
   const plan = useMemo(() => planAllocation(rows, amount), [rows, amount]);
+
+  // 기대수익률 표시는 가정이 들어간 종목에만. symbol 기준으로 되찾는다.
+  const cagrOf = useMemo(() => {
+    const m: Record<string, { cagr: number | null; required: number }> = {};
+    for (const r of rows)
+      if (r.expectedCagr != null)
+        m[r.key] = { cagr: r.expectedCagr, required: r.requiredReturn ?? 0.12 };
+    return m;
+  }, [rows]);
+  const anyCagr = Object.keys(cagrOf).length > 0;
 
   // 배분액이 있는 것 먼저, 그다음 금액 큰 순 → 살 것이 위로 온다.
   const sorted = useMemo(
@@ -175,6 +189,24 @@ export function AllocatePanel({
                       {pct(leg.currentWeight)} → 목표 {pct(leg.targetWeight)}
                       {buying && ` · 후 ${pct(leg.weightAfter)}`}
                     </p>
+                    {cagrOf[leg.key]?.cagr != null && (
+                      <p className="mt-0.5 text-xs tabular-nums">
+                        <span
+                          style={{
+                            color:
+                              cagrOf[leg.key].cagr! >= cagrOf[leg.key].required
+                                ? "var(--primary)"
+                                : "var(--muted-foreground)",
+                          }}
+                        >
+                          기대 {pct(cagrOf[leg.key].cagr!)}
+                        </span>
+                        <span className="text-muted-foreground">
+                          {" "}
+                          / 요구 {pct(cagrOf[leg.key].required)}
+                        </span>
+                      </p>
+                    )}
                   </div>
                   <div className="shrink-0 text-right">
                     {buying ? (
@@ -205,6 +237,9 @@ export function AllocatePanel({
       <p className="px-2 text-xs leading-relaxed text-muted-foreground">
         상승으로 비중이 커진 종목은 팔라고 하지 않아요. 대신 새 돈을 넣지 않습니다.
         기회가 부족하면 전액 투자하지 않고 현금으로 남깁니다.
+        {anyCagr
+          ? " 기대수익률은 종목 상세에 입력한 가정으로 계산한 값이에요 — 사실이 아니라 내 규칙입니다."
+          : " 종목 상세에서 이익·성장 가정을 넣으면 기대수익률까지 반영해 배분해요."}
       </p>
     </div>
   );

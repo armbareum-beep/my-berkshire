@@ -880,6 +880,12 @@ export type Database = {
         Row: {
           created_at: string
           discount_rate: number | null
+          er_base_metric: string | null
+          er_current_metric: number | null
+          er_expected_growth: number | null
+          er_holding_years: number | null
+          er_required_return: number | null
+          er_terminal_multiple: number | null
           growth_rate: number | null
           holding_id: string
           id: string
@@ -889,6 +895,12 @@ export type Database = {
         Insert: {
           created_at?: string
           discount_rate?: number | null
+          er_base_metric?: string | null
+          er_current_metric?: number | null
+          er_expected_growth?: number | null
+          er_holding_years?: number | null
+          er_required_return?: number | null
+          er_terminal_multiple?: number | null
           growth_rate?: number | null
           holding_id: string
           id?: string
@@ -898,6 +910,12 @@ export type Database = {
         Update: {
           created_at?: string
           discount_rate?: number | null
+          er_base_metric?: string | null
+          er_current_metric?: number | null
+          er_expected_growth?: number | null
+          er_holding_years?: number | null
+          er_required_return?: number | null
+          er_terminal_multiple?: number | null
           growth_rate?: number | null
           holding_id?: string
           id?: string
