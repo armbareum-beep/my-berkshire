@@ -4,7 +4,12 @@ import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { normalizeSymbol } from "@/lib/securities";
 import { getPrices } from "@/lib/finance/prices";
-import { getFxToKrw } from "@/lib/finance/fx";
+import {
+  getFxBars,
+  getFxToKrw,
+  pickRateOnOrBefore,
+  type FxBar,
+} from "@/lib/finance/fx";
 import { estimateFeeAndTax } from "@/lib/finance/fees";
 import { todayKST } from "@/lib/date";
 import type { Database } from "@/lib/supabase/database.types";
@@ -171,12 +176,19 @@ export async function reconstructPosition(
   if (currency === "KRW" && !/^\d{6}$/.test(symbol))
     return { ok: false, error: "종목 통화를 확인하지 못했어요. 잠시 후 다시 시도하세요." };
   let fx = 1;
+  /** 거래일별 환율 시계열. 가져오기는 과거 거래가 여러 날에 걸치므로 한 번만 받아 재사용한다. */
+  let fxBars: FxBar[] = [];
   if (currency !== "KRW") {
     const f = await getFxToKrw([currency]);
     if (!f[currency])
       return { ok: false, error: `환율(${currency}/KRW)을 불러올 수 없어요.` };
-    fx = f[currency];
+    fx = f[currency]; // 과거 봉을 못 찾은 거래의 폴백(현재 환율)
+    const dates = sorted.map((t) => t.date).sort();
+    if (dates.length > 0)
+      fxBars = await getFxBars(currency, dates[0], dates[dates.length - 1]);
   }
+  /** 그 거래일의 환율. 봉이 없으면 현재 환율로 폴백한다(가져오기를 막지 않는다). */
+  const fxOn = (d: string) => pickRateOnOrBefore(fxBars, d) ?? fx;
   const acct = accounts.find((a) => a.id === accountId)!;
   const commission = Number(acct.commission_rate);
 
@@ -185,7 +197,9 @@ export async function reconstructPosition(
   const storedSymbol = normalizeSymbol(symbol);
   const insertRows: Database["public"]["Tables"]["events"]["Insert"][] = [];
   for (const t of sorted) {
-    const priceKrw = t.price * fx;
+    // 거래일 환율로 환산 — 3년치를 오늘 환율로 넣으면 원가가 통째로 어긋난다.
+    const tradeFx = fxOn(t.date);
+    const priceKrw = t.price * tradeFx;
     const gross = t.quantity * priceKrw;
     const fee = estimateFeeAndTax(t.type, gross, commission, acct.account_type);
     if (t.type === "BUY") {
@@ -198,7 +212,7 @@ export async function reconstructPosition(
         fee_and_tax: 0,
         date: t.date,
         currency,
-        fx_rate: fx,
+        fx_rate: tradeFx,
         source: "manual",
       });
       insertRows.push({
@@ -210,7 +224,7 @@ export async function reconstructPosition(
         fee_and_tax: fee,
         date: t.date,
         currency,
-        fx_rate: fx,
+        fx_rate: tradeFx,
         source: "manual",
       });
     } else {
@@ -223,7 +237,7 @@ export async function reconstructPosition(
         fee_and_tax: fee,
         date: t.date,
         currency,
-        fx_rate: fx,
+        fx_rate: tradeFx,
         source: "manual",
       });
     }

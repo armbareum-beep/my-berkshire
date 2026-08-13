@@ -11,7 +11,7 @@ import {
 } from "@/lib/finance/valuation";
 import { estimateFeeAndTax } from "@/lib/finance/fees";
 import { getPrices } from "@/lib/finance/prices";
-import { getFxToKrw } from "@/lib/finance/fx";
+import { getFxToKrwOn } from "@/lib/finance/fx";
 import { upsertSecurities, normalizeSymbol } from "@/lib/securities";
 import { activeEventRows } from "@/lib/portfolio";
 import { todayKST } from "@/lib/date";
@@ -211,7 +211,8 @@ export async function recordEvent(input: RecordInput): Promise<Result> {
     if (!(fromAmount > 0))
       return { ok: false, error: "환전 금액을 입력하세요." };
 
-    const fx = await getFxToKrw([fromCcy, toCcy]);
+    // 거래일 기준 환율 — 소급 입력에 오늘 환율을 쓰면 그만큼 어긋난다.
+    const fx = await getFxToKrwOn([fromCcy, toCcy], date, today);
     const fromFx = fx[fromCcy];
     const toFx = fx[toCcy];
     if (!fromFx || !toFx)
@@ -316,7 +317,7 @@ export async function recordEvent(input: RecordInput): Promise<Result> {
     }
 
     if (currency !== "KRW") {
-      const fx = await getFxToKrw([currency]);
+      const fx = await getFxToKrwOn([currency], date, today);
       const rate = fx[currency];
       if (!rate)
         return {
@@ -330,7 +331,7 @@ export async function recordEvent(input: RecordInput): Promise<Result> {
     // 외화 증자/인출: priceOrAmount 는 네이티브 금액 → 현재 환율로 ₩ 환산 저장.
     currency = input.currency ?? "KRW";
     if (currency !== "KRW") {
-      const fx = await getFxToKrw([currency]);
+      const fx = await getFxToKrwOn([currency], date, today);
       const rate = fx[currency];
       if (!rate)
         return {
@@ -525,7 +526,10 @@ export async function recordBuys(input: {
   const foreignCcys = [
     ...new Set(Object.values(ccyOf).filter((c) => c !== "KRW")),
   ];
-  const fx = foreignCcys.length ? await getFxToKrw(foreignCcys) : {};
+  // 거래일 기준 환율 — 소급 입력(과거 매수를 지금 기록)에 오늘 환율을 쓰면 원가가 어긋난다.
+  const fx = foreignCcys.length
+    ? await getFxToKrwOn(foreignCcys, date, today)
+    : {};
   // 사용자가 적용환율을 넣었으면 그게 진실이다 — 시장환율보다 우선한다.
   // 터무니없는 값(0 이하·비유한)은 무시하고 시장환율로 폴백한다.
   for (const [ccy, rate] of Object.entries(input.fxOverride ?? {}))
