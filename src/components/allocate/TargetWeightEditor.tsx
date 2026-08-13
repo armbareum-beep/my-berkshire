@@ -49,6 +49,17 @@ export function TargetWeightEditor({ rows }: { rows: TargetRow[] }) {
     return m;
   }, [rows]);
 
+  // 검색 전에 깔아둘 목록 — 보유 종목을 비중 큰 순으로. 목표비중은 대부분 이미 들고 있는
+  // 기업에 매기므로, 그걸 다시 타이핑하게 만들 이유가 없다.
+  const suggestions = useMemo(
+    () =>
+      rows
+        .filter((r) => r.held)
+        .sort((a, b) => b.currentWeight - a.currentWeight)
+        .map((r) => ({ symbol: r.symbol, name: r.label })),
+    [rows],
+  );
+
   return (
     <section className="rounded-2xl bg-card p-5 shadow-card">
       <div className="flex items-baseline justify-between">
@@ -70,12 +81,13 @@ export function TargetWeightEditor({ rows }: { rows: TargetRow[] }) {
         className="mt-4 flex w-full items-center gap-2 rounded-xl bg-secondary px-4 py-3 text-left text-sm text-muted-foreground transition active:scale-[0.99]"
       >
         <Search size={16} />
-        기업을 찾아 목표비중 정하기
+        보유 종목에서 고르거나 검색해서 정하기
       </button>
 
       {searching && (
         <TargetSearchModal
           currentTargets={currentTargets}
+          suggestions={suggestions}
           onClose={() => setSearching(false)}
         />
       )}
