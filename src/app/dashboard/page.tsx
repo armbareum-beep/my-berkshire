@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { Search, Upload, Briefcase } from "lucide-react";
+import { Search, Briefcase } from "lucide-react";
 import { after } from "next/server";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -524,20 +524,9 @@ async function DashboardContent({
         </>
       )}
 
-      {/* 거래내역 가져오기 */}
-      <Link
-        href="/import"
-        className="flex items-center gap-3 rounded-2xl bg-card p-5 shadow-card transition active:scale-[0.99]"
-      >
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-          <Upload size={18} />
-        </span>
-        <div>
-          <p className="text-sm font-semibold">거래내역 가져오기</p>
-          <p className="text-xs text-muted-foreground">키움·KB·미래에셋 등 파일 업로드</p>
-        </div>
-        <span className="ml-auto text-muted-foreground">›</span>
-      </Link>
+      {/* 거래내역 가져오기(/import)는 홈에서 내렸다 — 스펙 v1.1 §5.1 방식(라우트 유지, 링크만 제거).
+          전체 XIRR 은 외부 현금흐름(시작 평가액 + 입출금)만으로 결정되므로 과거 매매를
+          복원할 필요가 없고, 평단가는 온보딩 스냅샷에서 직접 받는다. 자세한 근거는 §5.3. */}
 
       <BottomTabBar />
     </main>
