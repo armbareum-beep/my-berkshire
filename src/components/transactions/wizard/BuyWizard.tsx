@@ -22,6 +22,13 @@ interface CartItem {
   name: string;
   quantity: number;
   price: number; // 네이티브 단가(장부=입력, 챌린지=시세 캡처)
+  /**
+   * 원화입력 모드로 담았을 때 사용자가 실제로 친 ₩ 단가.
+   *
+   * 담는 시점엔 시장환율로 나눠 네이티브 단가를 만들지만, 카트 단계에서 적용환율을
+   * 넣으면 그 환율로 다시 나눠야 한다. 원본을 들고 있지 않으면 복원할 수 없다.
+   */
+  krwPrice?: number;
 }
 
 /** 종목 통화 휴리스틱(단건 BUY 와 동일): 6자리=KRW, 그 외=USD. ₩ 추정 표시용. */
@@ -107,6 +114,13 @@ export function BuyWizard({
     defaultFundingSource,
   );
   const [date, setDate] = useState(today);
+  /**
+   * 증권사가 실제 적용한 환율(1 외화당 ₩). 비우면 시장환율을 쓴다.
+   *
+   * 원화주문(통합증거금)은 증권사 고시환율이 적용돼 시장환율과 다르다. 시장환율로
+   * 기록하면 ₩ 원가가 실제 결제액과 어긋난다. 주문 확인창의 "적용환율"을 그대로 넣는 경로.
+   */
+  const [fxOverride, setFxOverride] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<{ title: string; sub?: string } | null>(null);
 
@@ -136,7 +150,23 @@ export function BuyWizard({
     const rate = ccy === "KRW" ? 1 : (fxRates.USD ?? 1);
     return it.quantity * it.price * rate;
   };
-  const totalKrw = cart.reduce((s, it) => s + krwOf(it), 0);
+  /** 카트에 외화 종목이 있는가 — 적용환율 입력을 띄울지 판단. */
+  const hasForeign = cart.some((it) => ccyHeuristic(it.symbol) !== "KRW");
+  /** 적용환율(사용자 입력). 없으면 null → 시장환율. */
+  const appliedFxPreview =
+    hasForeign && Number(fxOverride) > 0 ? Number(fxOverride) : null;
+
+  /** 외화분 ₩ 결제액 — 원화로 친 항목은 그 값이 곧 정답이다. */
+  const foreignKrw = cart.reduce((s, it) => {
+    if (ccyHeuristic(it.symbol) === "KRW") return s;
+    if (it.krwPrice != null && it.krwPrice > 0) return s + it.quantity * it.krwPrice;
+    return s + it.quantity * it.price * (appliedFxPreview ?? fxRates.USD ?? 1);
+  }, 0);
+
+  const totalKrw = cart.reduce(
+    (s, it) => (ccyHeuristic(it.symbol) === "KRW" ? s + krwOf(it) : s),
+    0,
+  ) + foreignKrw;
 
   function startAddAnother() {
     setAdding(null);
@@ -160,7 +190,14 @@ export function BuyWizard({
     if (q <= 0 || p <= 0) return;
     setCart((prev) => [
       ...prev,
-      { symbol: adding.symbol, name: adding.name, quantity: q, price: p },
+      {
+        symbol: adding.symbol,
+        name: adding.name,
+        quantity: q,
+        price: p,
+        // 원화로 쳤으면 원본을 보관 — 적용환율이 들어오면 그 값으로 다시 환산한다.
+        ...(isKrwInputMode ? { krwPrice: Number(addPrice) } : {}),
+      },
     ]);
     setAdding(null);
     setAddPrice("");
@@ -173,17 +210,25 @@ export function BuyWizard({
     if (cart.length === 0) return;
     setError(null);
     start(async () => {
+      const appliedFx = hasForeign && Number(fxOverride) > 0 ? Number(fxOverride) : null;
       const res = await recordBuys({
         items: cart.map((it) => ({
           symbol: it.symbol,
           name: it.name,
           quantity: it.quantity,
-          price: it.price,
+          // 원화로 친 항목은 적용환율이 있으면 그 환율로 네이티브 단가를 다시 만든다.
+          // (담을 때는 시장환율로 나눴으므로 그대로 두면 ₩ 결제액이 어긋난다.)
+          price:
+            appliedFx && it.krwPrice != null && it.krwPrice > 0
+              ? it.krwPrice / appliedFx
+              : it.price,
         })),
         accountId,
         // 스냅샷 모드는 거래일을 받지 않는다 → 추적 시작일(오늘)로 기록.
         date: mode === "ledger" && !snapshot ? date : today,
         fundingSource,
+        // 비우면 서버가 시장환율을 쓴다(기존 동작).
+        fxOverride: appliedFx ? { USD: appliedFx } : undefined,
       });
       if (!res.ok) {
         setError(res.error);
@@ -458,6 +503,35 @@ export function BuyWizard({
               지금 가진 것을 담는 중이라 매수일은 묻지 않아요. 수익률은 오늘부터
               정확하게 기록됩니다.
             </p>
+          )}
+
+          {/* 원화주문은 증권사 고시환율이 적용돼 시장환율과 다르다 → 실제 값을 받는다. */}
+          {hasForeign && (
+            <div>
+              <label className="text-sm font-medium">
+                적용 환율 <span className="text-muted-foreground">(선택)</span>
+              </label>
+              <input
+                type="number"
+                inputMode="decimal"
+                step="any"
+                value={fxOverride}
+                onChange={(e) => setFxOverride(e.target.value)}
+                placeholder={`시장환율 ${(fxRates.USD ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
+                className="mt-2 h-12 w-full rounded-xl border border-input bg-card px-3 text-base tabular-nums outline-none"
+              />
+              <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+                {appliedFxPreview && foreignKrw > 0 ? (
+                  <>
+                    이 환율로 외화분 결제액은{" "}
+                    <span className="font-semibold tabular-nums">{won(foreignKrw)}</span>{" "}
+                    입니다.
+                  </>
+                ) : (
+                  "원화로 주문했다면 증권사 확인창의 적용환율을 넣어주세요. 비우면 시장환율로 기록합니다."
+                )}
+              </p>
+            </div>
           )}
 
           <p className="text-center text-base tabular-nums">

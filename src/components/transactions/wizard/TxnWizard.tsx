@@ -39,6 +39,8 @@ type StepId =
   | "price"
   | "qty"
   | "amount"
+  /** 환전 실수령액 — 증권사 스프레드가 붙은 "통장에 찍힌" 금액. */
+  | "toAmount"
   | "fromCcy"
   | "toCcy"
   | "date"
@@ -98,6 +100,8 @@ export function TxnWizard({
   const [price, setPrice] = useState("");
   const [qty, setQty] = useState(initialQty ? String(initialQty) : "");
   const [amount, setAmount] = useState("");
+  /** 환전 실수령액(받는 통화). 비우면 시장환율 계산값을 쓴다. */
+  const [toAmount, setToAmount] = useState("");
   const [date, setDate] = useState(today);
   const [fee, setFee] = useState("");
   const [feeOpen, setFeeOpen] = useState(false);
@@ -198,6 +202,8 @@ export function TxnWizard({
     if (cfg.key === "SELL" && mode === "ledger") s.push("price");
     if (cfg.needsQty) s.push("qty");
     else s.push("amount");
+    // 환전은 실수령액을 따로 묻는다 — 증권사 스프레드 때문에 계산값과 다르다.
+    if (cfg.key === "EXCHANGE") s.push("toAmount");
     if (mode === "ledger") s.push("date");
     s.push("review");
     return s;
@@ -228,6 +234,8 @@ export function TxnWizard({
         accountId,
         currency: isCash ? cashCcy : isExchange ? cashCcy : undefined,
         toCurrency: isExchange ? toCcy : undefined,
+        // 비우면 서버가 시장환율로 계산한다(예전 동작 유지).
+        toAmount: isExchange && Number(toAmount) > 0 ? Number(toAmount) : null,
       });
       if (!res.ok) {
         setError(res.error);
@@ -456,6 +464,45 @@ export function TxnWizard({
     );
   }
 
+  if (stepId === "toAmount") {
+    const m = currencyMeta(toCcy);
+    const computed = exchangePreview?.received ?? null;
+    const typed = Number(toAmount) || 0;
+    // 계산값 대비 차이 — 스프레드가 얼마나 붙었는지 바로 보이게.
+    const gap =
+      typed > 0 && computed && computed > 0 ? typed / computed - 1 : null;
+    return shell(
+      "실제로 얼마를 받았나요?",
+      `${currencyMeta(cashCcy).label} → ${currencyMeta(toCcy).label}`,
+      <AmountBody
+        value={toAmount}
+        onChange={setToAmount}
+        prefix={m.symbol}
+        decimal={m.digits > 0}
+        quickAddSteps={amountStepsFor(toCcy).steps}
+        quickAddLabel={amountStepsFor(toCcy).label}
+        hint={
+          gap != null ? (
+            <span className="tabular-nums">
+              시장환율 계산값 {nativeMoney(computed as number, toCcy)} 대비{" "}
+              <span style={{ color: gap < 0 ? "var(--muted-foreground)" : "var(--primary)" }}>
+                {gap > 0 ? "+" : ""}
+                {(gap * 100).toFixed(2)}%
+              </span>
+            </span>
+          ) : computed ? (
+            <span className="text-muted-foreground tabular-nums">
+              비우면 시장환율 계산값 {nativeMoney(computed, toCcy)} 로 기록해요. 증권사
+              환전은 스프레드가 붙어 실제 수령액이 보통 더 적어요 — 통장에 찍힌 금액을
+              넣는 게 정확합니다.
+            </span>
+          ) : undefined
+        }
+      />,
+      nextBtn("다음", true, () => go(1)),
+    );
+  }
+
   if (stepId === "date") {
     return shell(
       "언제 거래했나요?",
@@ -505,13 +552,23 @@ export function TxnWizard({
     if (cashPreview) lines.push({ k: "₩ 환산", v: won(cashPreview.krw) });
     if (mode === "ledger") lines.push({ k: "거래일", v: date });
   } else if (isExchange) {
+    const typedTo = Number(toAmount) || 0;
+    const receivedTo = typedTo > 0 ? typedTo : (exchangePreview?.received ?? null);
     lines.push({ k: "보내는", v: nativeMoney(amountN, cashCcy) });
     lines.push({
-      k: "받는 (예상)",
-      v: exchangePreview ? nativeMoney(exchangePreview.received, toCcy) : "—",
+      // 실수령액을 넣었으면 "예상"이 아니라 확정값이다.
+      k: typedTo > 0 ? "받는 (실제)" : "받는 (예상)",
+      v: receivedTo != null ? nativeMoney(receivedTo, toCcy) : "—",
       accent: true,
     });
-    if (exchangePreview)
+    // 실수령액을 넣었으면 실제 적용된 환율을 보여준다(스프레드가 녹아 있는 값).
+    if (typedTo > 0 && amountN > 0 && fromRate) {
+      const effective = (amountN * fromRate) / typedTo;
+      lines.push({
+        k: "적용 환율",
+        v: `1 ${toCcy} = ₩${effective.toLocaleString(undefined, { maximumFractionDigits: 2 })}`,
+      });
+    } else if (exchangePreview)
       lines.push({
         k: "환율",
         v: `1 ${exchangePreview.foreign} = ₩${exchangePreview.rate.toLocaleString(undefined, { maximumFractionDigits: 2 })}`,

@@ -151,6 +151,14 @@ export interface RecordInput {
   currency?: string;
   /** 환전(EXCHANGE) 받는 통화. type==="EXCHANGE" 일 때 필수. */
   toCurrency?: string;
+  /**
+   * 환전(EXCHANGE) **실제로 받은 금액**(받는 통화 네이티브).
+   *
+   * 비우면 시장환율로 계산하지만, 증권사 환전에는 스프레드가 붙어 실제 수령액이 더 적다.
+   * 계산값을 그대로 쓰면 외화 현금 풀이 영구히 과대 계상되므로(있지도 않은 달러로
+   * 매수가 가능해짐), 통장에 찍힌 금액을 그대로 넣는 경로를 연다.
+   */
+  toAmount?: number | null;
 }
 
 /**
@@ -218,8 +226,16 @@ export async function recordEvent(input: RecordInput): Promise<Result> {
         error: `${fromCcy} 현금이 부족합니다(보유 ${have.toLocaleString()}).`,
       };
 
-    const krwValue = fromAmount * fromFx; // ₩ 가치(진입 기준)
-    const toAmount = krwValue / toFx; // 받는 네이티브 금액
+    // 실제 수령액을 받았으면 그걸 쓴다 — 증권사 스프레드가 붙은 "진짜" 금액이다.
+    // 비었을 때만 시장환율로 계산한다(예전 동작).
+    const actual = input.toAmount;
+    const useActual = actual != null && Number.isFinite(actual) && actual > 0;
+    const toAmount = useActual ? (actual as number) : (fromAmount * fromFx) / toFx;
+
+    // ₩ 장부 가치는 **보낸 쪽**을 기준으로 잡는다(내가 실제로 내놓은 돈).
+    // 실수령액이 적어도 ₩ 장부는 중립이고, 차액은 받는 통화 풀에 정확히 반영된다.
+    // 실제 적용 환율(krwValue / toAmount)은 저장하지 않는다 — to_amount 에서 언제든 재계산된다.
+    const krwValue = fromAmount * fromFx;
 
     const { error: xErr } = await supabase.from("events").insert({
       account_id: accountId,
@@ -463,6 +479,13 @@ export async function recordBuys(input: {
   accountId?: string | null;
   date: string;
   fundingSource: "cash" | "deposit";
+  /**
+   * 증권사가 실제 적용한 환율(통화 → 1 외화당 ₩). 비우면 시장환율을 쓴다.
+   *
+   * 원화주문(통합증거금)은 증권사 고시환율이 적용돼 시장환율과 다르다. 시장환율로
+   * 기록하면 ₩ 원가가 실제 결제액과 어긋나므로, 주문 확인창의 적용환율을 그대로 받는다.
+   */
+  fxOverride?: Record<string, number> | null;
 }): Promise<Result> {
   const ctx = await loadCtx();
   if ("error" in ctx) return { ok: false, error: ctx.error };
@@ -503,6 +526,10 @@ export async function recordBuys(input: {
     ...new Set(Object.values(ccyOf).filter((c) => c !== "KRW")),
   ];
   const fx = foreignCcys.length ? await getFxToKrw(foreignCcys) : {};
+  // 사용자가 적용환율을 넣었으면 그게 진실이다 — 시장환율보다 우선한다.
+  // 터무니없는 값(0 이하·비유한)은 무시하고 시장환율로 폴백한다.
+  for (const [ccy, rate] of Object.entries(input.fxOverride ?? {}))
+    if (Number.isFinite(rate) && rate > 0) fx[ccy] = rate;
   for (const c of foreignCcys)
     if (!fx[c])
       return {
