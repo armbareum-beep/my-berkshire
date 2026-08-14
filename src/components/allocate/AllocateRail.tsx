@@ -196,21 +196,6 @@ export function AllocateRail({
 
   const shareTotal = shareLegs.reduce((s, x) => s + x.cost, 0);
 
-  // `+ 종목 추가` 에 넘길 값.
-  const currentTargets = useMemo(() => {
-    const m: Record<string, number> = {};
-    for (const r of rows) if (r.target > 0) m[r.symbol] = r.target;
-    return m;
-  }, [rows]);
-  const suggestions = useMemo(
-    () =>
-      [...rows]
-        .filter((r) => r.held)
-        .sort((a, b) => b.value - a.value)
-        .map((r) => ({ symbol: r.symbol, name: r.label })),
-    [rows],
-  );
-
 
   function savePlan() {
     startSave(async () => {
@@ -270,12 +255,7 @@ export function AllocateRail({
           subtitle="투자자산을 어떻게 나눌지 먼저 정해요"
           className="pb-28"
         >
-          <TypeTargetList
-            rows={typeRows}
-            currency={currency}
-            currentTargets={currentTargets}
-            suggestions={suggestions}
-          />
+          <TypeTargetList rows={typeRows} currency={currency} />
           <div className="mt-auto pt-6">
             <button
               type="button"

@@ -7,7 +7,8 @@ import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { setGroupTarget, restoreTargets } from "@/app/allocate/actions";
 import { money, pct, type Currency } from "@/lib/format";
-import { AddTargetButton } from "@/components/allocation/AddTargetButton";
+import { Donut } from "@/components/dashboard/Donut";
+import { donutColor } from "@/components/dashboard/donutPalette";
 
 export interface TypeTargetRow {
   /** 자산유형(주식·ETF·코인·원자재) 또는 현금. */
@@ -35,10 +36,22 @@ export interface TypeTargetRow {
  * 그래서 레일의 첫 칸으로 들여왔다. 여기서 정하는 합이 곧 100% 이고, 그게 그대로 뒤
  * 단계의 배분 기준이 된다.
  *
+ * ## 그래프와 조절이 한 자리다
+ *
+ * 숫자로 조절하는 곳과 그래프로 보는 곳이 따로 있으면 같은 일을 두 화면에서 하게 된다.
+ * 사용자 지적: *"전체 비중조절하는거랑 그래프로 비중조절하는거 통합해줘."*
+ * 그래서 도넛을 이 칸에 같이 둔다 — 고치면 바로 그림이 바뀐다.
+ *
  * ## 여기서는 유형까지만
  *
  * 주식 안의 종목별·국가별까지 이 칸에서 다루면 레일이 다시 무거워진다. **유형 네 줄**만
  * 정하고, 더 파고들 사람은 `자세히`로 계층 화면에 간다(`/allocation`).
+ *
+ * ## 새 종목은 여기서 더하지 않는다
+ *
+ * 검색으로 새 기업을 넣는 버튼이 있었는데 뺐다 — *"새로운거 말고 기존꺼만 리밸런싱 하는게
+ * 좋겠어."* 이 화면은 **이미 가진 것의 비중을 다시 맞추는** 자리다. 새로 사는 건 기록(거래)
+ * 쪽 일이다.
  *
  * 저장은 `setGroupTarget` — 묶음 목표를 구성 종목에 **비례로** 나눠 평면에 쓴다
  * (`lib/targetLens.ts`). 한 번에 여러 종목이 바뀌므로 되돌리기를 같이 낸다.
@@ -46,19 +59,16 @@ export interface TypeTargetRow {
 export function TypeTargetList({
   rows,
   currency,
-  currentTargets,
-  suggestions,
 }: {
   rows: TypeTargetRow[];
   currency: Currency;
-  /** symbol → 목표(0~1). `+ 종목 추가` 모달이 "이미 정해둔 값"을 보여주는 데 쓴다. */
-  currentTargets: Record<string, number>;
-  /** 검색 전에 깔아둘 목록 — 보유 종목(평가액 큰 순). */
-  suggestions: { symbol: string; name: string }[];
 }) {
   const total = rows.reduce((s, r) => s + r.target, 0);
-  // 유형 줄이 현금뿐이면 아직 아무것도 안 정한 사람이다 — 그 자리에서 넣게 해야 한다.
-  const empty = rows.every((r) => r.readOnly);
+  // 도넛은 평가액이 있는 것만 — 0짜리는 조각이 없는데 범례만 차지한다.
+  // recharts 는 weight 합을 100%로 재정규화하므로 이 화면 기준 비중을 그대로 넘긴다.
+  const slices = rows
+    .filter((r) => r.value > 0)
+    .map((r) => ({ label: r.label, weight: r.current, value: r.value }));
 
   return (
     <div className="flex flex-col gap-2">
@@ -69,25 +79,42 @@ export function TypeTargetList({
         </p>
       </div>
 
+      {/* 그래프와 조절을 한 자리에 — 고치면 바로 이 그림이 바뀐다. */}
+      {slices.length > 0 && (
+        <section className="flex items-center gap-5 rounded-2xl bg-card p-5 shadow-card">
+          <Donut slices={slices} currency={currency} />
+          <ul className="flex min-w-0 flex-1 flex-col gap-2">
+            {slices.slice(0, 5).map((sl, i) => {
+              const row = rows.find((r) => r.label === sl.label)!;
+              return (
+                <li key={sl.label} className="flex items-center gap-2 text-sm">
+                  <span
+                    className="h-3 w-3 shrink-0 rounded-full"
+                    style={{ backgroundColor: donutColor(i) }}
+                  />
+                  <span className="min-w-0 flex-1 truncate font-medium">
+                    {sl.label}
+                  </span>
+                  <span className="shrink-0 tabular-nums text-muted-foreground">
+                    {pct(sl.weight)}
+                    {row.target > 0 && (
+                      <span className="ml-1 text-[11px]">
+                        / 목표 {pct(row.target)}
+                      </span>
+                    )}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
       <ul className="flex flex-col gap-2">
         {rows.map((r) => (
           <TypeRow key={r.label} row={r} currency={currency} />
         ))}
       </ul>
-
-      {empty && (
-        <p className="px-1 text-xs leading-relaxed text-muted-foreground">
-          아직 정한 게 없어요. 들고 갈 기업을 찾아서 비중을 매겨 보세요.
-        </p>
-      )}
-
-      {/* 종목 추가는 여기 있어야 한다 — 링크로만 걸어두면 보유가 없는 사람은
-          "현금 100%" 한 줄 앞에서 막힌다. */}
-      <AddTargetButton
-        currentTargets={currentTargets}
-        suggestions={suggestions}
-        label="종목 추가하고 목표 정하기"
-      />
 
       <Link
         href="/allocation"

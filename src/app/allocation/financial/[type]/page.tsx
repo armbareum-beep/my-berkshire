@@ -13,7 +13,6 @@ import { cn } from "@/lib/utils";
 import { BackButton } from "@/components/BackButton";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
 import { TargetAdjuster } from "@/components/allocation/TargetAdjuster";
-import { AddTargetButton } from "@/components/allocation/AddTargetButton";
 import {
   AllocationLevel,
   type LevelRow,
@@ -204,15 +203,6 @@ export default async function TypeAllocationPage({
       .sort((a, b) => b.value - a.value || (b.target ?? 0) - (a.target ?? 0));
   }
 
-  // `+ 종목 추가` 에 넘길 값 — 통화 목표는 종목이 아니라 뺀다.
-  const currentTargets: Record<string, number> = {};
-  for (const [sym, rule] of Object.entries(targets)) {
-    if (!isCashKey(sym) && rule.target > 0) currentTargets[sym] = rule.target;
-  }
-  const suggestions = [...mine]
-    .sort((a, b) => b.value - a.value)
-    .map((a) => ({ symbol: a.symbol, name: a.name }));
-
   return (
     <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
       <BottomTabBar />
@@ -253,12 +243,6 @@ export default async function TypeAllocationPage({
         </nav>
       </AllocationLevel>
 
-      {/* 보는 자리에서 바로 더한다 — 목표만 정하러 다른 화면으로 나가지 않는다. */}
-      <AddTargetButton
-        currentTargets={currentTargets}
-        suggestions={suggestions}
-        label="종목 추가하고 목표 정하기"
-      />
 
       <p className="px-2 text-xs leading-relaxed text-muted-foreground">
         목록의 비중은 <b>{subjectTitle} 안에서</b>, 목표비중은 <b>투자자산 대비</b>예요.

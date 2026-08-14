@@ -21,7 +21,6 @@ import type { TagKey } from "@/lib/allocation";
 import {
   backfillSectors,
   loadSecurityMeta,
-  upsertSecurities,
 } from "@/lib/securities";
 import type { Json } from "@/lib/supabase/database.types";
 
@@ -203,40 +202,9 @@ export async function setInvestableCash(
   return { ok: true };
 }
 
-/**
- * 검색에서 바로 목표비중 지정 — 검색형 설정의 저장 경로.
- *
- * 리스트를 스크롤해 칸을 채우는 대신 **찾아서 정한다.** 그래서 한 번의 동작이 세 가지를
- * 한꺼번에 처리한다.
- *
- *   1. 종목명을 `securities` 에 적재 — 아직 보유도 관심도 아닌 기업이라 이름이 없을 수 있다
- *   2. 자본배분 **후보로 승격** — 목표비중을 정한다는 건 사겠다는 뜻이다. 후보 지정을
- *      따로 시키면 "비중을 넣었는데 왜 배분이 안 되지?"가 된다
- *   3. 목표비중 저장(평면)
- *
- * `target` 이 0 이면 목표비중만 지운다. **후보에서 빼지는 않는다** — 비중을 비우는 것과
- * 후보에서 제외하는 것은 다른 결정이고, 후자는 후보 목록에서 명시적으로 하게 둔다.
- */
-export async function setTargetFromSearch(
-  symbol: string,
-  name: string,
-  target: number,
-): Promise<Result> {
-  if (!symbol) return { ok: false, error: "종목이 올바르지 않습니다." };
-
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "로그인이 필요합니다." };
-  if (name) await upsertSecurities(supabase, [{ symbol, name }]);
-
-  if (target > 0) {
-    const approved = await setUniverseStatus(symbol, "APPROVED");
-    if (!approved.ok) return approved;
-  }
-  return setTargetWeight(symbol, target);
-}
+/* 검색으로 새 종목을 넣던 `setTargetFromSearch` 는 지웠다 — 자본배분은 **이미 가진 것의
+   비중을 다시 맞추는** 일이고, 새로 사는 건 기록(거래) 쪽 일이다. 죽은 서버 액션을 남기면
+   없는 기능이 있는 것처럼 보인다. */
 
 /** 그룹 조정 결과 — 되돌리기를 위해 **바꾸기 직전의 저장값**을 그대로 돌려준다. */
 export type GroupTargetResult =
