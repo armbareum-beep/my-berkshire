@@ -269,10 +269,10 @@ export function AllocateRail({
                 문을 안 달면 "전체 자산 → 금융자산 → 주식" 화면에 아무도 닿지 못한다. */}
             <div className="flex justify-center gap-4 text-xs font-medium text-muted-foreground">
               <Link href="/allocation" className="underline">
-                내 자산배분 보기
+                내 자산배분 · 목표 정하기
               </Link>
               <Link href="/allocate/settings" className="underline">
-                목표비중·설정
+                배분 설정
               </Link>
             </div>
           </div>
