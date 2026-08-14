@@ -67,6 +67,7 @@ export default async function AllocatePage() {
       value: byType.get(t)!.value,
       current: w(byType.get(t)!.value),
       target: byType.get(t)!.target,
+      href: `/allocation/financial/${encodeURIComponent(t)}`,
     })),
     ...[...byType.keys()]
       .filter((t) => !ASSET_TYPE_ORDER.includes(t as (typeof ASSET_TYPE_ORDER)[number]))
@@ -75,6 +76,7 @@ export default async function AllocatePage() {
         value: byType.get(t)!.value,
         current: w(byType.get(t)!.value),
         target: byType.get(t)!.target,
+        href: `/allocation/financial/${encodeURIComponent(t)}`,
       })),
     // 현금은 직접 정하지 않는다 — 목표를 안 채운 나머지가 곧 현금이다(§16.2).
     {
@@ -83,6 +85,7 @@ export default async function AllocatePage() {
       current: w(cash),
       target: Math.max(0, 1 - targetSum),
       readOnly: true,
+      href: "/allocation/cash",
     },
   ];
 

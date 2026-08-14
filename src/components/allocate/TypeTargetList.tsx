@@ -20,6 +20,8 @@ export interface TypeTargetRow {
   target: number;
   /** 현금은 "목표를 안 채운 나머지"라 직접 못 정한다(§16.2). */
   readOnly?: boolean;
+  /** 이 줄을 누르면 갈 곳 — 그 유형 안(종목·국가·산업) 또는 통화별. */
+  href?: string;
 }
 
 /**
@@ -42,10 +44,14 @@ export interface TypeTargetRow {
  * 사용자 지적: *"전체 비중조절하는거랑 그래프로 비중조절하는거 통합해줘."*
  * 그래서 도넛을 이 칸에 같이 둔다 — 고치면 바로 그림이 바뀐다.
  *
- * ## 여기서는 유형까지만
+ * ## 줄을 누르면 그 안으로 들어간다
  *
- * 주식 안의 종목별·국가별까지 이 칸에서 다루면 레일이 다시 무거워진다. **유형 네 줄**만
- * 정하고, 더 파고들 사람은 `자세히`로 계층 화면에 간다(`/allocation`).
+ * 유형 네 줄만 여기서 정하고, 더 파고드는 건 **그 줄을 눌러서** 간다 — 주식을 누르면 주식
+ * 안(종목·국가·산업), 현금을 누르면 통화별. 사용자 지적: *"처음 자산 나누고 거기서 주식이나
+ * ETF 현금 누르면 바로 이동시키면 되잖아."*
+ *
+ * 맞다. 목록 아래에 `자세히 보기` 링크를 따로 두면 **같은 목적지로 가는 길이 둘**이 되고,
+ * 줄을 눌러도 아무 일이 안 일어나 어디로 가야 할지 다시 찾게 된다.
  *
  * ## 새 종목은 여기서 더하지 않는다
  *
@@ -115,13 +121,6 @@ export function TypeTargetList({
           <TypeRow key={r.label} row={r} currency={currency} />
         ))}
       </ul>
-
-      <Link
-        href="/allocation"
-        className="mt-1 text-center text-xs font-medium text-muted-foreground underline"
-      >
-        종목·국가·산업까지 자세히 보기
-      </Link>
     </div>
   );
 }
@@ -172,7 +171,17 @@ function TypeRow({ row, currency }: { row: TypeTargetRow; currency: Currency }) 
   return (
     <li className="flex items-center gap-3 rounded-2xl bg-card p-4 shadow-card">
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold">{row.label}</p>
+        {row.href ? (
+          <Link
+            href={row.href}
+            className="flex items-center gap-1 text-sm font-semibold"
+          >
+            <span className="truncate">{row.label}</span>
+            <span className="shrink-0 text-foreground/40">›</span>
+          </Link>
+        ) : (
+          <p className="text-sm font-semibold">{row.label}</p>
+        )}
         <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
           지금 {pct(row.current)} · {money(row.value, currency)}
           {Math.abs(gap) >= 0.0001 && (
