@@ -70,7 +70,7 @@ export function AllocationCard({
       <SectionCard
         title="자산 구성"
         action={
-          <Link href="/allocation/type" scroll={false} className="text-sm text-muted-foreground transition active:opacity-70">
+          <Link href="/allocation/financial" scroll={false} className="text-sm text-muted-foreground transition active:opacity-70">
             ›
           </Link>
         }

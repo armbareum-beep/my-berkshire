@@ -59,7 +59,7 @@ export default async function RebalancePage() {
       </section>
 
       <Link
-        href="/allocation/type"
+        href="/allocation/financial"
         className="px-2 text-center text-xs font-medium text-muted-foreground underline"
       >
         지금 자산배분 보기 (유형·국가·산업별)

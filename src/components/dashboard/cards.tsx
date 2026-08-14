@@ -545,8 +545,8 @@ export function CashCard({
 
 /**
  * 자산 구성 — 국가별 비중 bar 목록. 현금 제외(CashCard 전담).
- * 각 국가 탭 → /allocation/country?only=한국 (해당 국가 주식·ETF 목록).
- * 헤더 › → /allocation/type (전체 유형별 비중).
+ * 각 국가 탭 → 주식 계층의 그 국가(드릴다운 3계층). ETF 는 유형이 달라 따로 본다.
+ * 헤더 › → /allocation/financial (금융자산 계층).
  */
 export function AllocationCard({ slices }: { slices: TagSlice[] }) {
   const filtered = slices.filter((s) => s.label !== "현금" && s.label !== "기타");
@@ -557,7 +557,7 @@ export function AllocationCard({ slices }: { slices: TagSlice[] }) {
     <SectionCard
       title="자산 구성"
       action={
-        <Link href="/allocation/type" scroll={false} className="text-sm text-muted-foreground transition active:opacity-70">
+        <Link href="/allocation/financial" scroll={false} className="text-sm text-muted-foreground transition active:opacity-70">
           ›
         </Link>
       }
@@ -566,7 +566,7 @@ export function AllocationCard({ slices }: { slices: TagSlice[] }) {
         {items.map((s) => (
           <li key={s.label}>
             <Link
-              href={`/allocation/country?only=${encodeURIComponent(s.label)}`}
+              href={`/allocation/financial/%EC%A3%BC%EC%8B%9D?by=country&pick=${encodeURIComponent(s.label)}`}
               className="block active:opacity-70"
             >
               <div className="flex items-center justify-between text-sm">

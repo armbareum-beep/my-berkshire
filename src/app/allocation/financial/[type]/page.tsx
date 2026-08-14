@@ -42,11 +42,13 @@ export default async function TypeAllocationPage({
   searchParams,
 }: {
   params: Promise<{ type: string }>;
-  searchParams: Promise<{ by?: string }>;
+  searchParams: Promise<{ by?: string; pick?: string }>;
 }) {
   const [{ type: raw }, sp] = await Promise.all([params, searchParams]);
   const type = decodeURIComponent(raw);
   const by = LENSES.some((l) => l.key === sp.by) ? sp.by! : "symbol";
+  // 국가·산업 묶음 하나를 골라 들어간 상태 — 3계층("주식 → 국가별 → 한국").
+  const pick = by !== "symbol" && sp.pick ? decodeURIComponent(sp.pick) : null;
 
   const supabase = await createClient();
   const {
@@ -103,6 +105,14 @@ export default async function TypeAllocationPage({
     mine.reduce((s, a) => s + (targets[a.symbol]?.target ?? 0), 0) +
     orphansHere.reduce((s, sym) => s + (targets[sym]?.target ?? 0), 0);
 
+  // ── 화면의 주어 ── 기본은 유형, 묶음을 골라 들어왔으면 그 묶음이 주어가 된다.
+  let subjectTitle = type;
+  let subjectValue = typeValue;
+  let subjectParent = `금융자산의 ${pct(financial > 0 ? typeValue / financial : 0)} · 아래 비중은 ${type} 안에서 100%`;
+  let adjusterKey: TagKey = "assetType";
+  let adjusterLabel = type;
+  let adjusterTarget = typeTarget;
+
   // ── 렌즈에 따라 행을 만든다 ──
   let rows: LevelRow[];
   if (by === "symbol") {
@@ -125,6 +135,42 @@ export default async function TypeAllocationPage({
         badge: "미보유",
       })),
     ].sort((a, b) => b.value - a.value || (b.target ?? 0) - (a.target ?? 0));
+  } else if (pick) {
+    // 고른 묶음의 종목만 — 비중 분모도 그 묶음이 된다(이 화면의 100%).
+    const key = by as TagKey;
+    const inPick = mine.filter((a) => tagLabel(meta[a.symbol], key) === pick);
+    const pickValue = inPick.reduce((s, a) => s + a.value, 0);
+    const orphansInPick = orphansHere.filter(
+      (sym) => tagLabel(orphanMeta[sym], key) === pick,
+    );
+    rows = [
+      ...inPick.map((a) => ({
+        key: a.symbol,
+        label: a.name,
+        value: a.value,
+        weight: pickValue > 0 ? a.value / pickValue : 0,
+        target: targets[a.symbol]?.target ?? 0,
+        href: `/stocks/${a.symbol}`,
+      })),
+      ...orphansInPick.map((sym) => ({
+        key: sym,
+        label: orphanMeta[sym]?.name ?? sym,
+        value: 0,
+        weight: 0,
+        target: targets[sym]?.target ?? 0,
+        href: `/stocks/${sym}`,
+        badge: "미보유",
+      })),
+    ].sort((a, b) => b.value - a.value || (b.target ?? 0) - (a.target ?? 0));
+
+    subjectTitle = `${type} · ${pick}`;
+    subjectValue = pickValue;
+    subjectParent = `${type}의 ${pct(typeValue > 0 ? pickValue / typeValue : 0)} · 아래 비중은 ${pick} 안에서 100%`;
+    adjusterKey = key;
+    adjusterLabel = pick;
+    adjusterTarget =
+      inPick.reduce((s, a) => s + (targets[a.symbol]?.target ?? 0), 0) +
+      orphansInPick.reduce((s, sym) => s + (targets[sym]?.target ?? 0), 0);
   } else {
     const key = by as TagKey;
     const group = new Map<string, { value: number; target: number; n: number }>();
@@ -149,6 +195,7 @@ export default async function TypeAllocationPage({
         value: g.value,
         weight: typeValue > 0 ? g.value / typeValue : 0,
         target: g.target,
+        href: `/allocation/financial/${encodeURIComponent(type)}?by=${by}&pick=${encodeURIComponent(label)}`,
         badge: g.n > 0 ? `${g.n}종목` : "미보유",
       }))
       .sort((a, b) => b.value - a.value || (b.target ?? 0) - (a.target ?? 0));
@@ -160,19 +207,19 @@ export default async function TypeAllocationPage({
       <BackButton />
 
       <AllocationLevel
-        title={type}
-        parentNote={`금융자산의 ${pct(financial > 0 ? typeValue / financial : 0)} · 아래 비중은 ${type} 안에서 100%`}
-        value={typeValue}
+        title={subjectTitle}
+        parentNote={subjectParent}
+        value={subjectValue}
         currency={data.currency}
         rows={rows}
         emptyText={`아직 ${type}이(가) 없어요.`}
       >
         {/* 이 유형 전체의 목표 — 누르면 구성 종목 목표가 비례로 움직인다. */}
         <TargetAdjuster
-          tagKey="assetType"
-          label={type}
-          current={investable > 0 ? typeValue / investable : 0}
-          target={typeTarget}
+          tagKey={adjusterKey}
+          label={adjusterLabel}
+          current={investable > 0 ? subjectValue / investable : 0}
+          target={adjusterTarget}
         />
 
         {/* 렌즈는 잎에서만. 위 계층은 계층 그대로 본다. */}
