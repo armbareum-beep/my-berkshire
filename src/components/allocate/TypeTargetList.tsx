@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { setGroupTarget, restoreTargets } from "@/app/allocate/actions";
 import { money, pct, type Currency } from "@/lib/format";
+import { AddTargetButton } from "@/components/allocation/AddTargetButton";
 
 export interface TypeTargetRow {
   /** 자산유형(주식·ETF·코인·원자재) 또는 현금. */
@@ -45,11 +46,19 @@ export interface TypeTargetRow {
 export function TypeTargetList({
   rows,
   currency,
+  currentTargets,
+  suggestions,
 }: {
   rows: TypeTargetRow[];
   currency: Currency;
+  /** symbol → 목표(0~1). `+ 종목 추가` 모달이 "이미 정해둔 값"을 보여주는 데 쓴다. */
+  currentTargets: Record<string, number>;
+  /** 검색 전에 깔아둘 목록 — 보유 종목(평가액 큰 순). */
+  suggestions: { symbol: string; name: string }[];
 }) {
   const total = rows.reduce((s, r) => s + r.target, 0);
+  // 유형 줄이 현금뿐이면 아직 아무것도 안 정한 사람이다 — 그 자리에서 넣게 해야 한다.
+  const empty = rows.every((r) => r.readOnly);
 
   return (
     <div className="flex flex-col gap-2">
@@ -65,6 +74,20 @@ export function TypeTargetList({
           <TypeRow key={r.label} row={r} currency={currency} />
         ))}
       </ul>
+
+      {empty && (
+        <p className="px-1 text-xs leading-relaxed text-muted-foreground">
+          아직 정한 게 없어요. 들고 갈 기업을 찾아서 비중을 매겨 보세요.
+        </p>
+      )}
+
+      {/* 종목 추가는 여기 있어야 한다 — 링크로만 걸어두면 보유가 없는 사람은
+          "현금 100%" 한 줄 앞에서 막힌다. */}
+      <AddTargetButton
+        currentTargets={currentTargets}
+        suggestions={suggestions}
+        label="종목 추가하고 목표 정하기"
+      />
 
       <Link
         href="/allocation"
