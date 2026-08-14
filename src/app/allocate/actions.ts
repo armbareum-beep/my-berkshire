@@ -13,13 +13,16 @@ import {
 } from "@/lib/targetWeights";
 import {
   buildLens,
+  canSetCash,
+  isCashKey,
   roomFor,
-  scaleGroupTarget,
+  scaleGroupLocked,
+  setCashTarget,
   sumTargets,
   CASH_LABEL,
 } from "@/lib/targetLens";
 import { pct } from "@/lib/format";
-import type { TagKey } from "@/lib/allocation";
+import { tagLabel, type TagKey } from "@/lib/allocation";
 import {
   backfillSectors,
   loadSecurityMeta,
@@ -243,17 +246,46 @@ export type GroupTargetResult =
       ok: true;
       /** 직전 저장값(평면). `restoreTargets` 에 그대로 넘기면 원상복구된다. */
       previous: Record<string, TargetRule>;
-      /** 바꾼 뒤의 목표 합(0~1+). 1을 넘으면 화면이 경고한다. */
+      /** 바꾼 뒤의 목표 합(0~1+). */
       total: number;
+      /**
+       * 고정 축이 움직인 양(0~1). 상계할 종목이 없어 현금에서 가져온 몫이다.
+       * 0 이 아니면 화면이 "유형도 조금 움직였어요"라고 말해야 한다.
+       */
+      shortfall: number;
+      /** 고정하려 한 축의 이름(사용자에게 보여줄 말). */
+      lockedLabel: string;
     }
   | { ok: false; error: string };
 
 /**
+ * 어느 축을 밀 때 **어느 축을 고정할 것인가**.
+ *
+ * 유형(주식/ETF)은 배분 엔진이 다르게 다루는 축이라 국가·산업을 손볼 때 흔들리면 가장
+ * 곤란하다. 그래서 기본은 유형 고정이고, 유형 자체를 밀 때만 국가를 고정한다.
+ */
+const LOCKED_AXIS: Record<TagKey, { key: TagKey; label: string }> = {
+  country: { key: "assetType", label: "유형" },
+  sector: { key: "assetType", label: "유형" },
+  assetType: { key: "country", label: "국가" },
+};
+
+/**
  * 묶음(유형·국가·산업) 목표를 옮긴다 — 예: "미국 60%".
  *
- * **묶음 목표를 그 자체로 저장하지 않는다.** 구성 종목의 평면 목표를 비례로 움직여 합이
- * 요청한 값이 되게 한다(`lib/targetLens.ts:scaleGroupTarget`). 진실은 여전히 종목 목표
- * 하나뿐이라 은퇴시킨 2층 구조가 되돌아오지 않는다(스펙 §13.2, #70).
+ * **묶음 목표를 그 자체로 저장하지 않는다.** 구성 종목의 평면 목표를 움직여 합이 요청한
+ * 값이 되게 한다. 진실은 여전히 종목 목표 하나뿐이라 은퇴시킨 2층 구조가 되돌아오지
+ * 않는다(스펙 §13.2, #70).
+ *
+ * ## 다른 축은 그대로 둔다 — "축 고정"
+ *
+ * 예전엔 늘어난 몫을 **현금에서** 가져왔다. 그래서 국가를 밀면 유형이 따라 움직였다 —
+ * 미국을 올리면 미국 ETF 목표도 같이 커지기 때문이다. 사용자 지적: *"유형 국가 산업이
+ * 모두 연동되어 있어? 연동 안 되게 하는 건 어때?"*
+ *
+ * 이제 **고정 축의 같은 칸에 있는 다른 종목에서** 가져온다(`scaleGroupLocked`). 미국을
+ * 올리면 한국 주식이 줄어 주식 합이 유지되고, 한국 ETF 가 줄어 ETF 합이 유지된다.
+ * 상계할 곳이 없으면 요청대로 옮기되 **깨진 양을 `shortfall` 로 돌려준다.**
  *
  * 구성원은 **서버에서 다시 묶는다** — 화면이 보낸 목록을 믿으면 화면과 저장이 갈릴 때
  * 엉뚱한 종목의 목표가 바뀐다.
@@ -267,11 +299,9 @@ export async function setGroupTarget(
   if (!label) return { ok: false, error: "묶음이 올바르지 않습니다." };
   if (!Number.isFinite(next) || next < 0 || next > 1)
     return { ok: false, error: "목표비중은 0~100% 사이여야 합니다." };
+  // 현금은 저장되는 목표가 아니라 나머지라 계산이 다르다 — 전용 액션으로 간다.
   if (label === CASH_LABEL)
-    return {
-      ok: false,
-      error: "현금은 따로 정하지 않아요 — 목표를 안 채운 나머지가 현금입니다.",
-    };
+    return { ok: false, error: "현금은 `setCashTargetAction` 으로 정합니다." };
 
   const supabase = await createClient();
   const {
@@ -329,21 +359,44 @@ export async function setGroupTarget(
   if (group.members.length === 0)
     return { ok: false, error: "이 묶음에 조정할 종목이 없어요." };
 
-  // 묶음 목표는 구성원 목표를 통째로 갈아끼운다 — 그래서 구성원 전부를 빼고 여유를 센다.
-  const room = roomFor(
+  // ── 고정 축으로 스트라텀을 만든다 ──
+  // 통화 현금 키(`CASH:USD`)는 종목이 아니라 현금이다. 태그가 없어 "주식/기타"로 묶이므로
+  // 걸러내지 않으면 국가를 밀 때 달러 목표가 조용히 깎인다.
+  const locked = LOCKED_AXIS[key];
+  const inGroup = new Set(group.members.map((m) => m.symbol));
+  const stratumOf = (symbol: string) => tagLabel(meta[symbol], locked.key);
+
+  const members = group.members
+    .filter((m) => !isCashKey(m.symbol))
+    .map((m) => ({ symbol: m.symbol, value: m.value, stratum: stratumOf(m.symbol) }));
+
+  const valueOf = new Map(dashboard.allocation.map((a) => [a.symbol, a.value]));
+  const others = symbols
+    .filter((s) => !inGroup.has(s) && !isCashKey(s))
+    .map((s) => ({
+      symbol: s,
+      value: valueOf.get(s) ?? 0,
+      stratum: stratumOf(s),
+    }));
+
+  if (members.length === 0)
+    return { ok: false, error: "이 묶음에 조정할 종목이 없어요." };
+
+  const { targets: moved, shortfall } = scaleGroupLocked(
     current,
-    group.members.map((m) => m.symbol),
+    members,
+    others,
+    next,
   );
-  if (next > room + OVER_EPS) return { ok: false, error: overflowError(room) };
+
+  // 상계가 완전하면 합은 그대로다. 모자란 만큼만 현금에서 오므로 그때만 100% 를 넘을 수 있다.
+  const updated = toStored(moved);
+  if (sumTargets(updated) > 1 + OVER_EPS) {
+    const room = roomFor(current, [...inGroup]);
+    return { ok: false, error: overflowError(room) };
+  }
 
   const previous = toStored(current);
-  const updated = toStored(
-    scaleGroupTarget(
-      current,
-      group.members.map((m) => ({ symbol: m.symbol, value: m.value })),
-      next,
-    ),
-  );
 
   const { error } = await supabase
     .from("holdings")
@@ -353,7 +406,76 @@ export async function setGroupTarget(
 
   revalidateAllocate();
   revalidatePath("/rebalance");
-  return { ok: true, previous, total: sumTargets(updated) };
+  return {
+    ok: true,
+    previous,
+    total: sumTargets(updated),
+    shortfall,
+    lockedLabel: locked.label,
+  };
+}
+
+/**
+ * **현금 목표를 직접 정한다.**
+ *
+ * 축 고정을 켜면 어느 묶음을 밀어도 현금이 안 움직인다 — 그게 고정의 정의다. 그래서
+ * 현금을 정하는 길이 따로 없으면 **현금 수준을 영영 못 바꾼다.** 예전엔 "목표를 안 채우면
+ * 나머지가 현금"이라 다른 줄을 밀어서 간접으로 조절했는데, 이제 그 길이 막혔다.
+ *
+ * 저장 형식은 그대로다 — 현금은 여전히 저장되지 않고, 종목 목표를 통째로 비례 조정해
+ * `1 − Σ목표` 가 요청한 값이 되게 한다(§16.2). 전 종목이 같은 비율로 움직이므로
+ * **세 축의 상대 모양이 전부 보존된다.**
+ */
+export async function setCashTargetAction(
+  next: number,
+): Promise<GroupTargetResult> {
+  if (!Number.isFinite(next) || next < 0 || next > 1)
+    return { ok: false, error: "목표비중은 0~100% 사이여야 합니다." };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "로그인이 필요합니다." };
+
+  const holding = await getActiveHolding(supabase);
+  if (!holding) return { ok: false, error: "회사를 찾을 수 없습니다." };
+
+  const stored = (holding.target_weights ?? {}) as Record<string, unknown>;
+  const symbols = Object.keys(stored);
+  const meta = await loadSecurityMeta(supabase, symbols);
+  const current = readTargets(
+    holding.target_weights,
+    (holding.category_targets ?? {}) as Record<string, number>,
+    symbols.map((s) => ({ symbol: s, assetType: meta[s]?.assetType ?? "주식" })),
+  );
+
+  // 통화에 배정한 몫도 현금이라 그보다 작게는 만들 수 없다.
+  const room = canSetCash(current, next);
+  if (!room.ok)
+    return {
+      ok: false,
+      error: `달러·엔 같은 통화에 이미 ${pct(room.reserved)}를 배정해 뒀어요. 현금은 그보다 작게 못 줄입니다 — 현금 화면에서 통화 목표를 먼저 줄여주세요.`,
+    };
+
+  const previous = toStored(current);
+  const updated = toStored(setCashTarget(current, next));
+
+  const { error } = await supabase
+    .from("holdings")
+    .update({ target_weights: updated as unknown as Json })
+    .eq("id", holding.id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidateAllocate();
+  revalidatePath("/rebalance");
+  return {
+    ok: true,
+    previous,
+    total: sumTargets(updated),
+    shortfall: 0,
+    lockedLabel: "",
+  };
 }
 
 /**

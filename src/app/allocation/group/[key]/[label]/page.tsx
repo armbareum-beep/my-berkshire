@@ -153,7 +153,8 @@ export default async function GroupAllocationPage({
       <p className="px-2 text-xs leading-relaxed text-muted-foreground">
         목록의 비중은 <b>{label} 안에서</b>, 목표비중은 <b>투자자산 대비</b>예요.
         {label} 전체를 몇 %로 들고 갈지는 <b>자본배분 1단계의 {lens.noun} 탭</b>에서
-        정하고, 여기서는 그 안의 종목끼리 비율을 손봐요.
+        정하고(다른 축은 안 움직여요), 여기서는 그 안의 종목끼리 비율을 손봐요. 여기서
+        한 종목을 올리면 <b>{label} 합도 그만큼 커지고 현금이 줄어요.</b>
       </p>
     </main>
   );

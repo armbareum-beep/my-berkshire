@@ -3,8 +3,11 @@ import {
   buildLens,
   cashCurrency,
   cashKey,
+  canSetCash,
   isCashKey,
   roomFor,
+  scaleGroupLocked,
+  setCashTarget,
   scaleGroupTarget,
   sumTargets,
   withinBasis,
@@ -291,5 +294,136 @@ describe("roomFor — 여기에 더 넣을 수 있는 최대", () => {
 
   it("빈 맵이면 100% 전부가 여유다", () => {
     expect(roomFor({}, ["META"])).toBeCloseTo(1);
+  });
+});
+
+describe("scaleGroupLocked — 다른 축은 그대로 둔다", () => {
+  // 미국 = META(주식 30%) + SPY(ETF 20%) · 한국 = 삼성(주식 15%) + KODEX(ETF 10%)
+  // 주식 합 45% · ETF 합 30% · 현금 25%
+  const us = [
+    { symbol: "META", value: 300, stratum: "주식" },
+    { symbol: "SPY", value: 200, stratum: "ETF" },
+  ];
+  const kr = [
+    { symbol: "005930", value: 150, stratum: "주식" },
+    { symbol: "KODEX", value: 100, stratum: "ETF" },
+  ];
+  const start = t({ META: 0.3, SPY: 0.2, "005930": 0.15, KODEX: 0.1 });
+
+  it("올린 만큼을 같은 유형의 다른 나라에서 가져온다", () => {
+    const { targets: next, shortfall } = scaleGroupLocked(start, us, kr, 0.6);
+
+    // 미국은 요청대로 60%
+    expect(next.META.target + next.SPY.target).toBeCloseTo(0.6);
+    // 유형 합은 그대로 — 이게 "고정"이다
+    expect(next.META.target + next["005930"].target).toBeCloseTo(0.45);
+    expect(next.SPY.target + next.KODEX.target).toBeCloseTo(0.3);
+    // 현금(= 1 − 합)도 그대로
+    expect(sumTargets(next)).toBeCloseTo(0.75);
+    expect(shortfall).toBeCloseTo(0);
+  });
+
+  it("묶음 안의 유형 구성 비율을 유지한다", () => {
+    const { targets: next } = scaleGroupLocked(start, us, kr, 0.6);
+    // 미국 안에서 주식:ETF = 30:20 = 3:2 였다 → 36:24
+    expect(next.META.target).toBeCloseTo(0.36);
+    expect(next.SPY.target).toBeCloseTo(0.24);
+  });
+
+  it("줄이면 반대로 돌려준다", () => {
+    const { targets: next, shortfall } = scaleGroupLocked(start, us, kr, 0.4);
+    expect(next.META.target + next.SPY.target).toBeCloseTo(0.4);
+    expect(next.META.target + next["005930"].target).toBeCloseTo(0.45);
+    expect(sumTargets(next)).toBeCloseTo(0.75);
+    expect(shortfall).toBeCloseTo(0);
+  });
+
+  it("상계할 곳이 없으면 요청대로 옮기되 깨진 양을 돌려준다", () => {
+    // 한국에 ETF 가 없다 → ETF 칸에서 가져올 데가 없다.
+    const krStocksOnly = [{ symbol: "005930", value: 150, stratum: "주식" }];
+    const { targets: next, shortfall } = scaleGroupLocked(
+      t({ META: 0.3, SPY: 0.2, "005930": 0.15 }),
+      us,
+      krStocksOnly,
+      0.6,
+    );
+    // 요청은 지킨다 — 조용히 덜 옮기지 않는다
+    expect(next.META.target + next.SPY.target).toBeCloseTo(0.6);
+    // 주식 칸은 상계됐고(META +6, 삼성 −6), ETF 칸 4%p 가 현금에서 왔다
+    expect(next["005930"].target).toBeCloseTo(0.09);
+    expect(shortfall).toBeCloseTo(0.04);
+    expect(sumTargets(next)).toBeCloseTo(0.69);
+  });
+
+  it("가져올 목표가 모자라면 있는 만큼만 상계한다", () => {
+    // 한국 주식이 2% 뿐인데 6%p 를 가져와야 한다.
+    const { targets: next, shortfall } = scaleGroupLocked(
+      t({ META: 0.3, SPY: 0.2, "005930": 0.02, KODEX: 0.1 }),
+      us,
+      kr,
+      0.6,
+    );
+    expect(next["005930"]).toBeUndefined(); // 0 이 되면 키를 지운다
+    expect(shortfall).toBeCloseTo(0.04); // 6 − 2 = 4%p 는 현금에서
+    expect(next.META.target + next.SPY.target).toBeCloseTo(0.6);
+  });
+
+  it("0 으로 내리면 구성 종목을 지우고 같은 유형에 돌려준다", () => {
+    const { targets: next } = scaleGroupLocked(start, us, kr, 0);
+    expect(next.META).toBeUndefined();
+    expect(next.SPY).toBeUndefined();
+    expect(next["005930"].target).toBeCloseTo(0.45);
+    expect(next.KODEX.target).toBeCloseTo(0.3);
+  });
+
+  it("아무 변화가 없으면 원본 그대로", () => {
+    expect(scaleGroupLocked(start, us, kr, 0.5).targets).toEqual(start);
+    expect(scaleGroupLocked(start, [], kr, 0.5).targets).toEqual(start);
+    expect(scaleGroupLocked(start, us, kr, Number.NaN).targets).toEqual(start);
+  });
+
+  it("목표가 없던 묶음은 평가액 비율로 스트라텀을 나눈다", () => {
+    const { targets: next } = scaleGroupLocked(
+      t({ "005930": 0.3, KODEX: 0.2 }),
+      us,
+      kr,
+      0.25,
+    );
+    // 미국 평가액 300:200 = 3:2 → 15% : 10%
+    expect(next.META.target).toBeCloseTo(0.15);
+    expect(next.SPY.target).toBeCloseTo(0.1);
+    // 유형 합 보존: 주식 30% · ETF 20%
+    expect(next.META.target + next["005930"].target).toBeCloseTo(0.3);
+    expect(next.SPY.target + next.KODEX.target).toBeCloseTo(0.2);
+  });
+});
+
+describe("setCashTarget — 현금을 직접 정한다", () => {
+  it("종목 전체를 비례로 줄여 현금을 만든다", () => {
+    const next = setCashTarget(t({ META: 0.4, NVDA: 0.2, KO: 0.1 }), 0.5);
+    expect(sumTargets(next)).toBeCloseTo(0.5);
+    // 4:2:1 비율 보존 — 세 축의 상대 모양이 전부 그대로다
+    expect(next.META.target / next.NVDA.target).toBeCloseTo(2);
+    expect(next.NVDA.target / next.KO.target).toBeCloseTo(2);
+  });
+
+  it("현금을 줄이면 종목이 커진다", () => {
+    const next = setCashTarget(t({ META: 0.4, NVDA: 0.2 }), 0.1);
+    expect(sumTargets(next)).toBeCloseTo(0.9);
+  });
+
+  it("통화에 배정한 몫은 건드리지 않는다", () => {
+    // 현금 35% 중 10% 는 달러 — 종목은 65% 가 되어야 한다.
+    const next = setCashTarget(t({ META: 0.5, "CASH:USD": 0.1 }), 0.35);
+    expect(next["CASH:USD"].target).toBeCloseTo(0.1);
+    expect(next.META.target).toBeCloseTo(0.65);
+  });
+
+  it("통화에 배정한 몫보다 작게는 못 줄인다", () => {
+    const map = t({ META: 0.5, "CASH:USD": 0.1 });
+    expect(canSetCash(map, 0.2).ok).toBe(true);
+    const no = canSetCash(map, 0.05);
+    expect(no.ok).toBe(false);
+    if (!no.ok) expect(no.reserved).toBeCloseTo(0.1);
   });
 });

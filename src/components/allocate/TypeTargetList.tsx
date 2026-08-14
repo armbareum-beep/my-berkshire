@@ -5,7 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
-import { setGroupTarget, restoreTargets } from "@/app/allocate/actions";
+import {
+  setGroupTarget,
+  setCashTargetAction,
+  restoreTargets,
+} from "@/app/allocate/actions";
 import type { TagKey } from "@/lib/allocation";
 import { money, pct, type Currency } from "@/lib/format";
 import { Donut } from "@/components/dashboard/Donut";
@@ -27,6 +31,11 @@ export interface TypeTargetRow {
   readOnly?: boolean;
   /** 못 정하는 줄에 이유를 한 줄로. */
   note?: string;
+  /**
+   * 현금 줄인가. 현금은 저장되는 목표가 아니라 **나머지**라 다른 액션을 탄다
+   * (`setCashTargetAction` — 종목 전체를 비례 조정해 나머지를 맞춘다).
+   */
+  isCash?: boolean;
   /** 이 줄을 누르면 갈 곳 — 그 묶음 안(종목 목록). */
   href?: string;
 }
@@ -171,14 +180,21 @@ function TypeRow({
     if (Math.abs(next / 100 - row.target) < 1e-9) return;
 
     start(async () => {
-      const res = await setGroupTarget(lens, row.label, next / 100);
+      const res = row.isCash
+        ? await setCashTargetAction(next / 100)
+        : await setGroupTarget(lens, row.label, next / 100);
       if (!res.ok) {
         toast.error(res.error);
         setRaw(String(+(row.target * 100).toFixed(1)));
         return;
       }
-      const { previous } = res;
-      toast.success(`${row.label} 목표 ${pct(next / 100)}`, {
+      const { previous, shortfall, lockedLabel } = res;
+      // 고정이 깨졌으면 말한다 — 조용히 넘어가면 사용자가 안 건드린 축이 움직인 걸 모른다.
+      const broke =
+        shortfall > 0.0001 && lockedLabel
+          ? ` · ${lockedLabel}도 ${pct(shortfall)} 움직였어요`
+          : "";
+      toast.success(`${row.label} 목표 ${pct(next / 100)}${broke}`, {
         action: {
           label: "되돌리기",
           onClick: () =>

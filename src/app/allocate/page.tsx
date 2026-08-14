@@ -108,15 +108,15 @@ export default async function AllocatePage() {
           : undefined,
         href: href(label),
       })),
-      // 현금은 어느 렌즈에서도 직접 정하지 않는다 — 목표를 안 채운 나머지가 곧
-      // 현금이라 정의상 결과값이다(§16.2).
+      // 현금도 정할 수 있다. 축 고정을 켠 뒤로는 어느 묶음을 밀어도 현금이 안 움직이므로
+      // (그게 고정의 정의다) 여기가 **현금 수준을 바꾸는 유일한 자리**다. 저장 형식은
+      // 그대로 — 종목 목표를 통째로 비례 조정해 나머지를 맞춘다(§16.2).
       {
         label: "현금",
         value: cash,
         current: w(cash),
         target: Math.max(0, 1 - targetSum),
-        readOnly: true,
-        note: "다른 곳의 목표를 안 채운 나머지가 현금이에요.",
+        isCash: true,
         href: "/allocation/cash",
       },
     ];

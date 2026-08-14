@@ -290,6 +290,158 @@ export function scaleGroupTarget(
   return out;
 }
 
+/** 고정할 축의 한 칸. `stratum` 이 "이 종목이 고정 축에서 어디에 속하는가"다. */
+export interface LockedMember {
+  symbol: string;
+  value: number;
+  stratum: string;
+}
+
+export interface LockedResult {
+  targets: FlatTargets;
+  /**
+   * **고정에 실패한 양**(0~1). 상계할 종목이 없어 현금에서 가져오거나 현금으로 흘려보낸
+   * 몫이다. 0 이 아니면 고정 축이 그만큼 움직였다는 뜻이라 화면이 사용자에게 말해야 한다.
+   */
+  shortfall: number;
+}
+
+/**
+ * 묶음 목표를 옮기되 **다른 축은 그대로 둔다** — "축 고정".
+ *
+ * ## 왜 필요한가
+ *
+ * `scaleGroupTarget` 은 미는 묶음만 건드리고 늘어난 몫을 현금에서 가져온다. 그래서 국가를
+ * 밀면 유형이 따라 움직였다 — 미국을 올리면 미국 ETF 목표도 같이 커지기 때문이다.
+ * 사용자 지적: *"유형 국가 산업이 모두 연동되어 있어? 연동 안 되게 하는 건 어때?"*
+ *
+ * 세 축을 **따로 저장**해서 푸는 길은 없다. 같은 종목을 세 번 세는 것이라 서로 모순될 수
+ * 있고(미국 보유가 전부 주식인데 "주식 45% · 미국 60%"), 그러면 엔진이 하나만 따르고
+ * 나머지는 장식이 된다 — 스펙 §13.2 가 은퇴시킨 2층 구조의 3층 판이다.
+ *
+ * ## 대신 **부족분을 어디서 가져오는지**를 바꾼다
+ *
+ * 현금이 아니라 **고정 축의 같은 칸에 있는 다른 종목**에서 가져온다.
+ *
+ * ```text
+ *   미국 = META(주식 30%) + SPY(ETF 20%)      한국 = 삼성(주식 15%) + KODEX(ETF 10%)
+ *
+ *   미국 50% → 60%
+ *     주식 칸: META 30→36  ⇄  삼성 15→9      (주식 합 45% 그대로)
+ *     ETF  칸: SPY  20→24  ⇄  KODEX 10→6     (ETF  합 30% 그대로)
+ *   결과: 미국 60 · 한국 15 · 현금 25 — 유형도 현금도 안 움직였다
+ * ```
+ *
+ * 스트라텀별 몫은 **묶음 안의 구성 비율 그대로** 나눈다(위에서 6:4). 그래야 "미국을
+ * 올렸더니 미국 안에서 ETF 비중만 커지는" 일이 없다.
+ *
+ * ## 늘 되지는 않는다
+ *
+ * 한국에 ETF 가 없으면 ETF 칸에서 가져올 데가 없다. 그때는 **가능한 만큼만 상계하고
+ * 나머지는 현금에서** 가져온 뒤 그 양을 `shortfall` 로 돌려준다 — 조용히 덜 옮기면
+ * 사용자가 요청한 60% 가 안 되고, 조용히 다 가져가면 고정이 깨진 걸 모른다. 둘 다 아니고
+ * **요청대로 옮기되 깨진 만큼을 말한다.**
+ *
+ * 각 칸 안에서의 분배는 `scaleGroupTarget` 이 그대로 한다 — 규칙을 두 벌 두면 갈라진다.
+ */
+export function scaleGroupLocked(
+  targets: FlatTargets,
+  /** 미는 묶음의 구성원. */
+  members: LockedMember[],
+  /** 같은 축의 나머지 종목 전부 — 여기서 상계한다. 현금 키는 넣지 않는다. */
+  others: LockedMember[],
+  next: number,
+): LockedResult {
+  if (!Number.isFinite(next) || next < 0) return { targets, shortfall: 0 };
+  if (members.length === 0) return { targets, shortfall: 0 };
+
+  const clamped = Math.min(next, 1);
+  const targetOf = (s: string) => targets[s]?.target ?? 0;
+  const sumOf = (list: LockedMember[]) =>
+    list.reduce((s, m) => s + targetOf(m.symbol), 0);
+
+  const current = sumOf(members);
+  const delta = clamped - current;
+  if (Math.abs(delta) < 1e-12) return { targets, shortfall: 0 };
+
+  const by = (list: LockedMember[]) => {
+    const map = new Map<string, LockedMember[]>();
+    for (const m of list) map.set(m.stratum, [...(map.get(m.stratum) ?? []), m]);
+    return map;
+  };
+  const inBy = by(members);
+  const outBy = by(others);
+
+  // 스트라텀별 몫 — 지금 목표가 있으면 그 비율로, 없으면 평가액으로, 그것도 없으면 균등.
+  const valueSum = members.reduce((s, m) => s + Math.max(0, m.value), 0);
+  const shareOf = (list: LockedMember[]): number => {
+    if (current > 0) return sumOf(list) / current;
+    if (valueSum > 0)
+      return list.reduce((s, m) => s + Math.max(0, m.value), 0) / valueSum;
+    return list.length / members.length;
+  };
+
+  let out = targets;
+  let shortfall = 0;
+
+  for (const [stratum, mine] of inBy) {
+    const theirs = outBy.get(stratum) ?? [];
+    const d = delta * shareOf(mine);
+    if (Math.abs(d) < 1e-12) continue;
+
+    const theirSum = sumOf(theirs);
+    // 상계 가능량 — 가져올 땐 저쪽 목표까지, 돌려줄 땐 제한이 없다(받을 종목만 있으면).
+    const absorbed =
+      theirs.length === 0 ? 0 : d > 0 ? Math.min(d, theirSum) : d;
+    shortfall += Math.abs(d - absorbed);
+
+    // 요청한 만큼은 그대로 옮긴다 — 상계가 모자란 몫은 현금이 낸다.
+    out = scaleGroupTarget(out, mine, sumOf(mine) + d);
+    if (theirs.length > 0)
+      out = scaleGroupTarget(out, theirs, Math.max(0, theirSum - absorbed));
+  }
+
+  return { targets: out, shortfall };
+}
+
+/**
+ * **현금 목표를 직접 정한다** — 나머지 종목을 통째로 비례 조정한다.
+ *
+ * 축 고정을 켜면 어느 묶음을 밀어도 현금이 안 움직인다(그게 고정의 정의다). 그래서
+ * 현금을 정할 길이 따로 없으면 **현금 수준을 영영 못 바꾼다.** 현금은 여전히 저장되지
+ * 않는다 — 종목 목표를 조정해 `1 − Σ목표` 가 요청한 값이 되게 할 뿐이라 §16.2 그대로다.
+ *
+ * 전 종목을 같은 비율로 움직이므로 **세 축의 상대 모양이 전부 보존된다** — 현금만 오르내린다.
+ *
+ * 통화에 배정한 몫(`CASH:USD`)은 이미 현금이라 건드리지 않는다. 그래서 요청값이 그 합보다
+ * 작으면 만들 수 없다 — 호출부가 막아야 한다(`canSetCash`).
+ */
+export function setCashTarget(targets: FlatTargets, next: number): FlatTargets {
+  if (!Number.isFinite(next) || next < 0 || next > 1) return targets;
+
+  const securities = Object.keys(targets).filter((s) => !isCashKey(s));
+  if (securities.length === 0) return targets;
+
+  // 통화에 배정한 몫(`CASH:USD`)도 현금이라 그대로 둔다. 남는 현금은
+  //   1 − 종목합 − 배정분 이므로, 총 현금이 next 가 되려면 종목합 = 1 − next 다.
+  return scaleGroupTarget(
+    targets,
+    securities.map((symbol) => ({ symbol, value: targets[symbol].target })),
+    Math.max(0, 1 - next),
+  );
+}
+
+/** 현금을 이 값으로 정할 수 있는가 — 통화에 배정한 몫보다 작게는 못 줄인다. */
+export function canSetCash(
+  targets: FlatTargets,
+  next: number,
+): { ok: true } | { ok: false; reserved: number } {
+  const reserved = Object.entries(targets)
+    .filter(([s]) => isCashKey(s))
+    .reduce((s, [, r]) => s + r.target, 0);
+  return next + 1e-9 >= reserved ? { ok: true } : { ok: false, reserved };
+}
+
 /** 목표 합(0~1+). 화면이 "합계 120%" 같은 경고를 낼 때 쓴다. */
 export function sumTargets(map: FlatTargets): number {
   return Object.values(map).reduce((s, r) => s + r.target, 0);
