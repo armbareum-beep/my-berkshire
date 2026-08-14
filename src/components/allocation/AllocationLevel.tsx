@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Donut } from "@/components/dashboard/Donut";
 import { donutColor } from "@/components/dashboard/donutPalette";
 import { money, pct, type Currency } from "@/lib/format";
+import { RowTargetInput } from "./RowTargetInput";
 
 /**
  * 자산배분 **한 계층** — 드릴다운의 화면 한 장.
@@ -39,6 +40,11 @@ export interface LevelRow {
   href?: string;
   /** 라벨 옆 작은 꼬리표(미보유 등). */
   badge?: string;
+  /**
+   * 종목 줄이면 심볼. 있으면 **그 자리에서 목표를 고칠 수 있다** — 기존 보유를
+   * 리밸런싱하는 게 이 화면의 일이라 편집이 줄 밖으로 나가면 안 된다.
+   */
+  symbol?: string;
 }
 
 export function AllocationLevel({
@@ -118,16 +124,26 @@ export function AllocationLevel({
           <ul className="flex flex-col gap-2">
             {rows.map((r, i) => (
               <li key={r.key}>
-                <RowShell href={r.href}>
+                <RowShell href={r.symbol ? undefined : r.href}>
                   <span
                     className="h-3 w-3 shrink-0 rounded-full"
                     style={{ backgroundColor: donutColor(i) }}
                   />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-1.5">
-                      <span className="truncate text-sm font-semibold">
-                        {r.label}
-                      </span>
+                      {r.symbol && r.href ? (
+                        <Link
+                          href={r.href}
+                          className="flex min-w-0 items-center gap-1 text-sm font-semibold"
+                        >
+                          <span className="truncate">{r.label}</span>
+                          <span className="shrink-0 text-foreground/40">›</span>
+                        </Link>
+                      ) : (
+                        <span className="truncate text-sm font-semibold">
+                          {r.label}
+                        </span>
+                      )}
                       {r.badge && (
                         <span className="shrink-0 rounded-full bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">
                           {r.badge}
@@ -144,8 +160,16 @@ export function AllocationLevel({
                   <span className="shrink-0 text-sm font-bold tabular-nums">
                     {money(r.value, currency)}
                   </span>
-                  {r.href && (
-                    <span className="shrink-0 text-foreground/40">›</span>
+                  {r.symbol ? (
+                    <RowTargetInput
+                      symbol={r.symbol}
+                      label={r.label}
+                      target={r.target ?? 0}
+                    />
+                  ) : (
+                    r.href && (
+                      <span className="shrink-0 text-foreground/40">›</span>
+                    )
                   )}
                 </RowShell>
               </li>

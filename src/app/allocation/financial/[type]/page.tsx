@@ -126,6 +126,7 @@ export default async function TypeAllocationPage({
         weight: typeValue > 0 ? a.value / typeValue : 0,
         target: targets[a.symbol]?.target ?? 0,
         href: `/stocks/${a.symbol}`,
+        symbol: a.symbol,
       })),
       ...orphansHere.map((sym) => ({
         key: sym,
@@ -134,6 +135,7 @@ export default async function TypeAllocationPage({
         weight: 0,
         target: targets[sym]?.target ?? 0,
         href: `/stocks/${sym}`,
+        symbol: sym,
         badge: "미보유",
       })),
     ].sort((a, b) => b.value - a.value || (b.target ?? 0) - (a.target ?? 0));
@@ -153,6 +155,7 @@ export default async function TypeAllocationPage({
         weight: pickValue > 0 ? a.value / pickValue : 0,
         target: targets[a.symbol]?.target ?? 0,
         href: `/stocks/${a.symbol}`,
+        symbol: a.symbol,
       })),
       ...orphansInPick.map((sym) => ({
         key: sym,
@@ -161,6 +164,7 @@ export default async function TypeAllocationPage({
         weight: 0,
         target: targets[sym]?.target ?? 0,
         href: `/stocks/${sym}`,
+        symbol: sym,
         badge: "미보유",
       })),
     ].sort((a, b) => b.value - a.value || (b.target ?? 0) - (a.target ?? 0));
