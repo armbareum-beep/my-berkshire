@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Input } from "@/components/ui/input";
+import { PercentPad } from "@/components/ui/PercentPad";
 import { setTargetWeight } from "@/app/allocate/actions";
 
 /**
@@ -27,31 +27,23 @@ export function RowTargetInput({
   symbol,
   label,
   target,
+  hint,
 }: {
   symbol: string;
   label: string;
   /** 투자자산 대비 목표 0~1. */
   target: number;
+  /** 키패드 시트 안에 띄울 보조 문구(지금 비중 등). */
+  hint?: string;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [raw, setRaw] = useState(String(+(target * 100).toFixed(1)));
 
-  function save() {
-    const v = raw.trim();
-    const next = v === "" ? 0 : Number(v);
-    if (!Number.isFinite(next) || next < 0 || next > 100) {
-      toast.error("0~100 사이의 숫자를 넣어주세요.");
-      setRaw(String(+(target * 100).toFixed(1)));
-      return;
-    }
-    if (Math.abs(next / 100 - target) < 1e-9) return;
-
+  function save(next: number) {
     start(async () => {
-      const res = await setTargetWeight(symbol, next / 100);
+      const res = await setTargetWeight(symbol, next);
       if (!res.ok) {
         toast.error(res.error);
-        setRaw(String(+(target * 100).toFixed(1)));
         return;
       }
       if (next === 0) toast.success(`${label} 목표비중을 지웠어요`);
@@ -60,22 +52,12 @@ export function RowTargetInput({
   }
 
   return (
-    <div className="flex shrink-0 items-center gap-1">
-      <Input
-        type="number"
-        inputMode="decimal"
-        step="any"
-        value={raw}
-        disabled={pending}
-        onChange={(e) => setRaw(e.target.value)}
-        onBlur={save}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") e.currentTarget.blur();
-        }}
-        aria-label={`${label} 목표비중 (%)`}
-        className="h-9 w-[4.5rem] text-right tabular-nums"
-      />
-      <span className="text-xs text-muted-foreground">%</span>
-    </div>
+    <PercentPad
+      value={target}
+      label={label}
+      hint={hint}
+      disabled={pending}
+      onCommit={save}
+    />
   );
 }

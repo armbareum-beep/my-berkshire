@@ -165,6 +165,7 @@ export function AllocationLevel({
                       symbol={r.symbol}
                       label={r.label}
                       target={r.target ?? 0}
+                      hint={`이 화면에서 ${pct(r.weight)} · ${money(r.value, currency)}`}
                     />
                   ) : (
                     r.href && (

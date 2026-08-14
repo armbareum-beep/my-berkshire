@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Input } from "@/components/ui/input";
+import { PercentPad } from "@/components/ui/PercentPad";
 import {
   setGroupTarget,
   setCashTargetAction,
@@ -165,27 +165,16 @@ function TypeRow({
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [raw, setRaw] = useState(String(+(row.target * 100).toFixed(1)));
 
   const gap = row.target - row.current;
 
-  function save() {
-    const v = raw.trim();
-    const next = v === "" ? 0 : Number(v);
-    if (!Number.isFinite(next) || next < 0 || next > 100) {
-      toast.error("0~100 사이의 숫자를 넣어주세요.");
-      setRaw(String(+(row.target * 100).toFixed(1)));
-      return;
-    }
-    if (Math.abs(next / 100 - row.target) < 1e-9) return;
-
+  function save(next: number) {
     start(async () => {
       const res = row.isCash
-        ? await setCashTargetAction(next / 100)
-        : await setGroupTarget(lens, row.label, next / 100);
+        ? await setCashTargetAction(next)
+        : await setGroupTarget(lens, row.label, next);
       if (!res.ok) {
         toast.error(res.error);
-        setRaw(String(+(row.target * 100).toFixed(1)));
         return;
       }
       const { previous, shortfall, lockedLabel } = res;
@@ -194,7 +183,7 @@ function TypeRow({
         shortfall > 0.0001 && lockedLabel
           ? ` · ${lockedLabel}도 ${pct(shortfall)} 움직였어요`
           : "";
-      toast.success(`${row.label} 목표 ${pct(next / 100)}${broke}`, {
+      toast.success(`${row.label} 목표 ${pct(next)}${broke}`, {
         action: {
           label: "되돌리기",
           onClick: () =>
@@ -246,23 +235,13 @@ function TypeRow({
           {pct(row.target)}
         </p>
       ) : (
-        <div className="flex shrink-0 items-center gap-1">
-          <Input
-            type="number"
-            inputMode="decimal"
-            step="any"
-            value={raw}
-            disabled={pending}
-            onChange={(e) => setRaw(e.target.value)}
-            onBlur={save}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") e.currentTarget.blur();
-            }}
-            aria-label={`${row.label} 목표비중 (%)`}
-            className="h-9 w-[4.5rem] text-right tabular-nums"
-          />
-          <span className="text-xs text-muted-foreground">%</span>
-        </div>
+        <PercentPad
+          value={row.target}
+          label={row.label}
+          hint={`지금 ${pct(row.current)} · ${money(row.value, currency)}`}
+          disabled={pending}
+          onCommit={save}
+        />
       )}
     </li>
   );
