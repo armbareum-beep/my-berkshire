@@ -26,6 +26,9 @@ import {
 } from "@/lib/allocateRanking";
 import type { AllocateRow } from "@/lib/allocateData";
 import { STATUS_META } from "./statusMeta";
+import { HurdleCard } from "./HurdleCard";
+import { InvestableCashCard } from "./InvestableCashCard";
+import { TypeTargetList, type TypeTargetRow } from "./TypeTargetList";
 
 const USD_STEPS = [100, 1_000, 10_000];
 
@@ -83,9 +86,22 @@ export function AllocateRail({
   currency,
   investableCash,
   investableCashSet,
+  cash,
+  house,
+  passing,
+  judged,
+  typeRows,
 }: {
   rows: AllocateRow[];
   currency: Currency;
+  /** 보유 현금 전액 — 투자 가능 현금 카드가 비교로 쓴다. */
+  cash: number;
+  /** 전사 요구수익률(허들)과 통과 현황 — 4단계에 접어 넣는다. */
+  house: number;
+  passing: number;
+  judged: number;
+  /** 1단계에서 정하는 유형별 목표(+현금). 서버에서 계산해 넘긴다. */
+  typeRows: TypeTargetRow[];
   /** 설정에서 정한 투자 가능 현금(스펙 §16.4). 미지정이면 보유 현금 전액. */
   investableCash: number;
   /** 사용자가 직접 정한 값인가(= 보유 현금 폴백이 아닌가). */
@@ -132,9 +148,10 @@ export function AllocateRail({
 
   // 고를 게 하나뿐이면 묻지 않는다.
   const needsPick = buckets.length > 1;
+  // 목표 → 금액 → (묶음) → 배분 → 주수. 셋으로 갈려 있던 화면을 한 줄로 세운 것이다.
   const stepIds = needsPick
-    ? (["amount", "bucket", "split", "shares"] as const)
-    : (["amount", "split", "shares"] as const);
+    ? (["targets", "amount", "bucket", "split", "shares"] as const)
+    : (["targets", "amount", "split", "shares"] as const);
   const stepId = stepIds[stepIdx];
 
   // ── 배분 ──
@@ -225,13 +242,37 @@ export function AllocateRail({
     onBack,
   };
 
-  // ── 1단계 — 얼마를 넣을까 ──────────────────────────────────────────────
+  // ── 1단계 — 얼마나 들고 갈까(목표) ────────────────────────────────────
+  if (stepId === "targets") {
+    return (
+      <>
+        {/* 탭바는 첫 단계에만. 여기까지가 평시 화면이고 다음부터는 여정이다. */}
+        <BottomTabBar />
+        <StepShell
+          {...shell}
+          title="얼마나 들고 갈까요"
+          subtitle="투자자산을 어떻게 나눌지 먼저 정해요"
+          className="pb-28"
+        >
+          <TypeTargetList rows={typeRows} currency={currency} />
+          <div className="mt-auto pt-6">
+            <button
+              type="button"
+              onClick={next}
+              className="h-13 w-full rounded-xl bg-primary text-base font-semibold text-primary-foreground transition active:scale-[0.98]"
+            >
+              다음
+            </button>
+          </div>
+        </StepShell>
+      </>
+    );
+  }
+
+  // ── 2단계 — 얼마를 넣을까 ──────────────────────────────────────────────
   if (stepId === "amount") {
     return (
       <>
-        {/* 탭바는 이 단계에만 둔다. 여기까지가 평시 화면이고, 다음 단계부터는
-            "여정 중"이라 이탈 경로를 두지 않는다(design-strategy §4 레일 원칙). */}
-        <BottomTabBar />
         <StepShell
           {...shell}
           title="얼마를 넣을까요"
@@ -240,7 +281,6 @@ export function AllocateRail({
               ? `투자 가능 현금 ${money(investableCash, currency)}`
               : `보유 현금 전액 ${money(investableCash, currency)} · 설정에서 따로 정할 수 있어요`
           }
-          className="pb-28"
         >
           <NumberPadField
             value={raw}
@@ -256,7 +296,18 @@ export function AllocateRail({
             label={stepLabel}
           />
 
-          <div className="mt-auto flex flex-col gap-3 pt-6">
+          {/* 투자 가능 현금 — 예전엔 별도 설정 화면에 있었다. 이 단계의 기본값이 곧
+              그 값이라 같은 자리에 둔다(같은 것을 두 곳에서 정하지 않는다). */}
+          <div className="mt-4">
+            <InvestableCashCard
+              value={investableCash}
+              cash={cash}
+              currency={currency}
+              isSet={investableCashSet}
+            />
+          </div>
+
+          <div className="mt-auto pt-6">
             <button
               type="button"
               onClick={next}
@@ -265,16 +316,6 @@ export function AllocateRail({
             >
               다음
             </button>
-            {/* 자산배분(드릴다운)으로 가는 유일한 문 — 하단 탭은 이 레일로만 온다.
-                문을 안 달면 "전체 자산 → 금융자산 → 주식" 화면에 아무도 닿지 못한다. */}
-            <div className="flex justify-center gap-4 text-xs font-medium text-muted-foreground">
-              <Link href="/allocation" className="underline">
-                내 자산배분 · 목표 정하기
-              </Link>
-              <Link href="/allocate/settings" className="underline">
-                배분 설정
-              </Link>
-            </div>
           </div>
         </StepShell>
       </>
@@ -405,6 +446,12 @@ export function AllocateRail({
               올라서 비중이 커진 종목은 팔라고 하지 않아요. 대신 새 돈을 넣지
               않습니다.
             </p>
+
+            {/* 허들 — 예전 "배분 설정" 화면의 내용. 이 값이 바로 이 순위를 만들므로
+                결과 옆에 둔다. 따로 화면을 두면 왜 순위가 그런지와 끊긴다. */}
+            <div className="mt-4">
+              <HurdleCard rate={house} passing={passing} total={judged} />
+            </div>
 
             <div className="mt-auto pt-6">
               <button
