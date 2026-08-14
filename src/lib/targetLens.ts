@@ -59,6 +59,16 @@ export function cashCurrency(symbol: string): string | null {
 /** 태그가 없어 모인 묶음. 구성이 유동적이라 그룹 단위 조정을 막는다. */
 const UNTAGGED = new Set(["미분류", "기타"]);
 
+/**
+ * 태그가 없어 모인 묶음인가.
+ *
+ * 판정을 한 곳에 둔다 — 화면마다 따로 적으면 어디선 "기타"를 묶음으로 조정할 수 있고
+ * 어디선 못 하는 상태로 조용히 갈라진다.
+ */
+export function isUntaggedLabel(label: string): boolean {
+  return UNTAGGED.has(label);
+}
+
 export interface LensHolding {
   symbol: string;
   name: string;
@@ -283,4 +293,28 @@ export function scaleGroupTarget(
 /** 목표 합(0~1+). 화면이 "합계 120%" 같은 경고를 낼 때 쓴다. */
 export function sumTargets(map: FlatTargets): number {
   return Object.values(map).reduce((s, r) => s + r.target, 0);
+}
+
+/**
+ * **지금 여기에 넣을 수 있는 최대치** — 100% 에서 *나머지* 목표의 합을 뺀 값.
+ *
+ * 목표 합은 100% 를 넘을 수 없다. 그런데 "넘으면 얼마까지 되는데?" 를 답하려면 지금
+ * 고치는 대상**만 빼고** 더해야 한다 — 자기 자신을 포함해 세면 이미 20% 인 종목을
+ * 20% 로 다시 저장하는 것조차 막힌다.
+ *
+ * ```text
+ *   META 20% + NVDA 30% + 삼성 10%  (합 60%)
+ *   NVDA 를 고칠 때의 여유 = 1 − (20% + 10%) = 70%
+ * ```
+ *
+ * 묶음을 고칠 때는 그 묶음 구성원 전부를 `exclude` 로 넘긴다 — 묶음 목표는 구성원 목표를
+ * 통째로 갈아끼우기 때문이다(`scaleGroupTarget`).
+ */
+export function roomFor(map: FlatTargets, exclude: Iterable<string>): number {
+  const skip = new Set(exclude);
+  let others = 0;
+  for (const [symbol, rule] of Object.entries(map)) {
+    if (!skip.has(symbol)) others += rule.target;
+  }
+  return Math.max(0, 1 - others);
 }

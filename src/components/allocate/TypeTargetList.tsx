@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { setGroupTarget, restoreTargets } from "@/app/allocate/actions";
+import type { TagKey } from "@/lib/allocation";
 import { money, pct, type Currency } from "@/lib/format";
 import { Donut } from "@/components/dashboard/Donut";
 import { donutColor } from "@/components/dashboard/donutPalette";
@@ -25,7 +26,10 @@ export interface TypeTargetRow {
 }
 
 /**
- * 목표 비중 — 레일 **1단계**.
+ * 목표 비중 — 레일 **1단계**의 목록 한 장.
+ *
+ * 같은 목록을 세 렌즈가 함께 쓴다(`TargetLensPanel`) — 유형은 입력칸이 열리고, 국가·산업은
+ * 전부 `readOnly` 로 와서 읽고 눌러 들어가기만 한다. 왜 그렇게 갈랐는지는 그쪽에 적었다.
  *
  * ## 왜 레일 안으로 들어왔나
  *
@@ -65,9 +69,19 @@ export interface TypeTargetRow {
 export function TypeTargetList({
   rows,
   currency,
+  heading = "투자자산 100%를 나눠요",
+  lens = "assetType",
 }: {
   rows: TypeTargetRow[];
   currency: Currency;
+  /** 렌즈마다 주어가 다르다 — 유형은 "나눠요", 국가·산업은 "이렇게 갈려 있어요". */
+  heading?: string;
+  /**
+   * 저장할 때 어느 축의 묶음인지. 국가·산업 줄은 전부 `readOnly` 라 실제로는 저장에
+   * 닿지 않지만, 축을 하드코딩해두면 나중에 편집을 열었을 때 **엉뚱한 묶음이 조용히**
+   * 바뀐다. 그래서 축을 값으로 받는다.
+   */
+  lens?: TagKey;
 }) {
   const total = rows.reduce((s, r) => s + r.target, 0);
   // 도넛은 평가액이 있는 것만 — 0짜리는 조각이 없는데 범례만 차지한다.
@@ -79,7 +93,7 @@ export function TypeTargetList({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between px-1">
-        <p className="text-sm font-semibold">투자자산 100%를 나눠요</p>
+        <p className="text-sm font-semibold">{heading}</p>
         <p className="text-xs tabular-nums text-muted-foreground">
           합계 {pct(total)}
         </p>
@@ -118,14 +132,22 @@ export function TypeTargetList({
 
       <ul className="flex flex-col gap-2">
         {rows.map((r) => (
-          <TypeRow key={r.label} row={r} currency={currency} />
+          <TypeRow key={r.label} row={r} currency={currency} lens={lens} />
         ))}
       </ul>
     </div>
   );
 }
 
-function TypeRow({ row, currency }: { row: TypeTargetRow; currency: Currency }) {
+function TypeRow({
+  row,
+  currency,
+  lens,
+}: {
+  row: TypeTargetRow;
+  currency: Currency;
+  lens: TagKey;
+}) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [raw, setRaw] = useState(String(+(row.target * 100).toFixed(1)));
@@ -143,7 +165,7 @@ function TypeRow({ row, currency }: { row: TypeTargetRow; currency: Currency }) 
     if (Math.abs(next / 100 - row.target) < 1e-9) return;
 
     start(async () => {
-      const res = await setGroupTarget("assetType", row.label, next / 100);
+      const res = await setGroupTarget(lens, row.label, next / 100);
       if (!res.ok) {
         toast.error(res.error);
         setRaw(String(+(row.target * 100).toFixed(1)));

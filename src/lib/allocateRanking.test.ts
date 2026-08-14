@@ -17,6 +17,8 @@ function row(
     held: value > 0,
     price: 100,
     assetType: "주식",
+    country: "미국",
+    sector: "반도체",
     ...extra,
   };
 }

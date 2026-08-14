@@ -13,10 +13,12 @@ import {
 } from "@/lib/targetWeights";
 import {
   buildLens,
+  roomFor,
   scaleGroupTarget,
   sumTargets,
   CASH_LABEL,
 } from "@/lib/targetLens";
+import { pct } from "@/lib/format";
 import type { TagKey } from "@/lib/allocation";
 import {
   backfillSectors,
@@ -26,14 +28,38 @@ import type { Json } from "@/lib/supabase/database.types";
 
 type Result = { ok: true } | { ok: false; error: string };
 
-/** 배분에 관련된 화면 전부. 하나가 바뀌면 나머지가 같이 틀어진다. */
+/** 반올림 오차로 저장이 막히지 않게 두는 여유. */
+const OVER_EPS = 1e-9;
+
+/**
+ * **100% 를 넘기면 저장하지 않는다.**
+ *
+ * 예전엔 넘겨도 그냥 저장되고, 읽을 때 `capToOne` 이 전부를 비례로 축소했다. 그래서 80%
+ * 를 넣었는데 화면에 72.7% 로 보였다 — 사용자가 시킨 적 없는 값이 조용히 만들어진 것이고,
+ * 더 나쁜 건 **다른 종목의 목표까지 같이 줄었다**는 점이다.
+ *
+ * 나머지를 자동으로 줄이는 길(진짜 연동)도 있었지만 택하지 않았다. 한 칸을 고쳤을 뿐인데
+ * 손대지 않은 값들이 전부 움직이면 "내가 정한 값"이 남지 않는다. 대신 **막고 여유를
+ * 알려준다** — 줄일 곳은 사용자가 고른다.
+ */
+function overflowError(room: number): string {
+  return room <= OVER_EPS
+    ? "목표 합이 이미 100%예요. 다른 걸 먼저 줄여야 여기에 넣을 수 있어요."
+    : `목표 합이 100%를 넘어요. 여기엔 ${pct(room)}까지 넣을 수 있어요 — 다른 걸 먼저 줄여주세요.`;
+}
+
+/**
+ * 배분에 관련된 화면 전부. 하나가 바뀌면 나머지가 같이 틀어진다.
+ *
+ * `/allocation` 아래는 계층이 깊고 동적 구간이 섞여 있어(`financial/[type]`,
+ * `group/[key]/[label]`) 주소를 하나씩 적으면 화면을 더할 때마다 빠뜨린다. 그래서
+ * **서브트리 통째로** 지운다 — `type: "layout"` 은 그 아래 모든 레이아웃과 페이지를
+ * 무효화한다(`next/dist/docs/01-app/03-api-reference/04-functions/revalidatePath.md`).
+ */
 function revalidateAllocate() {
   revalidatePath("/allocate");
-  revalidatePath("/allocate/settings");
   // 렌즈 화면이 목표비중을 함께 보여준다 — 안 지우면 방금 바꾼 값이 옛 숫자로 보인다.
-  for (const tag of ["type", "country", "sector"]) {
-    revalidatePath(`/allocation/${tag}`);
-  }
+  revalidatePath("/allocation", "layout");
 }
 
 /**
@@ -115,8 +141,8 @@ export async function setUniverseStatus(
  * 포트폴리오와 securities 를 다시 읽는다 — 화면이 보낸 값을 믿고 쓰면 화면마다 다른
  * 유형을 보내 조용히 틀린 환산이 저장될 수 있다.
  *
- * 합계는 검증하지 않는다. 편집 도중 100%를 안 맞추는 건 정상이고, 합이 1 미만이면
- * 나머지는 현금이라는 뜻이다(§16.2).
+ * 합이 1 **미만**인 건 검증하지 않는다 — 나머지는 현금이라는 뜻이다(§16.2). 하지만 1을
+ * **넘기는** 저장은 막는다(`overflowError`).
  */
 export async function setTargetWeight(
   symbol: string,
@@ -146,6 +172,11 @@ export async function setTargetWeight(
     (holding.category_targets ?? {}) as Record<string, number>,
     symbols.map((s) => ({ symbol: s, assetType: meta[s]?.assetType ?? "주식" })),
   );
+
+  // 자기 자신은 빼고 센다 — 포함해서 세면 20%인 종목을 20%로 다시 저장하는 것도 막힌다.
+  const room = roomFor(current, [symbol]);
+  if (target > room + OVER_EPS)
+    return { ok: false, error: overflowError(room) };
 
   const next = toStored(withTarget(current, symbol, target));
 
@@ -297,6 +328,13 @@ export async function setGroupTarget(
     };
   if (group.members.length === 0)
     return { ok: false, error: "이 묶음에 조정할 종목이 없어요." };
+
+  // 묶음 목표는 구성원 목표를 통째로 갈아끼운다 — 그래서 구성원 전부를 빼고 여유를 센다.
+  const room = roomFor(
+    current,
+    group.members.map((m) => m.symbol),
+  );
+  if (next > room + OVER_EPS) return { ok: false, error: overflowError(room) };
 
   const previous = toStored(current);
   const updated = toStored(

@@ -8,8 +8,9 @@ import { parsePlan, planProgress } from "@/lib/plan";
 import { PlanCard } from "@/components/dashboard/PlanCard";
 
 /**
- * `/rebalance` — 종목별 목표비중 편집은 `/allocate/settings` 로 이사했다
- * (`docs/allocate-redesign-v1.md` Phase 5).
+ * `/rebalance` — 종목별 목표비중 편집은 **자본배분 레일**로 이사했다. 유형 목표는
+ * `/allocate` 1단계, 개별 종목 목표는 계층 화면의 종목 줄이다
+ * (`docs/allocate-redesign-v1.md` Phase 5 · `docs/allocate-rail-v2.md` §9).
  *
  * 2층 구조(유형 목표 × 유형 내 종목)가 "목표비중 설정이 어렵다"의 원인이었다. META 를
  * 24% 로 만들려면 두 숫자를 맞춰야 했다. 평면 전환(스펙 §13.2)으로 종목당 숫자 하나가 됐다.
@@ -51,10 +52,10 @@ export default async function RebalancePage() {
           유형 목표와 종목 목표를 따로 맞출 필요 없이, 종목마다 숫자 하나만 정하면 됩니다.
         </p>
         <Link
-          href="/allocate/settings"
+          href="/allocate"
           className="mt-5 inline-flex h-11 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground transition active:scale-[0.98]"
         >
-          배분 설정 열기
+          자본배분 열기
         </Link>
       </section>
 

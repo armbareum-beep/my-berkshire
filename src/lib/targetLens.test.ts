@@ -4,6 +4,7 @@ import {
   cashCurrency,
   cashKey,
   isCashKey,
+  roomFor,
   scaleGroupTarget,
   sumTargets,
   withinBasis,
@@ -263,5 +264,32 @@ describe("통화 현금 목표 키", () => {
     expect(next["CASH:KRW"].target).toBeCloseTo(0.12);
     expect(next["CASH:USD"].target).toBeCloseTo(0.08);
     expect(next.META.target).toBeCloseTo(0.5);
+  });
+});
+
+describe("roomFor — 여기에 더 넣을 수 있는 최대", () => {
+  it("자기 자신은 빼고 센다 — 같은 값으로 다시 저장하는 걸 막지 않는다", () => {
+    const map = t({ META: 0.2, NVDA: 0.3, "005930": 0.1 });
+    expect(roomFor(map, ["NVDA"])).toBeCloseTo(0.7);
+    // 지금 값(30%)이 여유(70%) 안에 있으므로 재저장이 막히지 않는다.
+    expect(map.NVDA.target).toBeLessThanOrEqual(roomFor(map, ["NVDA"]));
+  });
+
+  it("아직 목표가 없는 종목이면 남은 전부가 여유다", () => {
+    expect(roomFor(t({ META: 0.4 }), ["NVDA"])).toBeCloseTo(0.6);
+  });
+
+  it("묶음은 구성원 전부를 빼고 센다 — 통째로 갈아끼우기 때문", () => {
+    const map = t({ META: 0.2, NVDA: 0.3, "005930": 0.1 });
+    expect(roomFor(map, ["META", "NVDA"])).toBeCloseTo(0.9);
+  });
+
+  it("이미 꽉 찼으면 0 — 음수로 내려가지 않는다", () => {
+    expect(roomFor(t({ META: 0.7, NVDA: 0.3 }), ["삼성"])).toBe(0);
+    expect(roomFor(t({ META: 1.2 }), ["NVDA"])).toBe(0);
+  });
+
+  it("빈 맵이면 100% 전부가 여유다", () => {
+    expect(roomFor({}, ["META"])).toBeCloseTo(1);
   });
 });

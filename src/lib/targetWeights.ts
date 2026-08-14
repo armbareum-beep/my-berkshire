@@ -59,7 +59,14 @@ export function isFlatFormat(raw: unknown): boolean {
   );
 }
 
-/** 합이 1을 넘으면 1로 맞춘다. 그 외에는 손대지 않는다. */
+/**
+ * 합이 1을 넘으면 1로 맞춘다. 그 외에는 손대지 않는다.
+ *
+ * ⚠️ **이 길로는 이제 들어오지 않는다.** 저장 쪽에서 100% 초과를 막기 때문이다
+ * (`app/allocate/actions.ts:overflowError`). 남겨두는 건 그 검증이 생기기 전에 저장된
+ * 값과 손으로 고친 JSON 때문이다 — 합이 130% 인 맵을 그대로 엔진에 넣으면 목표비중이
+ * 전부 뻥튀기된 배분안이 나온다. 마지막 안전망이지 정상 경로가 아니다.
+ */
 function capToOne(map: FlatTargets): FlatTargets {
   const sum = Object.values(map).reduce((s, r) => s + r.target, 0);
   if (sum <= 1 || sum <= 0) return map;

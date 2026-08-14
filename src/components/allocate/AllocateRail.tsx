@@ -16,31 +16,22 @@ import {
   wonStepLabel,
 } from "@/components/ui/QuickAdd";
 import { SymbolAvatar } from "@/components/onboarding/SymbolPicker";
+import { cn } from "@/lib/utils";
 import { money, pct, type Currency } from "@/lib/format";
 import { planAllocation, type AllocateLeg } from "@/lib/allocate";
+import { rankRows, targetGap } from "@/lib/allocateRanking";
 import {
-  groupRanked,
-  rankRows,
-  targetGap,
-  type RankedRow,
-} from "@/lib/allocateRanking";
+  buildBuckets,
+  BUCKET_LENSES,
+  type BucketLens,
+} from "@/lib/allocateBuckets";
 import type { AllocateRow } from "@/lib/allocateData";
 import { STATUS_META } from "./statusMeta";
 import { HurdleCard } from "./HurdleCard";
 import { InvestableCashCard } from "./InvestableCashCard";
-import { TypeTargetList, type TypeTargetRow } from "./TypeTargetList";
+import { TargetLensPanel, type LensRows } from "./TargetLensPanel";
 
 const USD_STEPS = [100, 1_000, 10_000];
-
-/** 화면에 세우는 한 묶음 — 정렬 기준이 서로 다르다. */
-interface Bucket {
-  key: "stocks" | "others";
-  label: string;
-  /** 이 묶음이 무슨 기준으로 줄 서 있는지. 번호 옆에 밝힌다. */
-  basis: string;
-  note: string | null;
-  rows: RankedRow[];
-}
 
 /**
  * 자본배분 레일 — **한 화면에서 한 번에 한 가지씩.**
@@ -56,23 +47,28 @@ interface Bucket {
  *
  * | 단계 | 묻는 것 | 왜 따로인가 |
  * |---|---|---|
- * | 1 | 얼마를 넣을까 | 사용자만 아는 값 |
- * | 2 | 주식이냐 ETF냐 | **정렬 기준이 다른 두 묶음**이라 한 줄로 세울 수 없다(아래) |
- * | 3 | 어디에 얼마씩 | 고른 묶음의 순위 + 금액 |
- * | 4 | 몇 주씩 | 금액은 주가로 나눠떨어지지 않는다. 계획은 **주수**로 등기된다 |
+ * | 1 | 얼마나 들고 갈까 | 목표비중. 유형은 여기서 정하고 국가·산업은 결과로 본다 |
+ * | 2 | 얼마를 넣을까 | 사용자만 아는 값 |
+ * | 3 | 어디에 넣을까 | 유형·국가·산업 중 한 묶음. 고른 쪽에만 돈이 간다 |
+ * | 4 | 어디에 얼마씩 | 고른 묶음의 순위 + 금액 |
+ * | 5 | 몇 주씩 | 금액은 주가로 나눠떨어지지 않는다. 계획은 **주수**로 등기된다 |
  *
- * 2단계는 묶음이 하나뿐이면 건너뛴다(고를 게 없는 질문은 마찰일 뿐이다).
+ * 3단계는 어느 렌즈로 봐도 묶음이 하나뿐일 때만 건너뛴다(고를 게 없는 질문은 마찰이다).
  *
  * ## 순위를 레일 안에서 보여준다
  *
  * 직전 버전은 순위 목록을 `/allocate/ranking` 조회 화면으로 빼고 1단계 하단 작은 링크로만
- * 걸었다 — 사실상 안 보였다. 지금은 3단계가 곧 순위다. 번호·정렬 기준·기대수익률이
+ * 걸었다 — 사실상 안 보였다. 지금은 4단계가 곧 순위다. 번호·정렬 기준·기대수익률이
  * 금액과 같은 줄에 있으므로 "왜 이 순서인지"가 배분과 분리되지 않는다.
  *
  * 주식과 ETF 를 **한 줄로 세우지 않는 이유**는 `lib/allocateRanking.ts` 에 있다 — 주식은
  * 기대수익률, ETF 는 목표 미달로 줄 세운다. 기대수익률 모형이 개별기업에만 성립하기
- * 때문이다. 기준이 다른 둘에 연속 번호를 매기면 비교 가능한 척이 된다. 그래서 예전엔
- * 가로 스와이프로 갈라 놨는데, 레일에서는 **아예 고르고 들어간다** — 고른 쪽에만 돈이 간다.
+ * 때문이다. 기준이 다른 둘에 연속 번호를 매기면 비교 가능한 척이 된다.
+ *
+ * 그래서 묶음을 국가·산업으로도 고를 수 있게 넓히면서(*"어디에 넣을까요도 바꿔야지 않아?"*)
+ * **묶음 안을 두 섹션으로 갈라 각각 1번부터** 세게 했다(`lib/allocateBuckets.ts`). "미국"을
+ * 고르면 미국 주식과 미국 ETF 가 각자의 기준으로 줄 선다. 유형으로 골랐으면 한쪽이 비어
+ * 예전과 똑같이 한 목록만 보인다.
  *
  * ## 고른 쪽에만 넣되, 비중은 전체 기준
  *
@@ -90,7 +86,7 @@ export function AllocateRail({
   house,
   passing,
   judged,
-  typeRows,
+  lensRows,
 }: {
   rows: AllocateRow[];
   currency: Currency;
@@ -100,8 +96,8 @@ export function AllocateRail({
   house: number;
   passing: number;
   judged: number;
-  /** 1단계에서 정하는 유형별 목표(+현금). 서버에서 계산해 넘긴다. */
-  typeRows: TypeTargetRow[];
+  /** 1단계에서 보는 목표 — 유형(편집 가능)·국가·산업. 서버에서 계산해 넘긴다. */
+  lensRows: LensRows;
   /** 설정에서 정한 투자 가능 현금(스펙 §16.4). 미지정이면 보유 현금 전액. */
   investableCash: number;
   /** 사용자가 직접 정한 값인가(= 보유 현금 폴백이 아닌가). */
@@ -123,31 +119,36 @@ export function AllocateRail({
   const symbol = currency === "USD" ? "$" : "₩";
 
   // ── 묶음 ──
-  const buckets: Bucket[] = useMemo(() => {
-    const { stocks, others } = groupRanked(rankRows(rows));
-    return [
-      {
-        key: "stocks" as const,
-        label: "주식",
-        basis: "기대수익률 순",
-        note: null,
-        rows: stocks,
-      },
-      {
-        key: "others" as const,
-        label: "ETF · 기타",
-        basis: "목표 미달 순",
-        note: "기대수익률 모형을 쓸 수 없어 목표비중으로만 판단해요",
-        rows: others,
-      },
-    ].filter((b) => b.rows.length > 0);
-  }, [rows]);
+  // 세 렌즈를 한 번에 만들어 둔다. 탭을 눌러도 다시 계산하지 않고, "어느 렌즈로 봐도
+  // 고를 게 하나뿐인가"(= 이 단계를 건너뛸까)를 판단할 수 있다.
+  const rankedAll = useMemo(() => rankRows(rows), [rows]);
+  const bucketsByLens = useMemo(
+    () =>
+      new Map(
+        BUCKET_LENSES.map((l) => [l.key, buildBuckets(rankedAll, l.key)] as const),
+      ),
+    [rankedAll],
+  );
 
-  const [bucketKey, setBucketKey] = useState<Bucket["key"] | null>(null);
-  const bucket = buckets.find((b) => b.key === bucketKey) ?? buckets[0];
+  const [lens, setLens] = useState<BucketLens>("assetType");
+  // 고른 묶음은 **렌즈까지 같이** 기억한다 — 라벨만 두면 탭을 옮겼을 때 같은 이름의 다른
+  // 묶음(예: 산업 "기타" vs 국가 "기타")이 조용히 선택된 것처럼 보인다.
+  const [picked, setPicked] = useState<{ lens: BucketLens; key: string } | null>(
+    null,
+  );
 
-  // 고를 게 하나뿐이면 묻지 않는다.
-  const needsPick = buckets.length > 1;
+  const buckets = bucketsByLens.get(lens) ?? [];
+  const bucket = useMemo(() => {
+    const chosen = picked
+      ? (bucketsByLens.get(picked.lens) ?? []).find((b) => b.key === picked.key)
+      : undefined;
+    // 안 골랐으면 유형 렌즈의 첫 묶음 — 건너뛴 경우 그게 유일한 묶음이다.
+    return chosen ?? (bucketsByLens.get("assetType") ?? [])[0] ?? null;
+  }, [picked, bucketsByLens]);
+
+  const needsPick = BUCKET_LENSES.some(
+    (l) => (bucketsByLens.get(l.key) ?? []).length > 1,
+  );
   // 목표 → 금액 → (묶음) → 배분 → 주수. 셋으로 갈려 있던 화면을 한 줄로 세운 것이다.
   const stepIds = needsPick
     ? (["targets", "amount", "bucket", "split", "shares"] as const)
@@ -156,10 +157,7 @@ export function AllocateRail({
 
   // ── 배분 ──
   // 고른 묶음에만 돈이 가되, 목록은 전부 넘긴다(비중 분모 보존 — PlanOptions 주석).
-  const pickedKeys = useMemo(
-    () => new Set((bucket?.rows ?? []).map((r) => r.row.key)),
-    [bucket],
-  );
+  const pickedKeys = useMemo(() => new Set(bucket?.members ?? []), [bucket]);
   const plan = useMemo(
     () =>
       planAllocation(rows, amount, { eligible: (t) => pickedKeys.has(t.key) }),
@@ -168,17 +166,33 @@ export function AllocateRail({
 
   const rowOf = useMemo(() => new Map(rows.map((r) => [r.key, r])), [rows]);
 
-  /** 고른 묶음을 **순위 그대로** 세우고 금액을 붙인다. */
-  const ranked = useMemo(() => {
+  /**
+   * 고른 묶음을 **섹션별로** 세우고 금액을 붙인다.
+   *
+   * 번호는 섹션 안에서 1번부터다 — 기준이 다른 둘에 이어진 번호를 매기면 비교 가능한
+   * 척이 된다(`lib/allocateBuckets.ts`). 엔진이 다리를 안 만든 종목은 먼저 걸러낸 뒤
+   * 번호를 매긴다(빠진 자리에 번호가 비면 순위를 잘못 읽는다).
+   */
+  const sections = useMemo(() => {
     const legOf = new Map(plan.legs.map((l) => [l.key, l]));
-    return (bucket?.rows ?? [])
-      .map((r, i) => ({ rank: i + 1, row: r.row, leg: legOf.get(r.row.key) }))
-      .filter((x): x is { rank: number; row: AllocateRow; leg: AllocateLeg } =>
-        Boolean(x.leg),
-      );
+    return (bucket?.sections ?? [])
+      .map((s) => ({
+        key: s.key,
+        basis: s.basis,
+        note: s.note,
+        items: s.rows
+          .map((r) => ({ row: r.row, leg: legOf.get(r.row.key) }))
+          .filter((x): x is { row: AllocateRow; leg: AllocateLeg } =>
+            Boolean(x.leg),
+          )
+          .map((x, i) => ({ rank: i + 1, ...x })),
+      }))
+      .filter((s) => s.items.length > 0);
   }, [bucket, plan]);
 
-  const buying = ranked.filter((x) => x.leg.amount > 0);
+  const buying = sections
+    .flatMap((s) => s.items)
+    .filter((x) => x.leg.amount > 0);
 
   // 금액 → 주수. 소수점 주식을 만들지 않으려고 버림한다(모자란 만큼은 현금으로 남는다).
   // 시세를 모르는 종목(price 0)은 주수를 만들 수 없어 계획에서 빠진다.
@@ -255,7 +269,7 @@ export function AllocateRail({
           subtitle="투자자산을 어떻게 나눌지 먼저 정해요"
           className="pb-28"
         >
-          <TypeTargetList rows={typeRows} currency={currency} />
+          <TargetLensPanel rows={lensRows} currency={currency} />
           <div className="mt-auto pt-6">
             <button
               type="button"
@@ -323,27 +337,49 @@ export function AllocateRail({
     );
   }
 
-  // ── 2단계 — 주식이냐 ETF냐 ────────────────────────────────────────────
+  // ── 3단계 — 어느 묶음에 넣을까 ────────────────────────────────────────
   if (stepId === "bucket") {
     return (
       <StepShell
         {...shell}
         title="어디에 넣을까요"
-        subtitle="고른 쪽에만 넣습니다. 나머지는 현금으로 남아요."
+        subtitle="고른 묶음에만 넣습니다. 나머지는 현금으로 남아요."
       >
-        <ul className="flex flex-col gap-3">
-          {buckets.map((b) => {
-            const top =
-              b.rows.find(
-                (r) => r.leg.status === "BUY" || r.leg.status === "STRETCH",
-              ) ?? b.rows[0];
-            return (
+        {/* 묶는 축을 고른다 — 1단계에서 국가·산업 비중을 보고 왔으니 배분도 같은 축으로
+            고를 수 있어야 한다. 축을 바꿔도 고른 묶음은 그대로 기억한다. */}
+        <nav className="mb-3 flex gap-1 rounded-xl bg-secondary p-1">
+          {BUCKET_LENSES.map((l) => (
+            <button
+              key={l.key}
+              type="button"
+              onClick={() => setLens(l.key)}
+              className={cn(
+                "flex-1 rounded-lg py-1.5 text-center text-sm font-semibold transition",
+                lens === l.key
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground",
+              )}
+            >
+              {l.label}
+            </button>
+          ))}
+        </nav>
+
+        {buckets.length === 0 ? (
+          <div className="rounded-2xl bg-card p-6 text-center shadow-card">
+            <p className="text-sm text-muted-foreground">
+              이 기준으로 묶을 게 없어요.
+            </p>
+          </div>
+        ) : (
+          <ul className="flex flex-col gap-3">
+            {buckets.map((b) => (
               <li key={b.key}>
                 <button
                   type="button"
                   onClick={() => {
                     // 탭하면 자동 전진 — 확인 버튼을 또 누르게 하지 않는다(레일 §1-1).
-                    setBucketKey(b.key);
+                    setPicked({ lens, key: b.key });
                     next();
                   }}
                   className="w-full rounded-2xl bg-card p-5 text-left shadow-card transition active:scale-[0.99]"
@@ -352,42 +388,49 @@ export function AllocateRail({
                     <p className="text-lg font-bold">
                       {b.label}{" "}
                       <span className="text-sm font-semibold text-muted-foreground">
-                        {b.rows.length}
+                        {b.count}
                       </span>
                     </p>
-                    <p className="text-[11px] text-muted-foreground">
-                      {b.basis}
+                    <p className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                      {b.gap > 0.0001 ? `목표까지 ${pct(b.gap)}` : "목표 도달"}
                     </p>
                   </div>
-                  {top && (
+                  {b.top && (
                     <div className="mt-3 flex items-center gap-3">
                       <SymbolAvatar
-                        symbol={top.row.symbol}
-                        name={top.row.label}
+                        symbol={b.top.row.symbol}
+                        name={b.top.row.label}
                         size="md"
                       />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold">
-                          1순위 {top.row.label}
+                          1순위 {b.top.row.label}
                         </p>
                         <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
-                          {top.row.expectedCagr != null
-                            ? `기대 ${pct(top.row.expectedCagr)}`
-                            : `목표까지 ${gapLabel(targetGap(top))}`}
+                          {b.top.row.expectedCagr != null
+                            ? `기대 ${pct(b.top.row.expectedCagr)}`
+                            : `목표까지 ${gapLabel(targetGap(b.top))}`}
                         </p>
                       </div>
                     </div>
                   )}
+                  {/* 섹션이 둘이면 안에서 기준이 갈린다는 걸 미리 알린다. */}
+                  {b.sections.length > 1 && (
+                    <p className="mt-3 text-[11px] text-muted-foreground">
+                      {b.sections.map((s) => s.basis).join(" · ")} — 기준이 달라
+                      나눠서 세워요
+                    </p>
+                  )}
                 </button>
               </li>
-            );
-          })}
-        </ul>
+            ))}
+          </ul>
+        )}
       </StepShell>
     );
   }
 
-  // ── 3단계 — 어디에 얼마씩(= 순위) ──────────────────────────────────────
+  // ── 4단계 — 어디에 얼마씩(= 순위) ──────────────────────────────────────
   if (stepId === "split") {
     return (
       <StepShell
@@ -395,7 +438,7 @@ export function AllocateRail({
         title="이렇게 나눕니다"
         subtitle={
           buying.length > 0
-            ? `${bucket.label} · ${money(amount - plan.remainingCash, currency)} 배분`
+            ? `${bucket?.label ?? ""} · ${money(amount - plan.remainingCash, currency)} 배분`
             : undefined
         }
       >
@@ -403,39 +446,46 @@ export function AllocateRail({
           <div className="rounded-2xl bg-card p-6 text-center shadow-card">
             <p className="text-sm font-semibold">지금은 살 곳이 없어요</p>
             <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-              {bucket.label}은 전부 목표를 채웠거나 한도에 걸려 있습니다. 이럴 땐
-              현금으로 두는 게 맞습니다.
+              {bucket?.label ?? "고른 묶음"}은 전부 목표를 채웠거나 한도에 걸려
+              있습니다. 이럴 땐 현금으로 두는 게 맞습니다.
             </p>
-            <Link
-              href="/allocate/settings"
+            {/* 목표를 고칠 곳은 이 레일의 1단계다 — 화면 밖으로 내보내면 여기까지 온
+                맥락이 끊긴다. */}
+            <button
+              type="button"
+              onClick={() => setStepIdx(0)}
               className="mt-5 inline-flex h-11 items-center justify-center rounded-xl bg-secondary px-5 text-sm font-semibold transition active:scale-[0.98]"
             >
               목표비중 손보기
-            </Link>
+            </button>
           </div>
         ) : (
           <>
-            {/* 번호가 무슨 기준으로 매겨졌는지 밝힌다 — 기준 없는 순위는 거짓말이다. */}
-            <p className="text-[11px] font-semibold text-muted-foreground">
-              {bucket.basis}
-            </p>
-            {bucket.note && (
-              <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-                {bucket.note}
-              </p>
-            )}
-
-            <ul className="mt-3 flex flex-col gap-0.5">
-              {ranked.map(({ rank, row, leg }) => (
-                <PlanRow
-                  key={leg.key}
-                  rank={rank}
-                  leg={leg}
-                  row={row}
-                  currency={currency}
-                />
-              ))}
-            </ul>
+            {/* 섹션마다 번호가 무슨 기준으로 매겨졌는지 밝힌다 — 기준 없는 순위는
+                거짓말이다. 섹션이 하나뿐이면 예전과 똑같이 보인다. */}
+            {sections.map((s) => (
+              <section key={s.key} className="mt-3 first:mt-0">
+                <p className="text-[11px] font-semibold text-muted-foreground">
+                  {s.basis}
+                </p>
+                {s.note && (
+                  <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                    {s.note}
+                  </p>
+                )}
+                <ul className="mt-2 flex flex-col gap-0.5">
+                  {s.items.map(({ rank, row, leg }) => (
+                    <PlanRow
+                      key={leg.key}
+                      rank={rank}
+                      leg={leg}
+                      row={row}
+                      currency={currency}
+                    />
+                  ))}
+                </ul>
+              </section>
+            ))}
 
             {plan.remainingCash > 0 && (
               <p className="mt-3 px-2 text-xs text-muted-foreground">
@@ -469,7 +519,7 @@ export function AllocateRail({
     );
   }
 
-  // ── 4단계 — 몇 주씩 ───────────────────────────────────────────────────
+  // ── 5단계 — 몇 주씩 ───────────────────────────────────────────────────
   return (
     <StepShell
       {...shell}

@@ -12,7 +12,8 @@ import type { Database } from "./supabase/database.types";
 import type { Currency } from "./format";
 import { getPortfolio } from "./portfolio";
 import { computeDashboard } from "./dashboard";
-import { loadSecurityMeta } from "./securities";
+import { backfillSectors, loadSecurityMeta } from "./securities";
+import { tagLabel } from "./allocation";
 import { readTargets } from "./targetWeights";
 import { approvedSymbols, loadUniverseStatuses, resolveUniverse } from "./universe";
 import { loadExpectedReturnAssumptions } from "./expectedReturnAssumptions";
@@ -39,6 +40,10 @@ export interface AllocateRow extends AllocateTarget {
   price: number;
   /** 자산유형(주식/ETF/코인/원자재…). 밸류에이션 적용 여부를 가른다. */
   assetType: string;
+  /** 국가 태그. 묶음(렌즈)으로 볼 때 쓴다 — 없으면 "기타". */
+  country: string;
+  /** 산업 태그. 공시 backfill 에 의존해 아직 못 채운 종목은 "미분류". */
+  sector: string;
 }
 
 export interface AllocateData {
@@ -65,10 +70,21 @@ export interface AllocateData {
   judged: number;
 }
 
+export interface LoadAllocateOptions {
+  /**
+   * 산업 태그를 공시에서 채워 올 것인가(`backfillSectors`).
+   *
+   * 산업 렌즈를 쓰는 화면만 켠다. 멱등이고 **처음 한 번만** 실제로 일한다 — 채워진 뒤에는
+   * 대상이 없어 즉시 반환된다. 끄면 아직 안 채워진 종목이 전부 "미분류"로 묶인다.
+   */
+  withSectors?: boolean;
+}
+
 /** 로그인·온보딩이 끝난 사용자의 배분 데이터. 없으면 null(호출부가 redirect). */
 export async function loadAllocateData(
   supabase: SupabaseClient<Database>,
   displayCcy: Currency,
+  options: LoadAllocateOptions = {},
 ): Promise<AllocateData | null> {
   const portfolio = await getPortfolio(supabase);
   if (!portfolio) return null;
@@ -87,6 +103,13 @@ export async function loadAllocateData(
     // 공시 EPS — 캐시만 읽는다(API 호출 없음). 캐시에 없는 종목은 자동값 없이 넘어간다.
     loadCachedEps(supabase, candidates),
   ]);
+
+  // 산업 렌즈를 쓰는 화면에서만. 채워진 값은 `meta` 에 바로 반영해 이번 렌더부터 보이게 한다.
+  if (options.withSectors) {
+    const filled = await backfillSectors(supabase, meta);
+    for (const [s, sector] of Object.entries(filled))
+      if (meta[s]) meta[s].sector = sector;
+  }
 
   const heldValue: Record<string, number> = {};
   const heldName: Record<string, string> = {};
@@ -152,6 +175,10 @@ export async function loadAllocateData(
       // 미보유 후보는 dashboard 에 없으므로 원본 시세(₩)를 직접 환산한다.
       price: heldPrice[symbol] ?? (portfolio.prices[symbol] ?? 0) * factor,
       assetType: meta[symbol]?.assetType ?? "주식",
+      // 렌즈 태그는 화면마다 다시 계산하지 않는다 — 갈라지면 같은 종목이 화면마다 다른
+      // 묶음에 들어간다. `tagLabel` 하나만 쓴다.
+      country: tagLabel(meta[symbol], "country"),
+      sector: tagLabel(meta[symbol], "sector"),
       target: rule?.target ?? 0,
       softCap: rule?.softCap,
       hardCap: rule?.hardCap,
