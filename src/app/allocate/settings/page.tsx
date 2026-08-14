@@ -64,7 +64,7 @@ export default async function AllocateSettingsPage() {
 
       {/* 목표비중은 렌즈 화면에서 — 보는 곳과 정하는 곳을 하나로 합쳤다. */}
       <Link
-        href="/allocation/stock"
+        href="/allocation/targets"
         className="flex items-center gap-4 rounded-2xl bg-card p-5 shadow-card transition active:scale-[0.99]"
       >
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-secondary">
@@ -74,7 +74,7 @@ export default async function AllocateSettingsPage() {
           <span className="block text-sm font-semibold">목표비중</span>
           <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
             {total > 0
-              ? `합계 ${pct(total)} · 종목·유형·국가·산업으로 보고 바로 고쳐요`
+              ? `합계 ${pct(total)} · 찾아서 정하고, 자산배분에서 유형·국가·산업으로 조정해요`
               : "아직 정한 게 없어요 — 어떤 기업을 얼마나 들고 갈지 정해요"}
           </span>
         </span>
