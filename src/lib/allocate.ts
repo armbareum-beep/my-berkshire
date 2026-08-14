@@ -142,6 +142,19 @@ export interface AllocatePlan {
   portfolioValue: number;
 }
 
+export interface PlanOptions {
+  /**
+   * 이번 배분에서 **돈을 받을 수 있는** 종목인가. 생략하면 전부 대상.
+   *
+   * "이번엔 주식만" / "이번엔 ETF만" 처럼 사용자가 묶음을 고른 경우에 쓴다.
+   * 목록에서 빼고 부르면 안 된다 — `portfolioValue` 가 그 부분집합의 합이 되어
+   * **현재 비중이 부풀려지기** 때문이다(주식만 넘기면 주식 비중이 전부 100% 쪽으로 뜬다).
+   * 그래서 대상은 전부 넘기고, 여기서 가중치만 0으로 만든다. 분모·상태·캡 판정은 전체
+   * 자산 기준 그대로 남고, 받지 못한 돈은 `remainingCash` 로 정직하게 남는다.
+   */
+  eligible?: (t: AllocateTarget) => boolean;
+}
+
 function capsOf(t: AllocateTarget) {
   return {
     soft: t.softCap ?? t.target * SOFT_CAP_MULTIPLE,
@@ -192,7 +205,9 @@ function classify(
 export function planAllocation(
   targets: AllocateTarget[],
   invest: number,
+  options: PlanOptions = {},
 ): AllocatePlan {
+  const eligible = options.eligible ?? (() => true);
   const portfolioValue = targets.reduce((s, t) => s + t.value, 0);
   const capital = Math.max(0, invest);
   const future = portfolioValue + capital;
@@ -222,7 +237,9 @@ export function planAllocation(
         gap <= 0 && (status === "BUY" || status === "TRIM_PRIORITY" || status === "STRETCH")
           ? ("FILLED" as AllocateStatus)
           : status,
-      weight: gap * priority * Math.max(0, attractiveness),
+      // 대상에서 뺀 종목은 가중치 0 — 돈이 가지 않는다. 단 위에서 계산한 비중·상태는
+      // 그대로 둔다(분모는 여전히 전체 자산이라 "이 종목은 지금 몇 %"가 거짓이 되지 않는다).
+      weight: eligible(t) ? gap * priority * Math.max(0, attractiveness) : 0,
     };
   });
 

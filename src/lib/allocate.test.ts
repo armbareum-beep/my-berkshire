@@ -286,3 +286,53 @@ describe("flattenTargets — 2층 → 평면 환산 (스펙 §13.2)", () => {
     expect(Number.isNaN(flat.META)).toBe(false);
   });
 });
+
+describe("planAllocation — eligible(묶음 선택)", () => {
+  it("대상에서 뺀 종목에는 돈이 가지 않는다", () => {
+    const targets = [t("A", 100, 0.5), t("B", 100, 0.5)];
+    const plan = planAllocation(targets, 400, {
+      eligible: (x) => x.key === "A",
+    });
+
+    expect(plan.legs.find((l) => l.key === "A")!.amount).toBeGreaterThan(0);
+    expect(plan.legs.find((l) => l.key === "B")!.amount).toBe(0);
+  });
+
+  it("현재 비중은 전체 자산 기준을 유지한다 — 목록에서 빼는 것과 다르다", () => {
+    const targets = [t("A", 100, 0.5), t("B", 300, 0.5)];
+
+    // 대상만 넘겼다면 A의 현재 비중이 100%로 부풀었을 것이다.
+    const picked = planAllocation(targets, 0, {
+      eligible: (x) => x.key === "A",
+    });
+    const filtered = planAllocation([t("A", 100, 0.5)], 0);
+
+    expect(picked.legs.find((l) => l.key === "A")!.currentWeight).toBeCloseTo(
+      0.25,
+    );
+    expect(filtered.legs[0].currentWeight).toBeCloseTo(1);
+    expect(picked.portfolioValue).toBe(400);
+  });
+
+  it("대상이 다 차면 나머지는 현금으로 남는다 — 뺀 종목으로 흘러가지 않는다", () => {
+    // A의 부족분은 작고 B는 대상이 아니다. 남는 돈은 현금이어야 한다.
+    const plan = planAllocation([t("A", 100, 0.3), t("B", 100, 0.7)], 1000, {
+      eligible: (x) => x.key === "A",
+    });
+
+    expect(plan.legs.find((l) => l.key === "B")!.amount).toBe(0);
+    expect(plan.remainingCash).toBeGreaterThan(0);
+    expect(sum(plan.legs.map((l) => l.amount)) + plan.remainingCash).toBeCloseTo(
+      1000,
+    );
+  });
+
+  it("생략하면 전부 대상 — 기존 동작과 같다", () => {
+    const targets = [t("A", 100, 0.5), t("B", 100, 0.5)];
+    const before = planAllocation(targets, 300);
+    const after = planAllocation(targets, 300, {});
+    expect(after.legs.map((l) => l.amount)).toEqual(
+      before.legs.map((l) => l.amount),
+    );
+  });
+});

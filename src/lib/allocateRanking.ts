@@ -5,7 +5,7 @@
  *   1. **살 수 있는 것이 먼저** — 한도에 걸린 종목을 위에 두면 "오늘의 1순위"가 거짓말이 된다
  *   2. 그 안에서 기대수익률 높은 순, 가정이 없으면 목표 미달이 큰 순
  *
- * 화면(`components/allocate/AllocateRanking.tsx`)은 이 결과를 그리기만 한다.
+ * 화면(`components/allocate/AllocateRail.tsx` 2·3단계)은 이 결과를 그리기만 한다.
  */
 import { planAllocation, type AllocateLeg, type AllocateStatus } from "./allocate";
 import { valuationApplies } from "./finance/expectedReturn";

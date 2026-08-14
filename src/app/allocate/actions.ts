@@ -13,7 +13,6 @@ type Result = { ok: true } | { ok: false; error: string };
 /** 배분에 관련된 화면 전부. 하나가 바뀌면 나머지가 같이 틀어진다. */
 function revalidateAllocate() {
   revalidatePath("/allocate");
-  revalidatePath("/allocate/ranking");
   revalidatePath("/allocate/settings");
 }
 
