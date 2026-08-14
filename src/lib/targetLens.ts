@@ -26,8 +26,36 @@ import { tagLabel, type TagKey } from "./allocation";
 import type { SecurityRecord } from "./securities";
 import type { FlatTargets } from "./targetWeights";
 
-/** 현금 묶음 라벨 — 자산이 아니라 "안 넣은 것"이라 편집 대상이 아니다. */
+/** 현금 묶음 라벨. */
 export const CASH_LABEL = "현금";
+
+/**
+ * 통화 현금을 **목표 대상으로** 다룰 때 쓰는 예약 키 — `CASH:USD`.
+ *
+ * 달러·엔·원화를 들고 가는 것도 배분 결정이다("현금의 30%는 달러로"). 그런데 통화는
+ * 종목이 아니라 `securities` 에 행이 없다. 그래서 **같은 평면 목표 맵에 예약 키로** 넣는다 —
+ * 저장 형식을 새로 만들지 않으므로 §13.2 의 평면 원칙이 그대로 유지된다.
+ *
+ * 배분 엔진(`planAllocation`)은 이 키를 보지 못한다. 후보 목록에 없기 때문이다 —
+ * 통화를 늘리는 건 매수가 아니라 **환전**이라 buy-only 배분과 성격이 다르다(스펙 §14.2).
+ * 목표와 갭은 렌즈에서 보여주고, 실행은 거래 입력의 환전이 맡는다.
+ */
+export const CASH_PREFIX = "CASH:";
+
+/** `USD` → `CASH:USD`. */
+export function cashKey(currency: string): string {
+  return CASH_PREFIX + currency.toUpperCase();
+}
+
+/** 이 목표 키가 통화 현금인가. */
+export function isCashKey(symbol: string): boolean {
+  return symbol.startsWith(CASH_PREFIX);
+}
+
+/** `CASH:USD` → `USD`. 통화 키가 아니면 null. */
+export function cashCurrency(symbol: string): string | null {
+  return isCashKey(symbol) ? symbol.slice(CASH_PREFIX.length) : null;
+}
 /** 태그가 없어 모인 묶음. 구성이 유동적이라 그룹 단위 조정을 막는다. */
 const UNTAGGED = new Set(["미분류", "기타"]);
 

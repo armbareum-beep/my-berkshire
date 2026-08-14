@@ -5,16 +5,15 @@ import { createClient } from "@/lib/supabase/server";
 import { getPortfolio } from "@/lib/portfolio";
 import { computeDashboard } from "@/lib/dashboard";
 import { loadSecurityMeta } from "@/lib/securities";
-import { companyCashPools } from "@/lib/finance/valuation";
 import { BackButton } from "@/components/BackButton";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
 import { SymbolAvatar } from "@/components/onboarding/SymbolPicker";
-import { CashBreakdown } from "@/components/dashboard/CashBreakdown";
 import { Donut } from "@/components/dashboard/Donut";
 import { donutColor } from "@/components/dashboard/donutPalette";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { money, pct } from "@/lib/format";
 import { readTargets } from "@/lib/targetWeights";
+import { isCashKey } from "@/lib/targetLens";
 import { AllocationTabs } from "@/components/allocation/AllocationTabs";
 import {
   TargetWeightEditor,
@@ -35,30 +34,31 @@ export default async function StockAllocationPage() {
   const displayCcy =
     (await cookies()).get("display_ccy")?.value === "USD" ? "USD" : "KRW";
   const data = computeDashboard(portfolio, displayCcy);
-  // 현금 행 안에서 통화별(₩/$) 잔액을 보여주기 위한 풀(네이티브 금액).
-  const cashPools = companyCashPools(
-    portfolio.events,
-    Number(portfolio.holding.initial_valuation),
-  );
 
-  // 종목(개별주식만, +현금) — 전체 자산 대비 비중. ETF·원자재·코인은 섞지 않음(유형별에서).
   const meta = await loadSecurityMeta(
     supabase,
     data.allocation.map((a) => a.symbol),
   );
-  const items = [
-    ...data.allocation
-      .filter((a) => (meta[a.symbol]?.assetType ?? "주식") === "주식")
-      .map((a) => ({
-        label: a.name,
-        symbol: a.symbol as string | undefined,
-        value: a.value,
-        weight: a.weight,
-      })),
-    ...(data.cash > 0
-      ? [{ label: "현금", symbol: undefined, value: data.cash, weight: data.cashWeight ?? 0 }]
-      : []),
-  ].sort((a, b) => b.value - a.value);
+
+  // ── 종목별은 딱 종목별이다 ──
+  //
+  // 두 가지를 고쳤다.
+  //   1. **현금을 뺀다.** 현금은 종목이 아니다.
+  //   2. **전 종목을 넣는다.** 예전엔 개별주식만 담아 ETF·원자재·코인이 빠져 있었다.
+  //
+  // 왜 중요하냐면 도넛(recharts)은 **weight 합을 100%로 다시 정규화**한다. 전체 자산 대비
+  // 비중을 넘기면서 일부 범주만 담으면(합 < 100%) 모든 조각이 그만큼 부풀려 그려진다 —
+  // 라벨은 20%인데 조각은 29%인 식이다. 그래서 **종목끼리 100%** 로 다시 나눈다.
+  const securities = data.allocation;
+  const securitiesTotal = securities.reduce((s, a) => s + a.value, 0);
+  const items = securities
+    .map((a) => ({
+      label: a.name,
+      symbol: a.symbol as string | undefined,
+      value: a.value,
+      weight: securitiesTotal > 0 ? a.value / securitiesTotal : 0,
+    }))
+    .sort((a, b) => b.value - a.value);
 
   // 도넛: 상위 8 + 기타(조각 과밀 방지). 목록은 전체 표시.
   const top = items.slice(0, 8);
@@ -95,7 +95,11 @@ export default async function StockAllocationPage() {
   }));
   // 목표만 있고 아직 안 산 종목 — 빼면 저장된 값이 보이지도 지워지지도 않는 유령이 된다.
   const heldSet = new Set(data.allocation.map((a) => a.symbol));
-  const orphanSymbols = Object.keys(flatTargets).filter((s) => !heldSet.has(s));
+  // 통화 현금 목표(`CASH:USD`)는 종목이 아니다 — 종목별 편집기에 섞지 않는다.
+  // 통화는 유형·국가·산업 탭의 현금 묶음에서 정한다.
+  const orphanSymbols = Object.keys(flatTargets).filter(
+    (s) => !heldSet.has(s) && !isCashKey(s),
+  );
   if (orphanSymbols.length > 0) {
     const orphanMeta = await loadSecurityMeta(supabase, orphanSymbols);
     for (const sym of orphanSymbols) {
@@ -114,9 +118,15 @@ export default async function StockAllocationPage() {
       <BottomTabBar />
       <BackButton />
       <AllocationTabs active="stock" />
-      <h1 className="text-2xl font-extrabold tracking-tight">
-        종목별 자산배분
-      </h1>
+      <div>
+        <h1 className="text-2xl font-extrabold tracking-tight">
+          종목별 자산배분
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          목표비중은 <b>전체 자산 대비</b>예요. 아래 도넛은 현금을 빼고 종목끼리 100%로
+          나눈 것이라 기준이 다릅니다.
+        </p>
+      </div>
 
       <TargetWeightEditor rows={targetRows} />
 
@@ -155,8 +165,11 @@ export default async function StockAllocationPage() {
 
           {/* 목표비중·리밸런싱 버튼이 있던 자리. /rebalance 편집은 은퇴했고 목표비중은
               /allocate/settings 에서 정한다 — 이 화면은 보기 전용으로 남긴다. */}
-          {/* 전체 종목 목록 */}
+          {/* 전체 종목 목록 — 현금 제외, 종목끼리 100% */}
           <section className="rounded-2xl bg-card p-5 shadow-card">
+            <p className="mb-3 text-xs font-semibold text-muted-foreground">
+              종목끼리 100% · 현금 제외
+            </p>
             <ul className="flex flex-col gap-2">
               {items.map((it) => (
                 <li key={it.label} className="flex flex-col gap-3">
@@ -172,12 +185,6 @@ export default async function StockAllocationPage() {
                       {money(it.value, data.currency)}
                     </span>
                   </div>
-                  {/* 현금 행은 통화별(₩/$) 잔액으로 펼침 */}
-                  {it.label === "현금" && (
-                    <div className="border-t border-border pl-1 pt-3">
-                      <CashBreakdown pools={cashPools} />
-                    </div>
-                  )}
                 </li>
               ))}
             </ul>

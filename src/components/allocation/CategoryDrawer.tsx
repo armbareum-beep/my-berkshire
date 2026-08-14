@@ -1,14 +1,20 @@
 "use client";
-import { useState } from "react";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import Link from "next/link";
 import { BottomSheet } from "@/components/ui/BottomSheet";
-import { StockRow } from "@/components/ui/StockRow";
+import { Input } from "@/components/ui/input";
+import { SymbolAvatar } from "@/components/onboarding/SymbolPicker";
+import { setTargetWeight } from "@/app/allocate/actions";
 import { Donut } from "@/components/dashboard/Donut";
 import { donutColor } from "@/components/dashboard/donutPalette";
 import { money, pct, signedMoneyShort, signedPct, changeColor, type Currency } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { TargetAdjuster } from "./TargetAdjuster";
 import type { TagKey } from "@/lib/allocation";
+import { cashCurrency } from "@/lib/targetLens";
+import { currencyMeta } from "@/lib/finance/currencies";
 
 export type DrawerItem = {
   symbol: string;
@@ -42,7 +48,9 @@ export type DrawerCategory = {
 type Basis = "total" | "within";
 
 function makeDonutSlices(items: DrawerItem[], total: number) {
-  const sorted = [...items].sort((a, b) => b.value - a.value);
+  // 평가액 0(목표만 있고 아직 안 산 종목)은 도넛에서 뺀다 — 조각이 0인데 범례만
+  // 차지한다. 목록에는 `미보유` 배지로 그대로 남는다.
+  const sorted = items.filter((it) => it.value > 0).sort((a, b) => b.value - a.value);
   const top = sorted.slice(0, 8);
   const restVal = sorted.slice(8).reduce((s, it) => s + it.value, 0);
   return [
@@ -103,6 +111,7 @@ function ItemList({
 }: {
   items: DrawerItem[];
   catValue: number;
+  /** 이 묶음의 목표 합(전체 대비) — "묶음 안에서" 입력을 되돌릴 때 쓰는 분모. */
   catTarget: number;
   /** 전체 자산(현금 포함) — 전체 대비 기준의 분모. */
   total: number;
@@ -111,45 +120,136 @@ function ItemList({
 }) {
   return (
     <ul className="flex flex-col gap-1">
-      {items.map((it) => {
-        const gain = it.avgCost > 0 ? it.value - it.avgCost * it.quantity : null;
-        const w = inBasis(it, basis, { value: total, target: 0, catValue, catTarget });
-        return (
-          <li key={it.symbol}>
-            <StockRow
-              symbol={it.symbol}
-              name={it.name}
-              href={`/stocks/${it.symbol}`}
-              sub={
-                <span className="flex items-center gap-1.5">
-                  <span className="tabular-nums">{pct(w.current)}</span>
-                  {w.target > 0 && (
-                    <span className="tabular-nums text-muted-foreground">
-                      / 목표 {pct(w.target)}
-                    </span>
-                  )}
-                  {!it.held && (
-                    <span className="rounded-full bg-secondary px-1.5 py-0.5 text-xs text-muted-foreground">
-                      미보유
-                    </span>
-                  )}
-                </span>
-              }
-              right={
-                <span className="ml-auto flex flex-col items-end">
-                  <span className="font-semibold tabular-nums">{money(it.value, currency)}</span>
-                  {gain !== null && it.changeRate !== null && (
-                    <span className="text-sm font-medium tabular-nums" style={{ color: changeColor(it.changeRate) }}>
-                      {signedMoneyShort(gain, currency)} {signedPct(it.changeRate)}
-                    </span>
-                  )}
-                </span>
-              }
-            />
-          </li>
-        );
-      })}
+      {items.map((it) => (
+        <MemberRow
+          key={it.symbol}
+          it={it}
+          w={inBasis(it, basis, { value: total, target: 0, catValue, catTarget })}
+          basis={basis}
+          catTarget={catTarget}
+          currency={currency}
+        />
+      ))}
     </ul>
+  );
+}
+
+/**
+ * 구성 종목 한 줄 — **보는 기준 그대로 목표를 고친다.**
+ *
+ * 기준 토글이 보기만 바꾸면 "주식 안에서 60%네" 하고 나서 어디를 고쳐야 할지 알 수 없다.
+ * 그래서 입력칸도 같은 기준을 따른다.
+ *
+ *   · 전체 대비    → 넣은 값이 곧 저장값
+ *   · 묶음 안에서  → **묶음 목표 × 입력값**으로 환산해 저장한다
+ *     예) 주식 목표 70% 안에서 META 50% → 전체 35% 로 저장
+ *
+ * 저장 형식은 늘 전체 대비 평면 하나다(스펙 §13.2) — 기준은 입력을 받는 방식일 뿐이다.
+ * 묶음 목표가 0이면 곱할 기준이 없으므로 입력을 막고 이유를 말한다.
+ */
+function MemberRow({
+  it,
+  w,
+  basis,
+  catTarget,
+  currency,
+}: {
+  it: DrawerItem;
+  w: { current: number; target: number };
+  basis: Basis;
+  catTarget: number;
+  currency: Currency;
+}) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [raw, setRaw] = useState(String(+(w.target * 100).toFixed(1)));
+
+  const locked = basis === "within" && catTarget <= 0;
+  const gain = it.avgCost > 0 ? it.value - it.avgCost * it.quantity : null;
+
+  function save() {
+    const v = raw.trim();
+    const next = v === "" ? 0 : Number(v);
+    if (!Number.isFinite(next) || next < 0 || next > 100) {
+      toast.error("0~100 사이의 숫자를 넣어주세요.");
+      setRaw(String(+(w.target * 100).toFixed(1)));
+      return;
+    }
+    if (Math.abs(next / 100 - w.target) < 1e-9) return;
+
+    // 보는 기준을 전체 대비로 되돌려 저장한다.
+    const absolute = basis === "within" ? (next / 100) * catTarget : next / 100;
+
+    start(async () => {
+      const res = await setTargetWeight(it.symbol, absolute);
+      if (!res.ok) {
+        toast.error(res.error);
+        setRaw(String(+(w.target * 100).toFixed(1)));
+        return;
+      }
+      if (basis === "within") {
+        toast.success(`${it.name} 목표를 전체 ${pct(absolute)}로 저장했어요`);
+      }
+      router.refresh();
+    });
+  }
+
+  // 통화 현금은 종목이 아니다 — 종목 상세로 갈 곳이 없고 로고도 없다(국기로 대신).
+  const ccy = cashCurrency(it.symbol);
+
+  return (
+    <li className="flex items-center gap-3 rounded-xl px-1 py-2">
+      {ccy ? (
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-secondary text-lg">
+          {currencyMeta(ccy).flag}
+        </span>
+      ) : (
+        <SymbolAvatar symbol={it.symbol} name={it.name} size="md" />
+      )}
+      <div className="min-w-0 flex-1">
+        {ccy ? (
+          <p className="truncate text-sm font-semibold">{it.name}</p>
+        ) : (
+          <Link
+            href={`/stocks/${it.symbol}`}
+            className="flex items-center gap-1 text-sm font-semibold"
+          >
+            <span className="truncate">{it.name}</span>
+            <span className="shrink-0 text-foreground/40">›</span>
+          </Link>
+        )}
+        <p className="mt-0.5 flex items-center gap-1.5 text-xs tabular-nums text-muted-foreground">
+          <span>{pct(w.current)}</span>
+          <span>·</span>
+          <span>{money(it.value, currency)}</span>
+          {gain !== null && it.changeRate !== null && (
+            <span style={{ color: changeColor(it.changeRate) }}>
+              {signedMoneyShort(gain, currency)} {signedPct(it.changeRate)}
+            </span>
+          )}
+          {!it.held && !ccy && (
+            <span className="rounded-full bg-secondary px-1.5 py-0.5">미보유</span>
+          )}
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-1">
+        <Input
+          type="number"
+          inputMode="decimal"
+          step="any"
+          value={raw}
+          disabled={pending || locked}
+          onChange={(e) => setRaw(e.target.value)}
+          onBlur={save}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur();
+          }}
+          aria-label={`${it.name} 목표비중 (%)`}
+          className="h-9 w-[4.5rem] text-right tabular-nums"
+        />
+        <span className="text-xs text-muted-foreground">%</span>
+      </div>
+    </li>
   );
 }
 
@@ -169,9 +269,29 @@ function SheetBody({
   const [activeTab, setActiveTab] = useState<string | null>(null);
 
   if (cat.label === "현금") {
+    // 묶음 목표에서 통화에 배정한 몫을 뺀 나머지 — "아직 어느 통화로 둘지 안 정한" 현금.
+    const assigned = cat.items.reduce((s, it) => s + it.target, 0);
+    const unassigned = cat.target - assigned;
     return (
       <div className="flex flex-col gap-3 px-5 pb-8 pt-3">
         <p className="text-3xl font-bold tabular-nums">{money(cat.value, currency)}</p>
+        {cat.items.length > 0 && (
+          <>
+            <ItemList
+              items={cat.items}
+              catValue={cat.value}
+              catTarget={cat.target}
+              total={total}
+              basis={basis}
+              currency={currency}
+            />
+            {unassigned > 0.0001 && (
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                목표를 안 채운 나머지 {pct(unassigned)}는 통화를 정하지 않은 현금이에요.
+              </p>
+            )}
+          </>
+        )}
         <Link href="/cash" className="text-sm font-medium text-primary">현금 상세 보기 ›</Link>
       </div>
     );
@@ -237,45 +357,25 @@ function SheetBody({
   if (tag === "type" && cat.label === "ETF") {
     const byCountry = new Map<string, number>();
     for (const it of cat.items) byCountry.set(it.country, (byCountry.get(it.country) ?? 0) + it.value);
-    const total = cat.items.reduce((s, x) => s + x.value, 0);
+    // ⚠️ prop `total`(전체 자산)을 가리지 않게 이름을 따로 쓴다 — 가리면 "전체 대비"
+    // 기준의 분모가 조용히 ETF 합계로 바뀐다.
+    const etfTotal = cat.items.reduce((s, x) => s + x.value, 0);
     const countrySummary = [...byCountry.entries()]
       .sort((a, b) => b[1] - a[1])
-      .map(([c, v]) => `${c} ${pct(total > 0 ? v / total : 0)}`)
+      .map(([c, v]) => `${c} ${pct(etfTotal > 0 ? v / etfTotal : 0)}`)
       .join(" · ");
     return (
       <div className="flex flex-col gap-3 px-5 pb-8 pt-3">
         <DonutSection items={cat.items} total={cat.value} currency={currency} />
         {countrySummary && <p className="text-xs text-muted-foreground">{countrySummary}</p>}
-        <ul className="flex flex-col gap-1">
-          {cat.items.map((it) => {
-            const gain = it.avgCost > 0 ? it.value - it.avgCost * it.quantity : null;
-            return (
-              <li key={it.symbol}>
-                <StockRow
-                  symbol={it.symbol}
-                  name={it.name}
-                  href={`/stocks/${it.symbol}`}
-                  sub={
-                    <span className="flex items-center gap-1.5">
-                      <span>{pct(cat.value > 0 ? it.value / cat.value : 0)}</span>
-                      <span className="rounded-full bg-secondary px-1.5 py-0.5 text-xs text-muted-foreground">{it.country}</span>
-                    </span>
-                  }
-                  right={
-                    <span className="ml-auto flex flex-col items-end">
-                      <span className="font-semibold tabular-nums">{money(it.value, currency)}</span>
-                      {gain !== null && it.changeRate !== null && (
-                        <span className="text-sm font-medium tabular-nums" style={{ color: changeColor(it.changeRate) }}>
-                          {signedMoneyShort(gain, currency)} {signedPct(it.changeRate)}
-                        </span>
-                      )}
-                    </span>
-                  }
-                />
-              </li>
-            );
-          })}
-        </ul>
+        <ItemList
+          items={cat.items}
+          catValue={cat.value}
+          catTarget={cat.target}
+          total={total}
+          basis={basis}
+          currency={currency}
+        />
       </div>
     );
   }
@@ -311,7 +411,7 @@ function SheetContent({
   const [basis, setBasis] = useState<Basis>("total");
 
   const lockedReason = cat.isCash
-    ? "현금은 따로 정하지 않아요 — 목표를 안 채운 나머지가 현금입니다."
+    ? "현금 묶음 전체는 따로 정하지 않아요 — 목표를 안 채운 나머지가 현금입니다. 아래에서 통화별로는 정할 수 있어요."
     : cat.isUntagged
       ? `"${cat.label}"는 구성이 유동적이라 묶음으로 조정하지 않아요. 종목별로 정해주세요.`
       : undefined;
@@ -354,6 +454,14 @@ function SheetContent({
               </button>
             ))}
           </nav>
+          {/* 기준이 보기만 바꾸면 "그래서 어디를 고치지?"가 된다 — 입력칸도 같이 따라간다. */}
+          <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+            {basis === "within"
+              ? cat.target > 0
+                ? `아래 목표 입력칸도 ${cat.label} 안에서 기준이에요. 넣으면 ${pct(cat.target)}에 대한 비율로 환산해 저장합니다.`
+                : `${cat.label} 묶음 목표가 아직 없어서 이 기준으로는 입력할 수 없어요. 위에서 묶음 목표부터 정해주세요.`
+              : "아래 목표 입력칸은 전체 자산 대비예요."}
+          </p>
         </div>
       )}
 

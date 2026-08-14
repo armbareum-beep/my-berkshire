@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   buildLens,
+  cashCurrency,
+  cashKey,
+  isCashKey,
   scaleGroupTarget,
   sumTargets,
   withinBasis,
@@ -231,5 +234,34 @@ describe("scaleGroupTarget — 묶음을 움직여 진실을 다시 쓴다", () 
     expect(scaleGroupTarget(before, [], 0.5)).toEqual(before);
     expect(scaleGroupTarget(before, us, Number.NaN)).toEqual(before);
     expect(scaleGroupTarget(before, us, -1)).toEqual(before);
+  });
+});
+
+describe("통화 현금 목표 키", () => {
+  it("예약 키로 왕복한다", () => {
+    expect(cashKey("usd")).toBe("CASH:USD");
+    expect(isCashKey("CASH:USD")).toBe(true);
+    expect(cashCurrency("CASH:JPY")).toBe("JPY");
+  });
+
+  it("종목 심볼과 섞이지 않는다", () => {
+    expect(isCashKey("META")).toBe(false);
+    expect(isCashKey("005930")).toBe(false);
+    expect(cashCurrency("META")).toBeNull();
+  });
+
+  it("통화 목표도 같은 평면 맵에서 비례 스케일된다", () => {
+    // "현금 20%" 를 맞추면 달러·원화가 비율 그대로 움직인다.
+    const next = scaleGroupTarget(
+      t({ "CASH:KRW": 0.06, "CASH:USD": 0.04, META: 0.5 }),
+      [
+        { symbol: "CASH:KRW", value: 600 },
+        { symbol: "CASH:USD", value: 400 },
+      ],
+      0.2,
+    );
+    expect(next["CASH:KRW"].target).toBeCloseTo(0.12);
+    expect(next["CASH:USD"].target).toBeCloseTo(0.08);
+    expect(next.META.target).toBeCloseTo(0.5);
   });
 });

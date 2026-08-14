@@ -9,6 +9,9 @@ import { loadSecurityMeta, backfillSectors } from "@/lib/securities";
 import { companyCashPools } from "@/lib/finance/valuation";
 import { tagLabel } from "@/lib/allocation";
 import { readTargets } from "@/lib/targetWeights";
+import { cashKey, isCashKey } from "@/lib/targetLens";
+import { getFxToKrw } from "@/lib/finance/fx";
+import { currencyMeta } from "@/lib/finance/currencies";
 import { BackButton } from "@/components/BackButton";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
 import { StockRow } from "@/components/ui/StockRow";
@@ -120,10 +123,40 @@ export default async function AllocationDetailPage({
     cat.items.push({ symbol: a.symbol, name: a.name, value: a.value, avgCost: a.avgCost, quantity: a.quantity, changeRate: a.changeRate, assetType: meta[a.symbol]?.assetType ?? "주식", country: meta[a.symbol]?.country ?? "기타", target: flatTargets[a.symbol]?.target ?? 0, held: true });
     map.set(label, cat);
   }
-  // 현금 슬라이스 — 유형·국가·산업 모두 포함(산업은 현금 카테고리 추가).
+  // ── 현금 슬라이스 — 통화별로 쪼갠다 ──
+  //
+  // 달러·엔·원화를 얼마나 들고 갈지도 배분 결정이다. 한 덩어리로 두면 목표를 매길 수가
+  // 없어서 통화마다 한 줄로 세운다. 목표 키는 `CASH:USD` 예약 키(`lib/targetLens.ts`)라
+  // 저장 형식은 평면 그대로다.
+  //
+  // 통화 잔액은 **네이티브**(₩·$·¥)라 그대로 더할 수 없다. 현재 환율로 ₩ 환산한 뒤,
+  // 그 비율로 `data.cash`(표시통화 합계)를 나눈다 — 합계가 대시보드와 어긋나지 않는다.
   if (data.cash > 0) {
     const cash = map.get("현금") ?? { label: "현금", value: 0, weight: 0, target: 0, isCash: true, isUntagged: false, items: [] };
     cash.value += data.cash;
+
+    const held = Object.entries(cashPools).filter(([, v]) => Math.abs(v) > 0.005);
+    const fx = await getFxToKrw(held.map(([c]) => c));
+    // 환율을 못 받은 통화는 뺀다 — 0으로 넣으면 비중이 조용히 틀어진다.
+    const priced = held
+      .map(([ccy, native]) => ({ ccy, krw: native * (fx[ccy] ?? 0) }))
+      .filter((x) => fx[x.ccy] != null && x.krw > 0);
+    const krwTotal = priced.reduce((s, x) => s + x.krw, 0);
+
+    for (const { ccy, krw } of priced) {
+      cash.items.push({
+        symbol: cashKey(ccy),
+        name: `${currencyMeta(ccy).name} 현금`,
+        value: krwTotal > 0 ? data.cash * (krw / krwTotal) : 0,
+        avgCost: 0,
+        quantity: 0,
+        changeRate: null,
+        assetType: "현금",
+        country: "기타",
+        target: flatTargets[cashKey(ccy)]?.target ?? 0,
+        held: true,
+      });
+    }
     map.set("현금", cash);
   }
 
@@ -154,7 +187,8 @@ export default async function AllocationDetailPage({
   const targetByLabel = new Map<string, number>();
   let targetSum = 0;
   for (const [sym, rule] of Object.entries(flatTargets)) {
-    const label = tagLabel(meta[sym], cfg.key);
+    // 통화 목표는 종목 메타가 없다 — 태그를 물으면 "기타"·"미분류"로 잘못 떨어진다.
+    const label = isCashKey(sym) ? "현금" : tagLabel(meta[sym], cfg.key);
     targetByLabel.set(label, (targetByLabel.get(label) ?? 0) + rule.target);
     targetSum += rule.target;
   }
@@ -171,7 +205,7 @@ export default async function AllocationDetailPage({
   const heldSet = new Set(data.allocation.map((a) => a.symbol));
   const unheldByLabel = new Map<string, CategoryItem[]>();
   for (const [sym, rule] of Object.entries(flatTargets)) {
-    if (heldSet.has(sym) || rule.target <= 0) continue;
+    if (heldSet.has(sym) || isCashKey(sym) || rule.target <= 0) continue;
     const label = tagLabel(meta[sym], cfg.key);
     const list = unheldByLabel.get(label) ?? [];
     list.push({
