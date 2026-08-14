@@ -3,7 +3,8 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { loadAllocateData, type AllocateRow } from "@/lib/allocateData";
-import { ASSET_TYPE_ORDER, type TagKey } from "@/lib/allocation";
+import { ASSET_TYPE_ORDER } from "@/lib/allocation";
+import { isUntaggedLabel } from "@/lib/targetLens";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
 import { AllocateRail } from "@/components/allocate/AllocateRail";
 import type { LensRows } from "@/components/allocate/TargetLensPanel";
@@ -17,8 +18,9 @@ import type { TypeTargetRow } from "@/components/allocate/TypeTargetList";
  * 이 화면 안에서 이어진다 — 목표 → 금액 → 묶음 → 배분 → 주수
  * (`components/allocate/AllocateRail.tsx`).
  *
- * 1단계에서 볼 목표는 **세 각도**로 만들어 넘긴다(유형·국가·산업). 셋 다 분모가 투자자산
+ * 1단계에서 정할 목표는 **세 각도**로 만들어 넘긴다(유형·국가·산업). 셋 다 분모가 투자자산
  * 이라 어느 탭을 봐도 합이 100% 다 — 축만 바뀌고 진실은 하나다(`lib/targetLens.ts`).
+ * 세 축 모두 그 자리에서 밀 수 있고, 밀면 구성 종목의 평면 목표가 비례로 따라간다.
  *
  * 이 서버 컴포넌트가 하는 일은 데이터 적재와 **못 넘어가는 관문 두 개**뿐이다. 관문도
  * 카드를 늘어놓지 않고 "지금 할 일 하나 + 버튼 하나"로 낸다(`docs/user-rails-v1.md` §3
@@ -69,7 +71,6 @@ export default async function AllocatePage() {
    * 채운 나머지**이고, 빼면 합이 100% 가 아니게 되어 "얼마 남았나"를 읽을 수 없다.
    */
   function lensRowsFor(
-    key: TagKey,
     tag: (r: AllocateRow) => string,
     href: (label: string) => string,
     /** 라벨 정렬 — 없으면 평가액 내림차순. */
@@ -99,18 +100,23 @@ export default async function AllocatePage() {
         value: groups.get(label)!.value,
         current: w(groups.get(label)!.value),
         target: groups.get(label)!.target,
-        // 유형만 여기서 정한다. 국가·산업은 종목 목표를 묶어 본 결과라 읽기 전용이다
-        // (`components/allocate/TargetLensPanel.tsx`).
-        readOnly: key !== "assetType",
+        // 기타·미분류만 못 민다 — 구성이 유동적이라 묶음으로 밀면 엉뚱한 종목이
+        // 딸려간다(`setGroupTarget` 도 서버에서 같은 이유로 거부한다).
+        readOnly: isUntaggedLabel(label),
+        note: isUntaggedLabel(label)
+          ? "구성이 자주 바뀌어 묶음으로는 못 정해요 — 줄을 눌러 종목별로 정해주세요."
+          : undefined,
         href: href(label),
       })),
-      // 현금은 어느 렌즈에서도 직접 정하지 않는다(§16.2).
+      // 현금은 어느 렌즈에서도 직접 정하지 않는다 — 목표를 안 채운 나머지가 곧
+      // 현금이라 정의상 결과값이다(§16.2).
       {
         label: "현금",
         value: cash,
         current: w(cash),
         target: Math.max(0, 1 - targetSum),
         readOnly: true,
+        note: "다른 곳의 목표를 안 채운 나머지가 현금이에요.",
         href: "/allocation/cash",
       },
     ];
@@ -118,18 +124,15 @@ export default async function AllocatePage() {
 
   const lensRows: LensRows = {
     assetType: lensRowsFor(
-      "assetType",
       (r) => r.assetType,
       (t) => `/allocation/financial/${encodeURIComponent(t)}`,
       ASSET_TYPE_ORDER,
     ),
     country: lensRowsFor(
-      "country",
       (r) => r.country,
       (l) => `/allocation/group/country/${encodeURIComponent(l)}`,
     ),
     sector: lensRowsFor(
-      "sector",
       (r) => r.sector,
       (l) => `/allocation/group/sector/${encodeURIComponent(l)}`,
     ),

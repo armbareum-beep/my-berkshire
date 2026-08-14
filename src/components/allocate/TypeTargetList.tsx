@@ -12,24 +12,30 @@ import { Donut } from "@/components/dashboard/Donut";
 import { donutColor } from "@/components/dashboard/donutPalette";
 
 export interface TypeTargetRow {
-  /** 자산유형(주식·ETF·코인·원자재) 또는 현금. */
+  /** 묶음 이름 — 유형(주식·ETF…) / 국가 / 산업, 또는 현금. */
   label: string;
   value: number;
   /** 투자자산 대비 현재 비중 0~1. */
   current: number;
   /** 투자자산 대비 목표 0~1. */
   target: number;
-  /** 현금은 "목표를 안 채운 나머지"라 직접 못 정한다(§16.2). */
+  /**
+   * 직접 못 정하는 줄. 둘뿐이다 —
+   * · 현금: "목표를 안 채운 나머지"가 곧 현금이라 정의상 정할 수 없다(§16.2)
+   * · 기타·미분류: 구성이 유동적이라 묶음으로 밀면 엉뚱한 종목이 딸려간다
+   */
   readOnly?: boolean;
-  /** 이 줄을 누르면 갈 곳 — 그 유형 안(종목·국가·산업) 또는 통화별. */
+  /** 못 정하는 줄에 이유를 한 줄로. */
+  note?: string;
+  /** 이 줄을 누르면 갈 곳 — 그 묶음 안(종목 목록). */
   href?: string;
 }
 
 /**
  * 목표 비중 — 레일 **1단계**의 목록 한 장.
  *
- * 같은 목록을 세 렌즈가 함께 쓴다(`TargetLensPanel`) — 유형은 입력칸이 열리고, 국가·산업은
- * 전부 `readOnly` 로 와서 읽고 눌러 들어가기만 한다. 왜 그렇게 갈랐는지는 그쪽에 적었다.
+ * 같은 목록을 세 렌즈가 함께 쓴다(`TargetLensPanel`). 어느 렌즈든 **여기서 바로 고친다** —
+ * 저장은 `setGroupTarget(lens, label, …)` 로 가고, 축은 `lens` prop 으로 받는다.
  *
  * ## 왜 레일 안으로 들어왔나
  *
@@ -50,9 +56,9 @@ export interface TypeTargetRow {
  *
  * ## 줄을 누르면 그 안으로 들어간다
  *
- * 유형 네 줄만 여기서 정하고, 더 파고드는 건 **그 줄을 눌러서** 간다 — 주식을 누르면 주식
- * 안(종목·국가·산업), 현금을 누르면 통화별. 사용자 지적: *"처음 자산 나누고 거기서 주식이나
- * ETF 현금 누르면 바로 이동시키면 되잖아."*
+ * 묶음 비중은 여기서 정하고, 더 파고드는 건 **그 줄을 눌러서** 간다 — 주식을 누르면 주식
+ * 안(종목·국가·산업), 미국을 누르면 미국 종목, 현금을 누르면 통화별. 사용자 지적:
+ * *"처음 자산 나누고 거기서 주식이나 ETF 현금 누르면 바로 이동시키면 되잖아."*
  *
  * 맞다. 목록 아래에 `자세히 보기` 링크를 따로 두면 **같은 목적지로 가는 길이 둘**이 되고,
  * 줄을 눌러도 아무 일이 안 일어나 어디로 가야 할지 다시 찾게 된다.
@@ -212,6 +218,12 @@ function TypeRow({
             </span>
           )}
         </p>
+        {/* 못 정하는 줄에는 이유를 붙인다 — 칸이 없는데 설명도 없으면 고장으로 읽힌다. */}
+        {row.readOnly && row.note && (
+          <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+            {row.note}
+          </p>
+        )}
       </div>
       {row.readOnly ? (
         <p className="shrink-0 text-sm font-bold tabular-nums text-muted-foreground">
