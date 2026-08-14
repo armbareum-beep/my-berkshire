@@ -4,8 +4,25 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveHolding } from "@/lib/holdings";
 import { getPortfolio } from "@/lib/portfolio";
-import { readTargets, toStored, withTarget } from "@/lib/targetWeights";
-import { loadSecurityMeta, upsertSecurities } from "@/lib/securities";
+import { computeDashboard } from "@/lib/dashboard";
+import {
+  readTargets,
+  toStored,
+  withTarget,
+  type TargetRule,
+} from "@/lib/targetWeights";
+import {
+  buildLens,
+  scaleGroupTarget,
+  sumTargets,
+  CASH_LABEL,
+} from "@/lib/targetLens";
+import type { TagKey } from "@/lib/allocation";
+import {
+  backfillSectors,
+  loadSecurityMeta,
+  upsertSecurities,
+} from "@/lib/securities";
 import type { Json } from "@/lib/supabase/database.types";
 
 type Result = { ok: true } | { ok: false; error: string };
@@ -14,6 +31,10 @@ type Result = { ok: true } | { ok: false; error: string };
 function revalidateAllocate() {
   revalidatePath("/allocate");
   revalidatePath("/allocate/settings");
+  // 렌즈 화면이 목표비중을 함께 보여준다 — 안 지우면 방금 바꾼 값이 옛 숫자로 보인다.
+  for (const tag of ["type", "country", "sector"]) {
+    revalidatePath(`/allocation/${tag}`);
+  }
 }
 
 /**
@@ -215,4 +236,151 @@ export async function setTargetFromSearch(
     if (!approved.ok) return approved;
   }
   return setTargetWeight(symbol, target);
+}
+
+/** 그룹 조정 결과 — 되돌리기를 위해 **바꾸기 직전의 저장값**을 그대로 돌려준다. */
+export type GroupTargetResult =
+  | {
+      ok: true;
+      /** 직전 저장값(평면). `restoreTargets` 에 그대로 넘기면 원상복구된다. */
+      previous: Record<string, TargetRule>;
+      /** 바꾼 뒤의 목표 합(0~1+). 1을 넘으면 화면이 경고한다. */
+      total: number;
+    }
+  | { ok: false; error: string };
+
+/**
+ * 묶음(유형·국가·산업) 목표를 옮긴다 — 예: "미국 60%".
+ *
+ * **묶음 목표를 그 자체로 저장하지 않는다.** 구성 종목의 평면 목표를 비례로 움직여 합이
+ * 요청한 값이 되게 한다(`lib/targetLens.ts:scaleGroupTarget`). 진실은 여전히 종목 목표
+ * 하나뿐이라 은퇴시킨 2층 구조가 되돌아오지 않는다(스펙 §13.2, #70).
+ *
+ * 구성원은 **서버에서 다시 묶는다** — 화면이 보낸 목록을 믿으면 화면과 저장이 갈릴 때
+ * 엉뚱한 종목의 목표가 바뀐다.
+ */
+export async function setGroupTarget(
+  key: TagKey,
+  label: string,
+  /** 0~1. 0 이면 그 묶음의 목표를 전부 지운다. */
+  next: number,
+): Promise<GroupTargetResult> {
+  if (!label) return { ok: false, error: "묶음이 올바르지 않습니다." };
+  if (!Number.isFinite(next) || next < 0 || next > 1)
+    return { ok: false, error: "목표비중은 0~100% 사이여야 합니다." };
+  if (label === CASH_LABEL)
+    return {
+      ok: false,
+      error: "현금은 따로 정하지 않아요 — 목표를 안 채운 나머지가 현금입니다.",
+    };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "로그인이 필요합니다." };
+
+  const portfolio = await getPortfolio(supabase);
+  if (!portfolio) return { ok: false, error: "회사를 찾을 수 없습니다." };
+
+  // 비중 비율만 쓰므로 표시통화는 결과에 영향이 없다(₩ 기준으로 고정).
+  const dashboard = computeDashboard(portfolio, "KRW");
+  const stored = (portfolio.holding.target_weights ?? {}) as Record<
+    string,
+    unknown
+  >;
+  const symbols = [
+    ...new Set([
+      ...dashboard.allocation.map((a) => a.symbol),
+      ...Object.keys(stored),
+    ]),
+  ];
+  const meta = await loadSecurityMeta(supabase, symbols);
+  if (key === "sector") {
+    const filled = await backfillSectors(supabase, meta);
+    for (const [s, sec] of Object.entries(filled)) if (meta[s]) meta[s].sector = sec;
+  }
+
+  const current = readTargets(
+    portfolio.holding.target_weights,
+    (portfolio.holding.category_targets ?? {}) as Record<string, number>,
+    symbols.map((s) => ({ symbol: s, assetType: meta[s]?.assetType ?? "주식" })),
+  );
+
+  const group = buildLens(
+    {
+      holdings: dashboard.allocation.map((a) => ({
+        symbol: a.symbol,
+        name: a.name,
+        value: a.value,
+      })),
+      cash: dashboard.cash,
+      meta,
+      targets: current,
+    },
+    key,
+  ).find((g) => g.label === label);
+
+  if (!group) return { ok: false, error: "그 묶음을 찾지 못했어요." };
+  if (group.isUntagged)
+    return {
+      ok: false,
+      error: `"${label}"는 구성이 유동적이라 묶음으로 조정하지 않아요. 종목별로 정해주세요.`,
+    };
+  if (group.members.length === 0)
+    return { ok: false, error: "이 묶음에 조정할 종목이 없어요." };
+
+  const previous = toStored(current);
+  const updated = toStored(
+    scaleGroupTarget(
+      current,
+      group.members.map((m) => ({ symbol: m.symbol, value: m.value })),
+      next,
+    ),
+  );
+
+  const { error } = await supabase
+    .from("holdings")
+    .update({ target_weights: updated as unknown as Json })
+    .eq("id", portfolio.holding.id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidateAllocate();
+  revalidatePath("/rebalance");
+  return { ok: true, previous, total: sumTargets(updated) };
+}
+
+/**
+ * 저장값을 통째로 되돌린다 — `setGroupTarget` 의 되돌리기 전용.
+ *
+ * 묶음 조정은 종목 여러 개를 한 번에 바꾸므로, 실수했을 때 하나씩 되돌리게 하면 안 된다.
+ * 받은 값은 `readTargets`→`toStored` 를 태워 검증한다(임의 JSON 을 그대로 쓰지 않는다).
+ */
+export async function restoreTargets(
+  stored: Record<string, TargetRule>,
+): Promise<Result> {
+  if (!stored || typeof stored !== "object")
+    return { ok: false, error: "되돌릴 값이 올바르지 않습니다." };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "로그인이 필요합니다." };
+
+  const holding = await getActiveHolding(supabase);
+  if (!holding) return { ok: false, error: "회사를 찾을 수 없습니다." };
+
+  // 평면 형식으로만 되돌린다 — 레거시 환산이 필요 없으므로 symbols 는 비운다.
+  const safe = toStored(readTargets(stored, {}, []));
+
+  const { error } = await supabase
+    .from("holdings")
+    .update({ target_weights: safe as unknown as Json })
+    .eq("id", holding.id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidateAllocate();
+  revalidatePath("/rebalance");
+  return { ok: true };
 }

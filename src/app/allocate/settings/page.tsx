@@ -1,39 +1,29 @@
 import Link from "next/link";
+import { PieChart } from "lucide-react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getPortfolio } from "@/lib/portfolio";
-import { loadSecurityMeta } from "@/lib/securities";
 import { readTargets } from "@/lib/targetWeights";
+import { sumTargets } from "@/lib/targetLens";
 import { loadAllocateData } from "@/lib/allocateData";
-import { planAllocation } from "@/lib/allocate";
+import { pct } from "@/lib/format";
 import { BackButton } from "@/components/BackButton";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
 import { HurdleCard } from "@/components/allocate/HurdleCard";
 import { InvestableCashCard } from "@/components/allocate/InvestableCashCard";
-import {
-  TargetWeightEditor,
-  type TargetRow,
-} from "@/components/allocate/TargetWeightEditor";
 
 /**
- * `/allocate/settings` — 배분을 움직이는 **입력값을 한 곳에** 모은 화면.
+ * `/allocate/settings` — 배분을 움직이는 **입력값**을 모은 화면.
  *
- * ## 후보 목록을 걷어낸 이유
+ * ## 목표비중이 여기 없는 이유
  *
- * 한때 여기엔 "후보(Approved Universe)"를 산업별로 고르는 섹션이 따로 있었다. 그런데
- * 목표비중을 검색형으로 바꾸면서(#66) **비중을 정하면 자동으로 후보가 되도록** 했다.
- * 그 순간 후보 섹션은 같은 것을 두 번 묻는 자리가 됐다 — 같은 종목이 한 화면에 두 번
- * 나오고, 그중 하나는 산업별로 길게 늘어선 리스트였다.
+ * 한때 이 화면에 목표비중 편집기가 있었다. 그런데 국가·산업별로 쏠림을 **보는 곳**은
+ * `/allocation` 이었다 — "미국이 너무 많네" 하고 판단해도 고치려면 여기로 나와서 종목을
+ * 하나씩 찾아야 했다. 보는 곳과 정하는 곳이 갈려 있으면 다각적 판단이 성립하지 않는다.
  *
- * 그래서 규칙을 하나로 줄인다.
- *
- * > **목표비중을 정한 종목이 배분 대상이다. 안 정했으면 대상이 아니다.**
- *
- * "배분에서 빼기"도 따로 필요 없다 — 목표비중을 0으로 두면 배분되지 않는다.
- * 산업별 쏠림을 보는 일은 조회 화면(`/allocation/sector`)이 이미 한다.
- *
- * 순서는 영향이 큰 것부터 — 목표비중 > 허들 > 투자 가능 현금.
+ * 그래서 목표비중은 `/allocation` 렌즈 화면으로 합쳤다(종목별 / 유형별 / 국가별 / 산업별).
+ * 여기 남은 건 **비중이 아닌 입력값** 둘 — 허들과 투자 가능 현금이다.
  */
 export default async function AllocateSettingsPage() {
   const supabase = await createClient();
@@ -53,43 +43,13 @@ export default async function AllocateSettingsPage() {
   const data = await loadAllocateData(supabase, displayCcy);
   if (!data) redirect("/onboarding");
 
-  // 현재 비중은 엔진에서 그대로 받아 쓴다(화면이 따로 계산하면 두 숫자가 갈린다).
-  const legs = planAllocation(data.rows, 0).legs;
-  const weightOf = new Map(legs.map((l) => [l.key, l.currentWeight]));
-  const targetRows: TargetRow[] = data.rows.map((r) => ({
-    symbol: r.symbol,
-    label: r.label,
-    target: r.target,
-    currentWeight: weightOf.get(r.key) ?? 0,
-    held: r.held,
-  }));
-
-  // 후보가 아닌데 목표비중이 남아 있는 종목도 넣는다 — 빼면 저장된 값이 보이지도
-  // 지워지지도 않는 유령이 된다.
-  const candidateSet = new Set(data.rows.map((r) => r.symbol));
-  const storedTargets = readTargets(
-    portfolio.holding.target_weights,
-    (portfolio.holding.category_targets ?? {}) as Record<string, number>,
-    [],
+  const total = sumTargets(
+    readTargets(
+      portfolio.holding.target_weights,
+      (portfolio.holding.category_targets ?? {}) as Record<string, number>,
+      data.rows.map((r) => ({ symbol: r.symbol, assetType: r.assetType })),
+    ),
   );
-  const orphans = Object.entries(storedTargets).filter(
-    ([symbol, rule]) => !candidateSet.has(symbol) && rule.target > 0,
-  );
-  if (orphans.length > 0) {
-    const meta = await loadSecurityMeta(
-      supabase,
-      orphans.map(([symbol]) => symbol),
-    );
-    for (const [symbol, rule] of orphans) {
-      targetRows.push({
-        symbol,
-        label: meta[symbol]?.name ?? symbol,
-        target: rule.target,
-        currentWeight: 0,
-        held: false,
-      });
-    }
-  }
 
   return (
     <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
@@ -102,7 +62,24 @@ export default async function AllocateSettingsPage() {
         </p>
       </div>
 
-      <TargetWeightEditor rows={targetRows} />
+      {/* 목표비중은 렌즈 화면에서 — 보는 곳과 정하는 곳을 하나로 합쳤다. */}
+      <Link
+        href="/allocation/stock"
+        className="flex items-center gap-4 rounded-2xl bg-card p-5 shadow-card transition active:scale-[0.99]"
+      >
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-secondary">
+          <PieChart size={20} aria-hidden />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold">목표비중</span>
+          <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
+            {total > 0
+              ? `합계 ${pct(total)} · 종목·유형·국가·산업으로 보고 바로 고쳐요`
+              : "아직 정한 게 없어요 — 어떤 기업을 얼마나 들고 갈지 정해요"}
+          </span>
+        </span>
+        <span className="shrink-0 text-foreground/40">›</span>
+      </Link>
 
       <HurdleCard rate={data.house} passing={data.passing} total={data.judged} />
 
@@ -112,13 +89,6 @@ export default async function AllocateSettingsPage() {
         currency={data.currency}
         isSet={data.investableCashSet}
       />
-
-      <Link
-        href="/allocation/sector"
-        className="px-2 text-center text-xs font-medium text-muted-foreground underline"
-      >
-        산업·국가별로 지금 어디에 쏠려 있는지 보기
-      </Link>
     </main>
   );
 }

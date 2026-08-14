@@ -18,6 +18,7 @@ import { donutColor } from "@/components/dashboard/donutPalette";
 import { money, pct, signedMoneyShort, signedPct, changeColor } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { CategoryDrawer, type DrawerCategory } from "@/components/allocation/CategoryDrawer";
+import { AllocationTabs } from "@/components/allocation/AllocationTabs";
 import { EmptyState } from "@/components/ui/EmptyState";
 
 const TAGS = {
@@ -35,11 +36,19 @@ interface CategoryItem {
   changeRate: number | null;
   assetType: string;
   country: string;
+  /** 전체 자산 대비 목표비중 0~1. 안 정했으면 0. */
+  target: number;
+  /** 한 주라도 들고 있나. 목표만 있고 아직 안 산 종목은 false. */
+  held: boolean;
 }
 interface Category {
   label: string;
   value: number;
   weight: number; // 0~1 전체 대비
+  /** 구성 종목 목표의 합 0~1. */
+  target: number;
+  isCash: boolean;
+  isUntagged: boolean;
   items: CategoryItem[];
 }
 
@@ -82,18 +91,38 @@ export default async function AllocationDetailPage({
     for (const [s, sec] of Object.entries(filled)) if (meta[s]) meta[s].sector = sec;
   }
 
+  // 국가·산업 목표를 따로 저장하지 않는다. 그러면 같은 것을 두 곳에서 정하게 되어
+  // 은퇴시킨 2층 구조가 되돌아온다(스펙 §13.2). 진실은 종목 목표비중 하나뿐이고,
+  // 국가·산업은 그걸 묶어서 보는 **렌즈**다.
+  //
+  // 보유하지 않은 종목의 목표도 포함해야 한다 — "아직 안 샀지만 미국 20% 목표"가
+  // 빠지면 목표 합이 실제와 달라진다. 그래서 meta 를 목표 심볼까지 넓혀 읽는다.
+  const flatTargets = readTargets(
+    portfolio.holding.target_weights,
+    (portfolio.holding.category_targets ?? {}) as Record<string, number>,
+    data.allocation.map((a) => ({
+      symbol: a.symbol,
+      assetType: meta[a.symbol]?.assetType ?? "주식",
+    })),
+  );
+  const targetSymbols = Object.keys(flatTargets).filter((sym) => !meta[sym]);
+  if (targetSymbols.length > 0) {
+    const extra = await loadSecurityMeta(supabase, targetSymbols);
+    for (const [sym, rec] of Object.entries(extra)) if (rec) meta[sym] = rec;
+  }
+
   // 카테고리별 합산 + 구성종목
   const map = new Map<string, Category>();
   for (const a of data.allocation) {
     const label = tagLabel(meta[a.symbol], cfg.key);
-    const cat = map.get(label) ?? { label, value: 0, weight: 0, items: [] };
+    const cat = map.get(label) ?? { label, value: 0, weight: 0, target: 0, isCash: label === "현금", isUntagged: label === "미분류" || label === "기타", items: [] };
     cat.value += a.value;
-    cat.items.push({ symbol: a.symbol, name: a.name, value: a.value, avgCost: a.avgCost, quantity: a.quantity, changeRate: a.changeRate, assetType: meta[a.symbol]?.assetType ?? "주식", country: meta[a.symbol]?.country ?? "기타" });
+    cat.items.push({ symbol: a.symbol, name: a.name, value: a.value, avgCost: a.avgCost, quantity: a.quantity, changeRate: a.changeRate, assetType: meta[a.symbol]?.assetType ?? "주식", country: meta[a.symbol]?.country ?? "기타", target: flatTargets[a.symbol]?.target ?? 0, held: true });
     map.set(label, cat);
   }
   // 현금 슬라이스 — 유형·국가·산업 모두 포함(산업은 현금 카테고리 추가).
   if (data.cash > 0) {
-    const cash = map.get("현금") ?? { label: "현금", value: 0, weight: 0, items: [] };
+    const cash = map.get("현금") ?? { label: "현금", value: 0, weight: 0, target: 0, isCash: true, isUntagged: false, items: [] };
     cash.value += data.cash;
     map.set("현금", cash);
   }
@@ -122,26 +151,6 @@ export default async function AllocationDetailPage({
 
   // ── 카테고리별 목표비중 — **종목 목표에서 파생한다** ──
   //
-  // 국가·산업 목표를 따로 저장하지 않는다. 그러면 같은 것을 두 곳에서 정하게 되어
-  // 은퇴시킨 2층 구조가 되돌아온다(스펙 §13.2). 진실은 종목 목표비중 하나뿐이고,
-  // 국가·산업은 그걸 묶어서 보는 **렌즈**다.
-  //
-  // 보유하지 않은 종목의 목표도 포함해야 한다 — "아직 안 샀지만 미국 20% 목표"가
-  // 빠지면 목표 합이 실제와 달라진다. 그래서 meta 를 목표 심볼까지 넓혀 읽는다.
-  const flatTargets = readTargets(
-    portfolio.holding.target_weights,
-    (portfolio.holding.category_targets ?? {}) as Record<string, number>,
-    data.allocation.map((a) => ({
-      symbol: a.symbol,
-      assetType: meta[a.symbol]?.assetType ?? "주식",
-    })),
-  );
-  const targetSymbols = Object.keys(flatTargets).filter((sym) => !meta[sym]);
-  if (targetSymbols.length > 0) {
-    const extra = await loadSecurityMeta(supabase, targetSymbols);
-    for (const [sym, rec] of Object.entries(extra)) if (rec) meta[sym] = rec;
-  }
-
   const targetByLabel = new Map<string, number>();
   let targetSum = 0;
   for (const [sym, rule] of Object.entries(flatTargets)) {
@@ -153,10 +162,59 @@ export default async function AllocationDetailPage({
   if (targetSum < 1 - 1e-9) targetByLabel.set("현금", (targetByLabel.get("현금") ?? 0) + (1 - targetSum));
   const hasTargets = targetSum > 0;
 
+  // ── 목표를 묶음·종목에 얹는다 ──
+  // 조회(무엇을 얼마나 들고 있나)와 설정(얼마나 들고 갈 건가)이 다른 화면에 있으면
+  // "미국이 너무 많네" 하고 판단해도 고치러 나가야 한다. 그래서 한 화면에서 다룬다.
+  //
+  // 보유하지 않은 목표 종목도 묶음에 넣는다 — 빠지면 "미국 60%"를 맞출 때 아직 안 산
+  // 미국 기업이 계산에서 누락된다.
+  const heldSet = new Set(data.allocation.map((a) => a.symbol));
+  const unheldByLabel = new Map<string, CategoryItem[]>();
+  for (const [sym, rule] of Object.entries(flatTargets)) {
+    if (heldSet.has(sym) || rule.target <= 0) continue;
+    const label = tagLabel(meta[sym], cfg.key);
+    const list = unheldByLabel.get(label) ?? [];
+    list.push({
+      symbol: sym,
+      name: meta[sym]?.name ?? sym,
+      value: 0,
+      avgCost: 0,
+      quantity: 0,
+      changeRate: null,
+      assetType: meta[sym]?.assetType ?? "주식",
+      country: meta[sym]?.country ?? "기타",
+      target: rule.target,
+      held: false,
+    });
+    unheldByLabel.set(label, list);
+  }
+
+  const withTargets: Category[] = allCategories.map((c) => {
+    const extra = unheldByLabel.get(c.label) ?? [];
+    unheldByLabel.delete(c.label);
+    return {
+      ...c,
+      target: targetByLabel.get(c.label) ?? 0,
+      items: [...c.items, ...extra],
+    };
+  });
+  // 아직 한 주도 없지만 목표만 있는 묶음(예: "대만 5%")도 보여야 한다.
+  for (const [label, items] of unheldByLabel) {
+    withTargets.push({
+      label,
+      value: 0,
+      weight: 0,
+      target: targetByLabel.get(label) ?? 0,
+      isCash: false,
+      isUntagged: label === "미분류" || label === "기타",
+      items,
+    });
+  }
+
   // ?only=한국 → 해당 국가만 표시 (홈 카드 국가 탭에서 진입)
   const categories = onlyLabel
-    ? allCategories.filter((c) => c.label === onlyLabel)
-    : allCategories;
+    ? withTargets.filter((c) => c.label === onlyLabel)
+    : withTargets;
 
   const pageTitle = onlyLabel ? `${onlyLabel} 자산` : cfg.title;
 
@@ -183,30 +241,7 @@ export default async function AllocationDetailPage({
       <BottomTabBar />
       <BackButton />
       {/* 단일 국가 뷰에서는 탭 숨김 */}
-      {!onlyLabel && (
-        <nav className="flex gap-1 rounded-xl bg-secondary p-1">
-          {(
-            [
-              { label: "유형별", seg: "type" },
-              { label: "국가별", seg: "country" },
-              { label: "산업별", seg: "sector" },
-            ] as const
-          ).map((t) => (
-            <Link
-              key={t.seg}
-              href={`/allocation/${t.seg}`}
-              className={cn(
-                "flex-1 rounded-lg py-1.5 text-center text-sm font-semibold transition",
-                tag === t.seg
-                  ? "bg-card text-foreground shadow-sm"
-                  : "text-muted-foreground",
-              )}
-            >
-              {t.label}
-            </Link>
-          ))}
-        </nav>
-      )}
+      {!onlyLabel && <AllocationTabs active={tag} />}
       <h1 className="text-2xl font-extrabold tracking-tight">{pageTitle}</h1>
 
       {categories.length === 0 ? (
@@ -247,6 +282,8 @@ export default async function AllocationDetailPage({
             <CategoryDrawer
               categories={categories as DrawerCategory[]}
               tag={tag}
+              tagKey={cfg.key}
+              total={total}
               currency={data.currency}
             />
           ) : (
