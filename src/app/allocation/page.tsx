@@ -54,21 +54,16 @@ export default async function AllocationPage() {
   const total = financial + cash + real;
   const w = (v: number) => (total > 0 ? v / total : 0);
 
+  // 투자자산(금융자산+현금)을 한 줄로 묶는다 — 목표비중이 100%로 성립하는 단위가
+  // 그것이기 때문이다. 갈라놓으면 어느 화면에서도 목표 합이 100%로 보이지 않는다.
   const rows: LevelRow[] = [
     {
-      key: "financial",
-      label: "금융자산",
-      value: financial,
-      weight: w(financial),
+      key: "invest",
+      label: "투자자산",
+      value: financial + cash,
+      weight: w(financial + cash),
       href: "/allocation/financial",
-      badge: `${data.allocation.length}종목`,
-    },
-    {
-      key: "cash",
-      label: "현금",
-      value: cash,
-      weight: w(cash),
-      href: "/allocation/cash",
+      badge: "목표비중 대상",
     },
     ...(real > 0
       ? [

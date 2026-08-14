@@ -1,13 +1,8 @@
-import Link from "next/link";
-import { PieChart } from "lucide-react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getPortfolio } from "@/lib/portfolio";
-import { readTargets } from "@/lib/targetWeights";
-import { sumTargets } from "@/lib/targetLens";
 import { loadAllocateData } from "@/lib/allocateData";
-import { pct } from "@/lib/format";
 import { BackButton } from "@/components/BackButton";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
 import { HurdleCard } from "@/components/allocate/HurdleCard";
@@ -18,12 +13,11 @@ import { InvestableCashCard } from "@/components/allocate/InvestableCashCard";
  *
  * ## 목표비중이 여기 없는 이유
  *
- * 한때 이 화면에 목표비중 편집기가 있었다. 그런데 국가·산업별로 쏠림을 **보는 곳**은
- * `/allocation` 이었다 — "미국이 너무 많네" 하고 판단해도 고치려면 여기로 나와서 종목을
- * 하나씩 찾아야 했다. 보는 곳과 정하는 곳이 갈려 있으면 다각적 판단이 성립하지 않는다.
+ * 비중을 정하는 자리를 따로 두면 메뉴가 셋이 된다 — 자본배분(돈 넣기) / 지금 비중(조회) /
+ * 비중 설정(편집). 사용자 지적대로 *"너무 복잡"* 하고 순서가 부자연스러워진다.
  *
- * 그래서 목표비중은 `/allocation` 렌즈 화면으로 합쳤다(종목별 / 유형별 / 국가별 / 산업별).
- * 여기 남은 건 **비중이 아닌 입력값** 둘 — 허들과 투자 가능 현금이다.
+ * 그래서 **비중은 보는 자리에서 정한다**(`/allocation` 계층). 여기 남은 건 비중이 아닌
+ * 입력값 둘 — 허들과 투자 가능 현금이다.
  */
 export default async function AllocateSettingsPage() {
   const supabase = await createClient();
@@ -43,14 +37,6 @@ export default async function AllocateSettingsPage() {
   const data = await loadAllocateData(supabase, displayCcy);
   if (!data) redirect("/onboarding");
 
-  const total = sumTargets(
-    readTargets(
-      portfolio.holding.target_weights,
-      (portfolio.holding.category_targets ?? {}) as Record<string, number>,
-      data.rows.map((r) => ({ symbol: r.symbol, assetType: r.assetType })),
-    ),
-  );
-
   return (
     <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
       <BottomTabBar />
@@ -62,25 +48,9 @@ export default async function AllocateSettingsPage() {
         </p>
       </div>
 
-      {/* 목표비중은 렌즈 화면에서 — 보는 곳과 정하는 곳을 하나로 합쳤다. */}
-      <Link
-        href="/allocation/targets"
-        className="flex items-center gap-4 rounded-2xl bg-card p-5 shadow-card transition active:scale-[0.99]"
-      >
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-secondary">
-          <PieChart size={20} aria-hidden />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-sm font-semibold">목표비중</span>
-          <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
-            {total > 0
-              ? `합계 ${pct(total)} · 찾아서 정하고, 자산배분에서 유형·국가·산업으로 조정해요`
-              : "아직 정한 게 없어요 — 어떤 기업을 얼마나 들고 갈지 정해요"}
-          </span>
-        </span>
-        <span className="shrink-0 text-foreground/40">›</span>
-      </Link>
-
+      {/* 목표비중 카드가 있던 자리. 비중은 **보는 자리에서 정한다**(자산배분 계층) —
+          "설정"이라는 별도 메뉴를 두면 조회/설정이 갈려 순서가 부자연스러워진다.
+          여기 남은 건 비중이 아닌 입력값 둘뿐이다. */}
       <HurdleCard rate={data.house} passing={data.passing} total={data.judged} />
 
       <InvestableCashCard
