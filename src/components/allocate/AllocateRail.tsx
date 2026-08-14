@@ -265,12 +265,16 @@ export function AllocateRail({
             >
               다음
             </button>
-            <Link
-              href="/allocate/settings"
-              className="text-center text-xs font-medium text-muted-foreground underline"
-            >
-              목표비중·설정
-            </Link>
+            {/* 자산배분(드릴다운)으로 가는 유일한 문 — 하단 탭은 이 레일로만 온다.
+                문을 안 달면 "전체 자산 → 금융자산 → 주식" 화면에 아무도 닿지 못한다. */}
+            <div className="flex justify-center gap-4 text-xs font-medium text-muted-foreground">
+              <Link href="/allocation" className="underline">
+                내 자산배분 보기
+              </Link>
+              <Link href="/allocate/settings" className="underline">
+                목표비중·설정
+              </Link>
+            </div>
           </div>
         </StepShell>
       </>
