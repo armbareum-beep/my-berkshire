@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { saveRebalancePlan } from "@/app/rebalance/actions";
+import { setInvestableCash } from "@/app/allocate/actions";
 import { StepShell } from "@/components/transactions/wizard/StepShell";
 import { SuccessOverlay } from "@/components/transactions/wizard/SuccessOverlay";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
@@ -28,7 +29,6 @@ import {
 import type { AllocateRow } from "@/lib/allocateData";
 import { STATUS_META } from "./statusMeta";
 import { HurdleCard } from "./HurdleCard";
-import { InvestableCashCard } from "./InvestableCashCard";
 import { TargetLensPanel, type LensRows } from "./TargetLensPanel";
 
 const USD_STEPS = [100, 1_000, 10_000];
@@ -90,7 +90,7 @@ export function AllocateRail({
 }: {
   rows: AllocateRow[];
   currency: Currency;
-  /** 보유 현금 전액 — 투자 가능 현금 카드가 비교로 쓴다. */
+  /** 보유 현금 전액 — 2단계 부제에서 "얼마까지 넣을 수 있나"의 맥락으로 쓴다. */
   cash: number;
   /** 전사 요구수익률(허들)과 통과 현황 — 4단계에 접어 넣는다. */
   house: number;
@@ -98,9 +98,12 @@ export function AllocateRail({
   judged: number;
   /** 1단계에서 보는 목표 — 유형(편집 가능)·국가·산업. 서버에서 계산해 넘긴다. */
   lensRows: LensRows;
-  /** 설정에서 정한 투자 가능 현금(스펙 §16.4). 미지정이면 보유 현금 전액. */
+  /**
+   * 2단계 금액 칸의 **기본값** — 지난번에 넣은 금액이다(스펙 §16.4 투자 가능 현금).
+   * 아직 없으면 보유 현금 전액. 등기할 때 그때 넣은 금액으로 갱신된다.
+   */
   investableCash: number;
-  /** 사용자가 직접 정한 값인가(= 보유 현금 폴백이 아닌가). */
+  /** 기억된 값인가(= 보유 현금 폴백이 아닌가). 부제 문구가 갈린다. */
   investableCashSet: boolean;
 }) {
   const router = useRouter();
@@ -108,7 +111,7 @@ export function AllocateRail({
   const [saving, startSave] = useTransition();
   const [done, setDone] = useState<{ title: string; sub: string } | null>(null);
 
-  // 투자 가능 현금을 기본값으로 깔아둔다 — 대부분은 그대로 두고 한 번 눌러 넘어간다.
+  // 지난번 금액을 깔아둔다 — 대부분은 그대로 두고 한 번 눌러 넘어간다.
   const [raw, setRaw] = useState(
     investableCash > 0 ? String(Math.floor(investableCash)) : "",
   );
@@ -224,6 +227,12 @@ export function AllocateRail({
         toast.error(res.error);
         return;
       }
+      // 이번에 넣은 금액을 **다음 기본값**으로 기억한다(스펙 §16.4 의 투자 가능 현금).
+      // 별도 설정 카드를 지운 대신 여기서 배운다 — 생활비를 빼고 넣었다면 다음에도
+      // 그 금액에서 시작한다. 등기가 끝난 뒤라 화면이 다시 그려져도 흐름을 안 끊는다.
+      // 실패해도 배분 자체는 이미 저장됐으므로 조용히 넘어간다(기본값일 뿐이다).
+      if (Math.round(amount) !== Math.round(investableCash))
+        await setInvestableCash(amount, currency).catch(() => {});
       setDone({
         title: "자본배분이 등기되었습니다",
         sub: `${shareLegs.length}개 기업 · 매수할 때마다 진행률이 채워집니다`,
@@ -293,10 +302,19 @@ export function AllocateRail({
           title="얼마를 넣을까요"
           subtitle={
             investableCashSet
-              ? `투자 가능 현금 ${money(investableCash, currency)}`
-              : `보유 현금 전액 ${money(investableCash, currency)} · 설정에서 따로 정할 수 있어요`
+              ? `지난번 ${money(investableCash, currency)} · 보유 현금 ${money(cash, currency)}`
+              : `보유 현금 ${money(cash, currency)}`
           }
         >
+          {/* 투자 가능 현금 카드가 여기 있었다. 지웠다 —
+              *"얼마 넣을까요에 투자 가능 현금 없어도 되지 않아?"*
+
+              맞다. 이 단계가 묻는 게 정확히 그 금액이고, 칸에 이미 채워져 있다. 카드는
+              같은 질문을 자기 입력칸·저장 버튼까지 달고 한 번 더 물었다. 배분에 실제로
+              쓰이는 건 **여기 적힌 숫자**이므로 그것만 남긴다.
+
+              값은 사라지지 않는다 — 등기할 때 이 금액을 다음 기본값으로 기억한다
+              (`savePlan`). 생활비를 빼두고 싶으면 그만큼 적게 넣으면 그게 곧 기준이 된다. */}
           <NumberPadField
             value={raw}
             onChange={setRaw}
@@ -310,17 +328,6 @@ export function AllocateRail({
             steps={steps}
             label={stepLabel}
           />
-
-          {/* 투자 가능 현금 — 예전엔 별도 설정 화면에 있었다. 이 단계의 기본값이 곧
-              그 값이라 같은 자리에 둔다(같은 것을 두 곳에서 정하지 않는다). */}
-          <div className="mt-4">
-            <InvestableCashCard
-              value={investableCash}
-              cash={cash}
-              currency={currency}
-              isSet={investableCashSet}
-            />
-          </div>
 
           <div className="mt-auto pt-6">
             <button
