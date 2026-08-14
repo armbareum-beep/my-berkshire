@@ -109,7 +109,9 @@ export default async function TypeAllocationPage({
   // ── 화면의 주어 ── 기본은 유형, 묶음을 골라 들어왔으면 그 묶음이 주어가 된다.
   let subjectTitle = type;
   let subjectValue = typeValue;
-  let subjectParent = `금융자산의 ${pct(financial > 0 ? typeValue / financial : 0)} · 아래 비중은 ${type} 안에서 100%`;
+  // ⚠️ 부모(투자자산) 화면의 행과 **같은 분모**를 써야 같은 숫자가 나온다.
+  //    금융자산만으로 나누면 같은 종목이 화면마다 다른 %로 보인다.
+  let subjectParent = `투자자산의 ${pct(investable > 0 ? typeValue / investable : 0)} · 아래 비중은 ${type} 안에서 100%`;
   let adjusterKey: TagKey = "assetType";
   let adjusterLabel = type;
   let adjusterTarget = typeTarget;

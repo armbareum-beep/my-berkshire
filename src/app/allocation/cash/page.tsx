@@ -89,7 +89,7 @@ export default async function CashAllocationPage() {
           {money(cash, data.currency)}
         </p>
         <p className="mt-1 text-sm text-muted-foreground">
-          금융자산+현금의 {pct(investable > 0 ? cash / investable : 0)} · 아래 비중은
+          투자자산의 {pct(investable > 0 ? cash / investable : 0)} · 아래 비중은
           현금 안에서 100%
         </p>
       </div>
@@ -103,7 +103,7 @@ export default async function CashAllocationPage() {
       )}
 
       <p className="px-2 text-xs leading-relaxed text-muted-foreground">
-        목표는 <b>금융자산+현금 대비</b>예요. 통화에 배정한 {pct(assigned)} 외에, 목표를
+        목표는 <b>투자자산 대비</b>예요. 통화에 배정한 {pct(assigned)} 외에, 목표를
         안 채운 나머지 {pct(unassigned)}도 현금으로 남습니다.
       </p>
     </main>
