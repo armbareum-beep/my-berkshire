@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import type { Currency } from "@/lib/format";
 import { TypeTargetList, type TypeTargetRow } from "./TypeTargetList";
@@ -97,9 +98,15 @@ const TABS = [
 export function TargetLensPanel({
   rows,
   currency,
+  misfiled = 0,
 }: {
   rows: LensRows;
   currency: Currency;
+  /**
+   * 이름으로 보면 유형이 다른 종목 수(국채 ETF 등). 0 이면 아무것도 안 띄운다 —
+   * 할 일이 없는데 문만 있으면 화면이 무거워진다.
+   */
+  misfiled?: number;
 }) {
   const [tab, setTab] = useState<keyof LensRows>("assetType");
   const active = TABS.find((t) => t.key === tab)!;
@@ -132,6 +139,22 @@ export function TargetLensPanel({
         heading={active.heading}
         lens={tab}
       />
+
+      {/* 유형이 틀린 채로 목표를 정하면 그 목표가 가리키는 묶음이 사용자가 생각한 것과
+          달라진다("ETF 20%"에 국채가 섞여 있는 상태). 그래서 **목표를 정하는 자리에서**
+          바로 갈 수 있어야 한다 — 사용자가 채권·원자재를 못 넣던 이유가 이거였다. */}
+      {misfiled > 0 && (
+        <Link
+          href="/allocation/types"
+          className="flex items-center gap-3 rounded-2xl border border-dashed border-primary/40 bg-primary/5 px-4 py-3 transition active:scale-[0.99]"
+        >
+          <span className="min-w-0 flex-1 text-xs leading-relaxed">
+            <b>{misfiled}개</b>는 이름으로 보면 다른 유형이에요 — 국채 ETF 를 채권으로
+            옮기면 <b>채권 5%</b> 같은 목표를 정할 수 있어요.
+          </span>
+          <span className="shrink-0 text-sm font-semibold">정리하기 ›</span>
+        </Link>
+      )}
 
       {active.note && (
         <p className="px-2 text-xs leading-relaxed text-muted-foreground">

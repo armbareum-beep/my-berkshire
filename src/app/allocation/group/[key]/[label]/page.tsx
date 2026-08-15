@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getPortfolio } from "@/lib/portfolio";
 import { computeDashboard } from "@/lib/dashboard";
-import { loadSecurityMeta } from "@/lib/securities";
+import { loadClassifiedMeta } from "@/lib/classifiedMeta";
 import { readTargets } from "@/lib/targetWeights";
 import { isCashKey } from "@/lib/targetLens";
 import { tagLabel, type TagKey } from "@/lib/allocation";
@@ -79,7 +79,7 @@ export default async function GroupAllocationPage({
   const displayCcy =
     cookieStore.get("display_ccy")?.value === "USD" ? "USD" : "KRW";
   const data = computeDashboard(portfolio, displayCcy);
-  const meta = await loadSecurityMeta(
+  const meta = await loadClassifiedMeta(
     supabase,
     data.allocation.map((a) => a.symbol),
   );
@@ -107,7 +107,7 @@ export default async function GroupAllocationPage({
     (s) => !heldSet.has(s) && !isCashKey(s),
   );
   const orphanMeta =
-    orphans.length > 0 ? await loadSecurityMeta(supabase, orphans) : {};
+    orphans.length > 0 ? await loadClassifiedMeta(supabase, orphans) : {};
   const orphansHere = orphans.filter(
     (s) => tagLabel(orphanMeta[s], lens.key) === label,
   );

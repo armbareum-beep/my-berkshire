@@ -12,7 +12,8 @@ import type { Database } from "./supabase/database.types";
 import type { Currency } from "./format";
 import { getPortfolio } from "./portfolio";
 import { computeDashboard } from "./dashboard";
-import { backfillSectors, loadSecurityMeta } from "./securities";
+import { backfillSectors } from "./securities";
+import { loadClassifiedMeta } from "./classifiedMeta";
 import { tagLabel } from "./allocation";
 import { readTargets } from "./targetWeights";
 import { approvedSymbols, loadUniverseStatuses, resolveUniverse } from "./universe";
@@ -139,7 +140,7 @@ export async function loadAllocateData(
   const candidates = approvedSymbols(resolveUniverse(heldSymbols, statuses));
 
   const [meta, assumptions, cachedEps] = await Promise.all([
-    loadSecurityMeta(supabase, candidates),
+    loadClassifiedMeta(supabase, candidates),
     loadExpectedReturnAssumptions(supabase, portfolio.holding.id),
     // 공시 EPS — 캐시만 읽는다(API 호출 없음). 캐시에 없는 종목은 자동값 없이 넘어간다.
     loadCachedEps(supabase, candidates),

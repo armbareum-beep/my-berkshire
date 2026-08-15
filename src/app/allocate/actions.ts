@@ -22,10 +22,8 @@ import {
 } from "@/lib/targetLens";
 import { pct } from "@/lib/format";
 import { tagLabel, type TagKey } from "@/lib/allocation";
-import {
-  backfillSectors,
-  loadSecurityMeta,
-} from "@/lib/securities";
+import { backfillSectors } from "@/lib/securities";
+import { loadClassifiedMeta } from "@/lib/classifiedMeta";
 import type { Json } from "@/lib/supabase/database.types";
 
 type Result = { ok: true } | { ok: false; error: string };
@@ -178,7 +176,7 @@ export async function setTargetWeight(
   // 레거시 환산에 필요한 자산유형 — 저장된 목표비중의 키 전부를 대상으로 잡는다.
   const stored = (holding.target_weights ?? {}) as Record<string, unknown>;
   const symbols = [...new Set([...Object.keys(stored), symbol])];
-  const meta = await loadSecurityMeta(supabase, symbols);
+  const meta = await loadClassifiedMeta(supabase, symbols);
 
   const current = readTargets(
     holding.target_weights,
@@ -341,7 +339,7 @@ export async function setGroupTarget(
       ...Object.keys(stored),
     ]),
   ];
-  const meta = await loadSecurityMeta(supabase, symbols);
+  const meta = await loadClassifiedMeta(supabase, symbols);
   if (key === "sector") {
     const filled = await backfillSectors(supabase, meta);
     for (const [s, sec] of Object.entries(filled)) if (meta[s]) meta[s].sector = sec;
@@ -453,7 +451,7 @@ export async function normalizeTargetsAction(): Promise<GroupTargetResult> {
 
   const stored = (holding.target_weights ?? {}) as Record<string, unknown>;
   const symbols = Object.keys(stored);
-  const meta = await loadSecurityMeta(supabase, symbols);
+  const meta = await loadClassifiedMeta(supabase, symbols);
   const current = readTargets(
     holding.target_weights,
     (holding.category_targets ?? {}) as Record<string, number>,

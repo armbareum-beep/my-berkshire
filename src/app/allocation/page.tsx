@@ -3,11 +3,12 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getPortfolio } from "@/lib/portfolio";
 import { computeDashboard } from "@/lib/dashboard";
-import { loadSecurityMeta } from "@/lib/securities";
+import { loadClassifiedMeta } from "@/lib/classifiedMeta";
 import { loadManualAssets } from "@/lib/realAssets";
 import { readTargets } from "@/lib/targetWeights";
 import { isCashKey, sumTargets } from "@/lib/targetLens";
 import { ASSET_TYPE_ORDER } from "@/lib/allocation";
+import { suggestAssetClass } from "@/lib/assetClass";
 import Link from "next/link";
 import { money, pct } from "@/lib/format";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
@@ -53,7 +54,7 @@ export default async function AllocationPage() {
 
   const displayCcy = cookieStore.get("display_ccy")?.value === "USD" ? "USD" : "KRW";
   const data = computeDashboard(portfolio, displayCcy);
-  const meta = await loadSecurityMeta(
+  const meta = await loadClassifiedMeta(
     supabase,
     data.allocation.map((a) => a.symbol),
   );
@@ -84,7 +85,7 @@ export default async function AllocationPage() {
     (s) => !heldSet.has(s) && !isCashKey(s),
   );
   if (orphans.length > 0) {
-    const extra = await loadSecurityMeta(supabase, orphans);
+    const extra = await loadClassifiedMeta(supabase, orphans);
     for (const sym of orphans) {
       const type = extra[sym]?.assetType ?? "주식";
       const cur = byType.get(type) ?? { value: 0, target: 0, n: 0 };
@@ -92,6 +93,12 @@ export default async function AllocationPage() {
       byType.set(type, cur);
     }
   }
+
+  // 이름만 봐도 유형이 다른 종목 수 — 정리하러 가는 문에 배지로 붙인다. `meta` 는 이미
+  // 덮어쓰기가 적용된 값이라, 사용자가 옮겨 둔 종목은 여기서 다시 세지 않는다.
+  const misfiled = Object.values(meta).filter((m) =>
+    suggestAssetClass(m.name, m.assetType),
+  ).length;
 
   const financial = data.allocation.reduce((s, a) => s + a.value, 0);
   const cash = Math.max(0, data.cash);
@@ -147,6 +154,29 @@ export default async function AllocationPage() {
         rows={rows}
         emptyText="아직 보유 종목이 없어요."
       />
+
+      {/* 유형을 정리하는 문 — 목록 **바로 아래**다. 유형이 틀린 채로 목표를 정하면
+          그 목표가 가리키는 묶음이 사용자가 생각한 것과 달라지기 때문에, 이 화면을
+          보다가 "국채가 왜 ETF 에 있지?" 싶을 때 그 자리에서 갈 수 있어야 한다. */}
+      <Link
+        href="/allocation/types"
+        className="flex items-center gap-3 rounded-2xl border border-dashed border-border px-4 py-3 transition active:scale-[0.99]"
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold">자산유형 정리</span>
+          <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
+            {misfiled > 0
+              ? `국채·금 ETF 처럼 역할이 다른 종목이 ${misfiled}개 있어요`
+              : "국채 ETF 를 채권으로, 금현물을 원자재로 옮길 수 있어요"}
+          </span>
+        </span>
+        {misfiled > 0 && (
+          <span className="shrink-0 rounded-full bg-primary px-2 py-0.5 text-xs font-bold text-primary-foreground tabular-nums">
+            {misfiled}
+          </span>
+        )}
+        <span className="shrink-0 text-foreground/40">›</span>
+      </Link>
 
       <p className="px-2 text-xs leading-relaxed text-muted-foreground">
         목록의 비중은 <b>투자자산(증권 + 현금) 안에서</b>예요. 목표비중은{" "}

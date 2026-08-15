@@ -11,7 +11,7 @@ import { parsePlan, planProgress } from "@/lib/plan";
 import { BackButton } from "@/components/BackButton";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
 import { StyleDetail } from "@/components/style/StyleDetail";
-import { loadSecurityMeta } from "@/lib/securities";
+import { loadClassifiedMeta } from "@/lib/classifiedMeta";
 import {
   loadPreviousStyleSnapshot,
   saveStyleSnapshot,
@@ -59,7 +59,7 @@ export async function StyleContent() {
   const today = todayKST();
   const [liabilities, securityMeta, previousStyle] = await Promise.all([
     loadLiabilities(supabase, portfolio.holding.id),
-    loadSecurityMeta(supabase, data.allocation.map((item) => item.symbol)),
+    loadClassifiedMeta(supabase, data.allocation.map((item) => item.symbol)),
     loadPreviousStyleSnapshot(supabase, portfolio.holding.id, today),
   ]);
   const debtKrw = totalLiabilities(liabilities);

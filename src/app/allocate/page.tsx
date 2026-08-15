@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { loadAllocateData, type AllocateRow } from "@/lib/allocateData";
 import { ASSET_TYPE_ORDER } from "@/lib/allocation";
+import { suggestAssetClass } from "@/lib/assetClass";
 import { isUntaggedLabel } from "@/lib/targetLens";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
 import { AllocateRail } from "@/components/allocate/AllocateRail";
@@ -124,9 +125,16 @@ export default async function AllocatePage() {
     ),
   };
 
+  // 이름만 봐도 유형이 다른 종목 수 — 1단계에 "정리하러 가기" 문을 띄우는 조건이다.
+  // 유형이 틀린 채로 목표를 정하면 그 목표가 가리키는 묶음이 사용자 생각과 달라진다.
+  const misfiled = data.rows.filter((r) =>
+    suggestAssetClass(r.label, r.assetType),
+  ).length;
+
   return (
     <AllocateRail
       rows={data.rows}
+      misfiled={misfiled}
       currency={data.currency}
       investableCash={data.investableCash}
       investableCashSet={data.investableCashSet}

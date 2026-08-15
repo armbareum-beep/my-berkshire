@@ -32,7 +32,8 @@ import { companyCashPools } from "@/lib/finance/valuation";
 import { loadAccountGroups, flattenHoldings, type AccountGroup } from "@/lib/accounts";
 import { filterIncludedAccountGroups } from "@/lib/members";
 import { loadWatchlist } from "@/lib/watchlist";
-import { loadSecurityNames, loadSecurityMeta } from "@/lib/securities";
+import { loadSecurityNames } from "@/lib/securities";
+import { loadClassifiedMeta } from "@/lib/classifiedMeta";
 import { groupByTag } from "@/lib/allocation";
 import { money, pct } from "@/lib/format";
 import { quarterBounds } from "@/lib/finance/quarterClose";
@@ -168,7 +169,7 @@ async function DashboardContent({
   // 항상 병렬로 받아 둔다(둘 다 캐시됨). 계좌 그룹은 ₩으로 한 번만 적재해 $ 는 메모리 환산.
   // 투시(lookThrough)는 DART N+1 으로 가장 느려 → Promise.all 에서 빼고 Suspense 로 스트리밍.
   // 나머지 카드는 이걸 안 기다리고 먼저 그려진다(홈 첫 페인트 가속).
-  const secMetaPromise = loadSecurityMeta(
+  const secMetaPromise = loadClassifiedMeta(
     supabase,
     dataKRW.allocation.map((a) => a.symbol),
   );
@@ -928,7 +929,7 @@ async function HoldingsStreamed({
   supabase: SupabaseServer;
   dataKRW: DashboardData;
   factorUSD: number;
-  secMetaPromise: Promise<Awaited<ReturnType<typeof loadSecurityMeta>>>;
+  secMetaPromise: Promise<Awaited<ReturnType<typeof loadClassifiedMeta>>>;
   accountGroupsKRWPromise: Promise<Awaited<ReturnType<typeof loadAccountGroups>>>;
   memberNamesPromise: Promise<
     Record<string, { name: string; emoji: string | null }>

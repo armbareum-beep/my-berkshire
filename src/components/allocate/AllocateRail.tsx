@@ -99,6 +99,7 @@ export function AllocateRail({
   passing,
   judged,
   lensRows,
+  misfiled,
 }: {
   rows: AllocateRow[];
   currency: Currency;
@@ -110,6 +111,8 @@ export function AllocateRail({
   judged: number;
   /** 1단계에서 정할 목표 — 유형·국가. 서버에서 계산해 넘긴다. */
   lensRows: LensRows;
+  /** 이름으로 보면 유형이 다른 종목 수 — 0 이면 정리 문을 띄우지 않는다. */
+  misfiled: number;
   /**
    * 2단계 금액 칸의 **기본값** — 지난번에 넣은 금액이다(스펙 §16.4 투자 가능 현금).
    * 아직 없으면 보유 현금 전액. 등기할 때 그때 넣은 금액으로 갱신된다.
@@ -312,7 +315,11 @@ export function AllocateRail({
           subtitle="투자자산을 어떻게 나눌지 먼저 정해요"
           className="pb-28"
         >
-          <TargetLensPanel rows={lensRows} currency={currency} />
+          <TargetLensPanel
+            rows={lensRows}
+            currency={currency}
+            misfiled={misfiled}
+          />
           <div className="mt-auto pt-6">
             <button
               type="button"
