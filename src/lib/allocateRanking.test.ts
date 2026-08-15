@@ -188,3 +188,27 @@ describe("rankBasis — 왜 이 자리인지", () => {
     expect(rankBasis(ranked[0], "others").kind).toBe("gap");
   });
 });
+
+describe("rankBasis — 못 낸 이유를 구분한다", () => {
+  it("가정을 넣었는데 이익력이 없으면 '안 넣음'이 아니다", () => {
+    // 버크셔 사례: 성장률·배수는 저장돼 있는데 공시 EPS 캐시가 비어 계산이 안 됐다.
+    const ranked = rankRows([row("BRK-B", 100, 0.3, { erGap: "metric" })]);
+    const b = rankBasis(ranked[0], "stocks");
+    expect(b.kind).toBe("unjudged");
+    if (b.kind === "unjudged") expect(b.reason).toBe("metric");
+  });
+
+  it("이유가 없으면 '안 넣음'으로 본다", () => {
+    const ranked = rankRows([row("NONE", 100, 0.3)]);
+    const b = rankBasis(ranked[0], "stocks");
+    if (b.kind === "unjudged") expect(b.reason).toBe("none");
+  });
+
+  it("네 가지 이유를 그대로 전달한다", () => {
+    for (const reason of ["none", "incomplete", "metric", "price"] as const) {
+      const ranked = rankRows([row("X", 100, 0.3, { erGap: reason })]);
+      const b = rankBasis(ranked[0], "stocks");
+      if (b.kind === "unjudged") expect(b.reason).toBe(reason);
+    }
+  });
+});

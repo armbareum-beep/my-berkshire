@@ -6,7 +6,7 @@ import { getPortfolio } from "@/lib/portfolio";
 import { computeDashboard } from "@/lib/dashboard";
 import { backfillSectors, loadSecurityMeta } from "@/lib/securities";
 import { readTargets } from "@/lib/targetWeights";
-import { isCashKey } from "@/lib/targetLens";
+import { isCashKey, sumTargets } from "@/lib/targetLens";
 import { tagLabel, type TagKey } from "@/lib/allocation";
 import { pct } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -101,6 +101,13 @@ export default async function TypeAllocationPage({
   // 목표의 분모 — 엔진과 같아야 한다(**배분 대상 증권만**, 현금·실물자산 제외).
   // 현금을 더해 나누면 같은 "45%" 를 화면과 엔진이 다르게 읽는다.
   const invested = financial;
+
+  // 예산은 증권 전체에서 하나다 — 이 화면이 한 유형만 보여줘도 그건 변하지 않는다.
+  const allTargets = sumTargets(targets);
+  const typeTargets = mine.reduce(
+    (s, a) => s + (targets[a.symbol]?.target ?? 0),
+    0,
+  );
 
   // 미보유 목표 종목도 목록에 넣는다 — 빼면 저장된 값이 보이지도 지워지지도 않는다(#70).
   const heldSet = new Set(data.allocation.map((a) => a.symbol));
@@ -238,6 +245,28 @@ export default async function TypeAllocationPage({
         </nav>
       </AllocationLevel>
 
+
+      {/* 예산은 **증권 전체**에서 하나인데 이 화면은 한 유형만 보여준다. 그래서 여기서
+          "합이 100% 를 넘는다"는 말을 들으면 앞뒤가 안 맞아 보였다 — 사용자 지적:
+          *"주식 > 비중에서 100%가 안 넘는데 100% 넘었다고 나와."* 실제로는 ETF 가 절반을
+          쓰고 있었다. 벽에 부딪히기 **전에** 남은 예산을 보여준다. */}
+      <section className="rounded-2xl bg-card p-4 shadow-card">
+        <div className="flex items-baseline justify-between gap-3">
+          <p className="text-sm font-semibold">증권 목표 예산</p>
+          <p className="text-sm font-bold tabular-nums">
+            {pct(allTargets)} 사용
+          </p>
+        </div>
+        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+          {type} {pct(typeTargets)} · 나머지 유형{" "}
+          {pct(Math.max(0, allTargets - typeTargets))} ·{" "}
+          <b>남은 여유 {pct(Math.max(0, 1 - allTargets))}</b>
+        </p>
+        <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+          목표비중은 <b>증권 전체에서 100%</b>를 나눠 씁니다 — 이 화면에 안 보이는
+          유형도 같은 예산을 씁니다.
+        </p>
+      </section>
 
       <p className="px-2 text-xs leading-relaxed text-muted-foreground">
         목록의 비중은 <b>{subjectTitle} 안에서</b>, 목표비중은 <b>증권 대비</b>예요(현금 제외).

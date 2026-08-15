@@ -26,8 +26,18 @@ import type { AllocateRow } from "@/lib/allocateData";
  * | 근거 | 칩 | ⓘ 가 말하는 것 |
  * |---|---|---|
  * | `cagr` | `기대 17.2%` | 식과 넣은 가정, 요구수익률 기준 매수가 |
- * | `unjudged` | `가정 없음` | 왜 아래로 내려갔는지, 지금 뭐로 판단 중인지 |
+ * | `unjudged` (`none`) | `가정 없음` | 아직 안 넣었다는 것 |
+ * | `unjudged` (그 외) | `계산 대기` | **넣었는데** 왜 아직 못 냈는지 |
  * | `gap` | `미달 12.0%` | ETF 는 식 자체를 쓸 수 없다는 것 |
+ *
+ * ## "안 넣음"과 "계산 대기"를 반드시 가른다
+ *
+ * 한때 둘을 뭉뚱그려 전부 `가정 없음` 이라 했다. 사용자 지적: *"버크셔 가정 등록했는데
+ * 가정 없다고 나와."* 실제로는 성장률 12%·배수 15배가 저장돼 있었고, **공시 EPS 가 캐시에
+ * 없어서** 계산이 안 된 것이었다(배분 화면은 N+1 을 피하려고 캐시만 읽는다).
+ *
+ * 저장해 둔 판단을 "없다"고 말하는 건 그냥 거짓말이고, 고칠 방법도 정반대다 — 전자는
+ * 가정을 넣어야 하고 후자는 **종목 화면을 한 번 열면** 된다.
  *
  * `unjudged` 를 "0%"로 적지 않는 이유는 정렬 규칙과 같다 — **모르는 것을 0으로 취급하지
  * 않는다.** ETF 도 가정을 *안 넣은* 게 아니라 *넣을 수 없는* 것이라 문구를 따로 쓴다.
@@ -49,11 +59,16 @@ export function RankBasisChip({
 }) {
   const [open, setOpen] = useState(false);
 
+  // "안 넣음"과 "넣었는데 계산 대기"를 구분한다 — 가정을 저장해 둔 사용자에게
+  // "가정 없음"이라고 말하면 그건 거짓말이다(사용자 지적: *"버크셔 가정 등록했는데
+  // 가정 없다고 나와"*). 자세한 이유는 시트가 말한다.
   const text =
     basis.kind === "cagr"
       ? `기대 ${pct(basis.cagr)}`
       : basis.kind === "unjudged"
-        ? "가정 없음"
+        ? basis.reason === "none"
+          ? "가정 없음"
+          : "계산 대기"
         : basis.gap > 0.0001
           ? `미달 ${pct(basis.gap)}`
           : "목표 도달";
@@ -83,7 +98,7 @@ export function RankBasisChip({
             requiredReturn={requiredReturn}
           />
         ) : basis.kind === "unjudged" ? (
-          <UnjudgedExplain gap={basis.gap} />
+          <UnjudgedExplain gap={basis.gap} reason={basis.reason} />
         ) : (
           <GapExplain gap={basis.gap} />
         )}
@@ -174,13 +189,66 @@ function CagrExplain({
   );
 }
 
-function UnjudgedExplain({ gap }: { gap: number }) {
+/** 왜 계산을 못 했는지 — 상태마다 할 말과 다음 행동이 다르다. */
+const UNJUDGED_COPY: Record<
+  NonNullable<AllocateRow["erGap"]>,
+  { title: string; body: React.ReactNode }
+> = {
+  none: {
+    title: "아직 가정을 안 넣었어요",
+    body: (
+      <>
+        이익력·성장률·종료배수 셋이 다 있어야 식이 성립해요. 종목 화면에서
+        넣으면 다음 배분부터 순위에 반영됩니다.
+      </>
+    ),
+  },
+  incomplete: {
+    title: "가정이 덜 찼어요",
+    body: (
+      <>
+        성장률·종료배수 중 빠진 게 있어요. 둘 다 <b>판단</b>이라 자동으로 채울 수
+        없습니다 — 종목 화면에서 넣어주세요.
+      </>
+    ),
+  },
+  metric: {
+    title: "이익력을 아직 못 불러왔어요",
+    body: (
+      <>
+        성장률·배수는 넣어 두셨는데 <b>주당 이익(EPS)</b> 이 비어 있어요. 배분
+        화면은 공시를 직접 부르지 않고 <b>받아둔 것만</b> 읽습니다 — 종목 수만큼
+        공시를 부르면 화면이 느려지기 때문이에요.
+        <br />
+        <b>종목 화면을 한 번 열면</b> 공시를 받아 저장하고, 그다음부터 여기서도
+        계산됩니다. 기다리기 싫으면 이익력을 직접 넣어도 돼요.
+      </>
+    ),
+  },
+  price: {
+    title: "현재가를 몰라 수익률만 못 냈어요",
+    body: (
+      <>
+        가정은 다 있고 <b>미래 주가까지 계산됐는데</b>, 종목 통화 기준 현재가를
+        몰라 &#34;연 몇 %&#34;로 바꾸지 못했어요(환율 미확보 등). 잠시 뒤 다시 열면
+        채워집니다.
+      </>
+    ),
+  },
+};
+
+function UnjudgedExplain({
+  gap,
+  reason,
+}: {
+  gap: number;
+  reason: NonNullable<AllocateRow["erGap"]>;
+}) {
+  const copy = UNJUDGED_COPY[reason];
   return (
     <div className="flex flex-col gap-3 text-sm leading-relaxed">
-      <p className="font-semibold">아직 기대수익률을 계산할 수 없어요</p>
-      <p className="text-muted-foreground">
-        이익력·성장률·종료배수 중 빠진 게 있어요. 셋이 다 있어야 식이 성립합니다.
-      </p>
+      <p className="font-semibold">{copy.title}</p>
+      <p className="text-muted-foreground">{copy.body}</p>
       <div className="rounded-xl bg-secondary p-4 text-xs leading-relaxed">
         <p className="font-semibold">그래서 지금은</p>
         <p className="mt-1 text-muted-foreground">

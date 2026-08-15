@@ -58,8 +58,14 @@ export function targetGap(r: RankedRow): number {
 export type RankBasis =
   /** 개별주 — 기대수익률 순. */
   | { kind: "cagr"; cagr: number }
-  /** 개별주인데 가정이 없어 아래로 내려간 것. 그 안에서는 목표 미달 순. */
-  | { kind: "unjudged"; gap: number }
+  /**
+   * 개별주인데 기대수익률을 못 내 아래로 내려간 것. 그 안에서는 목표 미달 순.
+   *
+   * `reason` 을 같이 준다 — **"안 넣은 것"과 "넣었는데 계산이 안 된 것"은 다른 상태**다.
+   * 뭉뚱그리면 가정을 저장해 둔 사용자에게 "가정 없음"이라고 거짓말을 하게 된다
+   * (`lib/allocateData.ts:erGap`).
+   */
+  | { kind: "unjudged"; gap: number; reason: NonNullable<AllocateRow["erGap"]> }
   /** ETF·기타 — 기대수익률 모형을 못 써서 목표 미달 순. */
   | { kind: "gap"; gap: number };
 
@@ -71,7 +77,7 @@ export function rankBasis(
   const cagr = r.row.expectedCagr;
   return cagr != null
     ? { kind: "cagr", cagr }
-    : { kind: "unjudged", gap: targetGap(r) };
+    : { kind: "unjudged", gap: targetGap(r), reason: r.row.erGap ?? "none" };
 }
 
 export function groupRanked(ranked: RankedRow[]): RankedGroups {

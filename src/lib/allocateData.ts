@@ -45,6 +45,21 @@ export interface AllocateRow extends AllocateTarget {
   /** 산업 태그. 공시 backfill 에 의존해 아직 못 채운 종목은 "미분류". */
   sector: string;
   /**
+   * 기대수익률을 **못 낸 이유**. `expectedCagr` 가 null 일 때만 채운다.
+   *
+   * 예전엔 이유를 안 남겨서 화면이 전부 "가정 없음"으로 뭉뚱그렸다 — 사용자 지적:
+   * *"버크셔 가정 등록했는데 가정 없다고 나와."* 실제로는 성장률·배수를 넣어 뒀는데
+   * **공시 EPS 가 캐시에 없어서** 계산이 안 된 것이었다. 배분 화면은 N+1 을 피하려고
+   * 캐시만 읽으므로(`finance/cachedEps.ts`), 종목 화면을 한 번 열어 캐시가 채워지기 전까지는
+   * 자동 이익력이 없다. 그건 "안 넣은 것"과 전혀 다른 상태다.
+   *
+   *  · `none`       — 가정을 아직 안 넣었다
+   *  · `incomplete` — 넣긴 했는데 성장률·종료배수 중 빠진 게 있다
+   *  · `metric`     — 이익력을 못 구했다(수기 없음 + 공시 캐시 미스)
+   *  · `price`      — 현재가(종목 통화)를 몰라 CAGR 만 못 냈다
+   */
+  erGap?: "none" | "incomplete" | "metric" | "price";
+  /**
    * 기대수익률 **식을 그대로 펼쳐 보여주기 위한** 가정과 중간값(종목 통화).
    *
    * 순위 옆 `기대 17.2%` 칩의 ⓘ 가 이걸 쓴다 — 사용자 지적: *"그 기대수익률을 계산한
@@ -222,7 +237,13 @@ export async function loadAllocateData(
       assumption?.expectedGrowth != null &&
       assumption?.terminalMultiple != null &&
       assumption.terminalMultiple > 0;
-    if (!usable) return base;
+    if (!usable)
+      return {
+        ...base,
+        // 왜 못 냈는지를 남긴다. 순서가 중요하다 — 가정이 아예 없으면 "이익력 없음"이
+        // 아니라 "안 넣음"이다(공시 캐시가 우연히 있어도 마찬가지).
+        erGap: !assumption ? "none" : pair == null ? "metric" : "incomplete",
+      };
 
     // 종목별 값 > 전사 기본값("난이도") > 코드 기본값 12%.
     const requiredReturn = effectiveHurdle(assumption.requiredReturn, house);
@@ -238,6 +259,8 @@ export async function loadAllocateData(
     );
     return {
       ...base,
+      // 가정·식은 성립했는데 현재가를 몰라 CAGR 만 못 낸 경우 — 이것도 "안 넣음"이 아니다.
+      erGap: er?.expectedCagr == null ? ("price" as const) : undefined,
       erInputs: er
         ? {
             metric: pair.metric,
