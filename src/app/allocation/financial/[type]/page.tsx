@@ -105,10 +105,6 @@ export default async function TypeAllocationPage({
 
   // 예산은 증권 전체에서 하나다 — 이 화면이 한 유형만 보여줘도 그건 변하지 않는다.
   const allTargets = sumTargets(targets);
-  const typeTargets = mine.reduce(
-    (s, a) => s + (targets[a.symbol]?.target ?? 0),
-    0,
-  );
 
   // 미보유 목표 종목도 목록에 넣는다 — 빼면 저장된 값이 보이지도 지워지지도 않는다(#70).
   const heldSet = new Set(data.allocation.map((a) => a.symbol));
@@ -120,6 +116,12 @@ export default async function TypeAllocationPage({
   const orphansHere = orphans.filter(
     (s) => (orphanMeta[s]?.assetType ?? "주식") === type,
   );
+
+  // 이 유형이 증권 예산에서 쓰고 있는 몫. 아직 안 산 목표 종목도 넣는다 — 빼면 화면
+  // 안의 100% 가 실제와 어긋난다(#70).
+  const typeTargets =
+    mine.reduce((s, a) => s + (targets[a.symbol]?.target ?? 0), 0) +
+    orphansHere.reduce((s, sym) => s + (targets[sym]?.target ?? 0), 0);
   // ── 화면의 주어 ── 기본은 유형, 묶음을 골라 들어왔으면 그 묶음이 주어가 된다.
   let subjectTitle = type;
   let subjectValue = typeValue;
@@ -213,6 +215,19 @@ export default async function TypeAllocationPage({
       .sort((a, b) => b.value - a.value || (b.target ?? 0) - (a.target ?? 0));
   }
 
+  // ── 목표도 **이 화면의 분모**로 ──
+  //
+  // 목록 비중은 이 계층 안에서 100% 인데 목표만 증권 전체 대비라 합이 안 맞았다 —
+  // 사용자 지적: *"아직도 종목 내에서 100%가 아니잖아."* 저장은 여전히 평면 절대값이고
+  // 여기서 보는 기준만 바꾼다(`lib/targetLens.ts` 머리말의 `withinBasis` 와 같은 규칙).
+  rows = withinTargets(rows);
+
+  // 종목 줄의 입력이 어느 100% 안인지 — 서버가 이걸로 구성원을 다시 묶는다.
+  const scope =
+    pick && by !== "symbol"
+      ? { assetType: type, key: by as TagKey, label: pick }
+      : { assetType: type };
+
   return (
     <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
       <BottomTabBar />
@@ -224,6 +239,7 @@ export default async function TypeAllocationPage({
         value={subjectValue}
         currency={data.currency}
         rows={rows}
+        scope={scope}
         emptyText={`아직 ${type}이(가) 없어요.`}
       >
 
@@ -270,8 +286,22 @@ export default async function TypeAllocationPage({
       </section>
 
       <p className="px-2 text-xs leading-relaxed text-muted-foreground">
-        목록의 비중은 <b>{subjectTitle} 안에서</b>, 목표비중은 <b>증권 대비</b>예요(현금 제외).
+        비중도 목표도 <b>{subjectTitle} 안에서 100%</b>예요. 종목 목표를 올리면 그만큼{" "}
+        <b>같은 묶음의 다른 종목에서</b> 가져오므로 {subjectTitle} 전체 몫({pct(typeTargets)})은
+        안 움직여요 — 그 몫 자체는 <b>자본배분 1단계</b>에서 정합니다.
       </p>
     </main>
   );
+}
+
+/**
+ * 목표를 **이 목록 안에서의 비중**으로 다시 센다 — 합이 1이 된다.
+ *
+ * 저장값(증권 전체 대비)은 안 건드린다. 분모만 이 목록의 목표 합으로 바꾼다. 합이 0이면
+ * 나눌 수 없으므로 그대로 둔다(0으로 나눠 NaN 을 만들지 않는다).
+ */
+function withinTargets(rows: LevelRow[]): LevelRow[] {
+  const sum = rows.reduce((s, r) => s + (r.target ?? 0), 0);
+  if (sum <= 0) return rows;
+  return rows.map((r) => ({ ...r, target: (r.target ?? 0) / sum }));
 }

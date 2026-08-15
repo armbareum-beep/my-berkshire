@@ -225,6 +225,78 @@ export function withinBasis(group: LensGroup): LensMember[] {
 }
 
 /**
+ * 한 묶음의 **예산** — 구성 종목 목표의 합(0~1).
+ *
+ * 묶음 안으로 들어간 화면의 100% 가 이것이다. `주식 75%` 를 정해두면 주식 화면에서
+ * 나누는 대상이 그 75% 다.
+ */
+export function groupBudget(
+  targets: FlatTargets,
+  members: { symbol: string }[],
+): number {
+  return members.reduce((s, m) => s + (targets[m.symbol]?.target ?? 0), 0);
+}
+
+/**
+ * 묶음 **안에서의** 비중으로 한 종목을 정한다 — 묶음 예산은 그대로 둔다.
+ *
+ * ## 왜 이 함수가 생겼나
+ *
+ * 주식 안으로 들어가면 목록 비중은 "주식 안에서"라 합이 100% 인데, 목표만 "증권 대비"라
+ * 합이 48% 같은 숫자였다. 사용자 지적: *"아직도 종목 내에서 100%가 아니잖아."*
+ *
+ * 맞는 지적이다. **화면의 분모는 화면 하나당 하나**여야 한다. 드릴다운은 "지금 보는 계층이
+ * 곧 분모"라는 규칙 위에 서 있는데(`AllocationLevel` 머리말), 목표만 그 규칙 밖에 있었다.
+ * 사용자 엑셀도 똑같이 되어 있었다 — 채권 5% 안을 `장기 20% / 단기 80%` 로 나눈다.
+ *
+ * ## 저장은 여전히 평면 하나다
+ *
+ * 묶음 안 비중을 따로 저장하지 않는다(#70). 들어온 비율을 **예산에 곱해 절대값으로** 되돌려
+ * 평면에 쓴다. 그래서 두 층이 생기지 않고, 엔진이 읽는 값도 그대로다.
+ *
+ * ```text
+ *   주식 예산 75% = META 45% + 삼성 30%      (묶음 안에서 60% / 40%)
+ *   META 를 "묶음의 80%" 로 → META 60% + 삼성 15%   (주식 합 75% 그대로)
+ * ```
+ *
+ * ## 묶음 합은 안 움직인다
+ *
+ * 늘어난 몫을 현금이 아니라 **같은 묶음의 다른 종목**에서 가져온다. 그래야 화면의 합이
+ * 계속 100% 다 — 이게 이 함수의 존재 이유다. 상위 축(유형·국가)도 따라서 안 움직이므로
+ * 축 고정(`scaleGroupLocked`)과 같은 성질을 갖는다. 합이 안 변하니 **100% 초과가
+ * 구조적으로 불가능**하고, 그래서 `roomFor` 검사도 필요 없다.
+ *
+ * 못 하는 두 경우는 **바꾸지 않고 그대로 돌려준다** — 호출부가 먼저 확인해 이유를 말한다:
+ *  · 예산이 0 — 나눌 게 없다(먼저 1단계에서 묶음 목표를 정해야 한다)
+ *  · 구성원이 하나뿐 — 가져오고 줄 상대가 없다
+ *
+ * 나머지 종목 사이의 분배는 `scaleGroupTarget` 이 한다 — 규칙을 두 벌 두면 갈라진다.
+ */
+export function setWithinGroup(
+  targets: FlatTargets,
+  members: { symbol: string; value: number }[],
+  symbol: string,
+  /** 묶음 안에서의 비중 0~1. */
+  fraction: number,
+): FlatTargets {
+  if (!Number.isFinite(fraction) || fraction < 0 || fraction > 1) return targets;
+
+  const budget = groupBudget(targets, members);
+  if (budget <= 0) return targets;
+
+  const others = members.filter((m) => m.symbol !== symbol);
+  if (others.length === 0) return targets;
+
+  const mine = budget * fraction;
+  const out: FlatTargets = { ...targets };
+  // 0% 는 "안 정함"과 같은 뜻이다(`toStored` 와 같은 규칙) — 키를 지운다.
+  if (mine > 0) out[symbol] = { ...out[symbol], target: mine };
+  else delete out[symbol];
+
+  return scaleGroupTarget(out, others, budget - mine);
+}
+
+/**
  * 묶음 목표를 옮긴다 — **구성 종목 목표를 비례로 늘리고 줄여** 평면에 다시 쓴다.
  *
  * "미국 60%" 를 그 자체로 저장하지 않는 이유는 파일 첫머리와 같다. 대신 미국 종목들의

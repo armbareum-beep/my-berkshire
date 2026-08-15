@@ -3,6 +3,7 @@ import { Donut } from "@/components/dashboard/Donut";
 import { donutColor } from "@/components/dashboard/donutPalette";
 import { money, pct, type Currency } from "@/lib/format";
 import { RowTargetInput } from "./RowTargetInput";
+import type { GroupScope } from "@/app/allocate/actions";
 
 /**
  * 자산배분 **한 계층** — 드릴다운의 화면 한 장.
@@ -25,8 +26,15 @@ import { RowTargetInput } from "./RowTargetInput";
  * 주식 화면의 100%는 주식이다. "전체 대비냐 이 안에서냐"를 물을 필요가 없어진다 —
  * 대신 상단에 `전체 자산의 42%` 한 줄로 부모 맥락을 늘 붙여둔다.
  *
- * 목표비중은 저장 기준이 따로다(**금융자산+현금 대비**, `lib/targetLens.ts`). 행마다 기준을
- * 붙이면 글자가 늘어 다시 복잡해지므로, **화면당 한 번** 아래 각주로 밝힌다.
+ * ## 목표도 같은 분모를 쓴다
+ *
+ * 한때 목표비중만 "증권 전체 대비"였다. 그래서 주식 안으로 들어가면 목록 비중은 합이
+ * 100% 인데 목표는 48% 같은 숫자였다 — 사용자 지적: *"아직도 종목 내에서 100%가
+ * 아니잖아."* 화면 하나에 분모가 둘이면 어느 쪽 기준인지 매 줄 헷갈린다.
+ *
+ * 이제 **목표도 이 계층 안에서** 센다. 합계를 머리에 한 줄로 띄워 그 사실을 보여준다 —
+ * 100% 가 아니면 얼마가 비었는지도 거기서 읽힌다. 저장은 여전히 평면 절대값 하나이고,
+ * 변환은 `lib/targetLens.ts:setWithinGroup` 이 한다.
  */
 export interface LevelRow {
   key: string;
@@ -34,7 +42,7 @@ export interface LevelRow {
   value: number;
   /** **이 계층 안에서의** 비중 0~1. 합이 1이 된다. */
   weight: number;
-  /** 전체 자산 대비 목표비중 0~1. 안 정했으면 생략. */
+  /** **이 계층 안에서의** 목표비중 0~1 — 목록 비중과 같은 분모. 안 정했으면 생략. */
   target?: number;
   /** 한 단계 더 내려가는 곳. 없으면 잎이라 누를 수 없다. */
   href?: string;
@@ -54,6 +62,7 @@ export function AllocationLevel({
   value,
   currency,
   rows,
+  scope,
   children,
   emptyText = "아직 담긴 게 없어요.",
 }: {
@@ -62,6 +71,11 @@ export function AllocationLevel({
   value: number;
   currency: Currency;
   rows: LevelRow[];
+  /**
+   * 이 화면이 보고 있는 묶음 — 종목 줄의 목표 입력이 어느 100% 안인지 정한다.
+   * 없으면 줄에 입력칸을 달지 않는다(묶음 줄만 있는 화면).
+   */
+  scope?: GroupScope;
   /** 헤더와 도넛 사이에 끼울 것(목표 조정 카드 등). */
   children?: React.ReactNode;
   emptyText?: string;
@@ -78,6 +92,9 @@ export function AllocationLevel({
       ? [{ label: "기타", weight: restWeight, value: restValue }]
       : []),
   ];
+
+  // 목표 합 — 이 계층 안에서 100% 가 되는지 한눈에 보이는 자리.
+  const targetTotal = rows.reduce((s, r) => s + (r.target ?? 0), 0);
 
   return (
     <>
@@ -121,6 +138,21 @@ export function AllocationLevel({
             </section>
           )}
 
+          {targetTotal > 0 && (
+            <div className="flex items-baseline justify-between px-1">
+              <p className="text-xs text-muted-foreground">
+                목표 합 <b className="text-foreground">{pct(targetTotal)}</b>
+              </p>
+              {Math.abs(targetTotal - 1) >= 0.005 && (
+                <p className="text-xs text-muted-foreground">
+                  {targetTotal < 1
+                    ? `${pct(1 - targetTotal)} 안 정했어요`
+                    : `${pct(targetTotal - 1)} 넘었어요`}
+                </p>
+              )}
+            </div>
+          )}
+
           <ul className="flex flex-col gap-2">
             {rows.map((r, i) => (
               <li key={r.key}>
@@ -160,12 +192,13 @@ export function AllocationLevel({
                   <span className="shrink-0 text-sm font-bold tabular-nums">
                     {money(r.value, currency)}
                   </span>
-                  {r.symbol ? (
+                  {r.symbol && scope ? (
                     <RowTargetInput
                       symbol={r.symbol}
                       label={r.label}
                       target={r.target ?? 0}
-                      hint={`이 화면에서 ${pct(r.weight)} · ${money(r.value, currency)}`}
+                      scope={scope}
+                      hint={`${title} 안에서 지금 ${pct(r.weight)} · ${money(r.value, currency)}`}
                     />
                   ) : (
                     r.href && (

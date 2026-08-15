@@ -13,10 +13,12 @@ import {
 } from "@/lib/targetWeights";
 import {
   buildLens,
+  groupBudget,
   isCashKey,
   normalizeTargets,
   roomFor,
   scaleGroupLocked,
+  setWithinGroup,
   sumTargets,
   CASH_LABEL,
 } from "@/lib/targetLens";
@@ -136,6 +138,129 @@ export async function setUniverseStatus(
   if (error) return { ok: false, error: error.message };
 
   // 후보가 바뀌면 배분안도, 목표비중 목록도 달라진다.
+  revalidateAllocate();
+  revalidatePath("/rebalance");
+  return { ok: true };
+}
+
+/**
+ * 드릴다운 화면이 보고 있는 **묶음**. 서버가 구성원을 다시 세울 수 있을 만큼만 담는다.
+ *
+ * 화면이 종목 목록을 통째로 보내게 하면 화면과 저장이 갈릴 때 **엉뚱한 종목의 목표가
+ * 바뀐다**(`setGroupTarget` 이 같은 이유로 서버에서 다시 묶는다).
+ *
+ * ```text
+ *   /allocation/financial/주식                    { assetType: "주식" }
+ *   /allocation/financial/주식?by=country&pick=한국 { assetType: "주식", key: "country", label: "한국" }
+ *   /allocation/group/country/미국                 { key: "country", label: "미국" }
+ * ```
+ */
+export interface GroupScope {
+  /** 자산유형으로 한 번 거른다. 없으면 증권 전체. */
+  assetType?: string;
+  /** 국가·산업으로 한 번 더 거른다. */
+  key?: TagKey;
+  label?: string;
+}
+
+/**
+ * 묶음 **안에서의** 비중으로 종목 목표를 정한다 — 묶음 합은 그대로 둔다.
+ *
+ * ## 왜 별도 액션인가
+ *
+ * `setTargetWeight` 는 "증권 전체 대비" 를 저장한다. 그런데 주식 안으로 들어간 화면의
+ * 100% 는 **주식**이다. 같은 화면에서 목록 비중은 주식 기준, 목표는 증권 기준이라
+ * 합이 안 맞았다 — 사용자 지적: *"아직도 종목 내에서 100%가 아니잖아."*
+ *
+ * 화면의 분모는 화면 하나당 하나여야 한다. 그래서 드릴다운의 종목 입력은 전부 이쪽을
+ * 쓴다. 변환은 `setWithinGroup` 이 하고, 저장 형식은 여전히 평면 하나다.
+ *
+ * ## 100% 초과 검사가 없다
+ *
+ * 묶음 예산이 안 변하므로 전체 합도 안 변한다 — 넘길 방법이 구조적으로 없다.
+ * 대신 **나눌 수 없는 두 경우**를 먼저 막는다(예산 0 · 구성원 하나).
+ */
+export async function setTargetWithinGroup(
+  symbol: string,
+  /** 묶음 안에서의 비중 0~1. */
+  fraction: number,
+  scope: GroupScope,
+): Promise<Result> {
+  if (!symbol) return { ok: false, error: "종목이 올바르지 않습니다." };
+  if (!Number.isFinite(fraction) || fraction < 0 || fraction > 1)
+    return { ok: false, error: "비중은 0~100% 사이여야 합니다." };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "로그인이 필요합니다." };
+
+  const portfolio = await getPortfolio(supabase);
+  if (!portfolio) return { ok: false, error: "회사를 찾을 수 없습니다." };
+
+  // 비중 비율만 쓰므로 표시통화는 결과에 영향이 없다(₩ 기준으로 고정).
+  const dashboard = computeDashboard(portfolio, "KRW");
+  const stored = (portfolio.holding.target_weights ?? {}) as Record<
+    string,
+    unknown
+  >;
+  const symbols = [
+    ...new Set([
+      ...dashboard.allocation.map((a) => a.symbol),
+      ...Object.keys(stored).filter((s) => !isCashKey(s)),
+    ]),
+  ];
+  const meta = await loadClassifiedMeta(supabase, symbols);
+  if (scope.key === "sector") {
+    const filled = await backfillSectors(supabase, meta);
+    for (const [s, sec] of Object.entries(filled)) if (meta[s]) meta[s].sector = sec;
+  }
+
+  const current = readTargets(
+    portfolio.holding.target_weights,
+    (portfolio.holding.category_targets ?? {}) as Record<string, number>,
+    symbols.map((s) => ({ symbol: s, assetType: meta[s]?.assetType ?? "주식" })),
+  );
+
+  // 구성원은 **서버에서 다시 묶는다.** 평가액도 여기서 붙인다 — 목표가 아직 없는 종목에
+  // 나머지 몫을 나눌 때 그 비율을 쓴다(`scaleGroupTarget`).
+  const valueOf = new Map(dashboard.allocation.map((a) => [a.symbol, a.value]));
+  const members = symbols
+    .filter((s) => {
+      if (scope.assetType && (meta[s]?.assetType ?? "주식") !== scope.assetType)
+        return false;
+      if (scope.key && scope.label)
+        return tagLabel(meta[s], scope.key) === scope.label;
+      return true;
+    })
+    .map((s) => ({ symbol: s, value: valueOf.get(s) ?? 0 }));
+
+  if (!members.some((m) => m.symbol === symbol))
+    return { ok: false, error: "이 묶음에 없는 종목입니다." };
+  if (members.length < 2)
+    return {
+      ok: false,
+      error: "이 묶음에 종목이 하나뿐이라 나눌 수 없어요 — 그 종목이 곧 100%예요.",
+    };
+
+  const budget = groupBudget(current, members);
+  if (budget <= 0) {
+    const noun = scope.label ?? scope.assetType ?? "이 묶음";
+    return {
+      ok: false,
+      error: `${noun}에 배정된 목표가 없어요 — 자본배분 1단계에서 ${noun} 목표를 먼저 정해주세요.`,
+    };
+  }
+
+  const next = toStored(setWithinGroup(current, members, symbol, fraction));
+
+  const { error } = await supabase
+    .from("holdings")
+    .update({ target_weights: next as unknown as Json })
+    .eq("id", portfolio.holding.id);
+  if (error) return { ok: false, error: error.message };
+
   revalidateAllocate();
   revalidatePath("/rebalance");
   return { ok: true };

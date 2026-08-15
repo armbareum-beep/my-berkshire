@@ -137,7 +137,15 @@ export default async function GroupAllocationPage({
     })),
   ].sort((a, b) => b.value - a.value || (b.target ?? 0) - (a.target ?? 0));
 
+  // 이 묶음이 증권 예산에서 쓰고 있는 몫. 아래 목록은 **이 몫 안에서** 100% 를 나눈다.
   const groupTarget = rows.reduce((s, r) => s + (r.target ?? 0), 0);
+
+  // 목록 비중과 같은 분모로 목표를 다시 센다 — 화면 하나에 분모가 둘이면 어느 쪽
+  // 기준인지 매 줄 헷갈린다(사용자 지적: *"종목 내에서 100%가 아니잖아."*).
+  const within: LevelRow[] =
+    groupTarget > 0
+      ? rows.map((r) => ({ ...r, target: (r.target ?? 0) / groupTarget }))
+      : rows;
 
   return (
     <main className="flex min-h-dvh flex-col gap-4 p-6 pb-28">
@@ -149,15 +157,16 @@ export default async function GroupAllocationPage({
         parentNote={`${lens.noun} · 증권의 ${pct(invested > 0 ? groupValue / invested : 0)} · 목표 ${pct(groupTarget)}`}
         value={groupValue}
         currency={data.currency}
-        rows={rows}
+        rows={within}
+        scope={{ key: lens.key, label }}
         emptyText={`${label}에 담긴 게 없어요.`}
       />
 
       <p className="px-2 text-xs leading-relaxed text-muted-foreground">
-        목록의 비중은 <b>{label} 안에서</b>, 목표비중은 <b>증권 대비</b>예요(현금 제외).
-        {label} 전체를 몇 %로 들고 갈지는 <b>자본배분 1단계의 {lens.noun} 탭</b>에서
-        정하고(다른 축은 안 움직여요), 여기서는 그 안의 종목끼리 비율을 손봐요. 여기서
-        한 종목을 올리면 <b>{label} 합도 그만큼 커지고 현금이 줄어요.</b>
+        비중도 목표도 <b>{label} 안에서 100%</b>예요. {label} 전체를 몇 %로 들고 갈지는{" "}
+        <b>자본배분 1단계의 {lens.noun} 탭</b>에서 정하고(다른 축은 안 움직여요), 여기서는
+        그 안의 종목끼리 비율을 손봐요 — 한 종목을 올리면 같은 묶음의 다른 종목에서
+        가져오므로 <b>{label} 전체 몫({pct(groupTarget)})은 안 움직여요.</b>
       </p>
     </main>
   );
