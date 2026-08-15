@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Info } from "lucide-react";
 import { BottomSheet } from "@/components/ui/BottomSheet";
-import { money, pct, type Currency } from "@/lib/format";
+import { money, moneyShort, pct, type Currency } from "@/lib/format";
 import type { RankBasis } from "@/lib/allocateRanking";
 import type { AllocateRow } from "@/lib/allocateData";
 
@@ -62,9 +62,22 @@ export function RankBasisChip({
   // "안 넣음"과 "넣었는데 계산 대기"를 구분한다 — 가정을 저장해 둔 사용자에게
   // "가정 없음"이라고 말하면 그건 거짓말이다(사용자 지적: *"버크셔 가정 등록했는데
   // 가정 없다고 나와"*). 자세한 이유는 시트가 말한다.
+  // 개별주는 **가격**을 먼저 말한다.
+  //
+  // 예전엔 `기대 17.2%` 였다. 그런데 가정을 기본값으로 깔면 기대수익률은 정의상 전부
+  // 성장률과 같아져(`lib/defaultAssumptions.ts`) 줄마다 같은 숫자가 반복된다 — 사용자
+  // 지적: *"당연히 디폴트면 기대 10%잖아. 기대 10% 살려면 얼마에 사야 하는지를 알려줘야지."*
+  //
+  // 맞는 말이다. 비율은 가정에서 바로 따라 나오는 값이라 새 정보가 없고, **살 수 있는
+  // 값**은 종목마다 다르다. 그래서 칩이 `12.4만까지`(요구수익률을 채우는 상한)를 말하고,
+  // 지금 가격은 줄 왼쪽에 붙는다. 현재가를 몰라 매수가를 못 낸 종목만 예전처럼 비율로.
+  const buyPrice = row?.buyPrice ?? null;
+  const ccy: Currency = row?.nativeCcy ?? "KRW";
   const text =
     basis.kind === "cagr"
-      ? `기대 ${pct(basis.cagr)}`
+      ? buyPrice != null
+        ? `${moneyShort(buyPrice, ccy)}까지`
+        : `기대 ${pct(basis.cagr)}`
       : basis.kind === "unjudged"
         ? basis.reason === "none"
           ? "가정 없음"
@@ -78,7 +91,7 @@ export function RankBasisChip({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label={`${label} 순위 근거 — ${text}`}
+        aria-label={`${label} — ${text}`}
         className={
           "flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[11px] font-bold tabular-nums transition active:scale-95 " +
           (basis.kind === "unjudged"
@@ -127,15 +140,65 @@ function CagrExplain({
   const er = row?.erInputs;
   const ccy: Currency = row?.nativeCcy ?? "KRW";
   const price = row?.nativePrice ?? null;
+  const buyPrice = row?.buyPrice ?? null;
+  // 지금 가격이 매수가보다 얼마나 위/아래인가. 이게 "지금 사도 되나"의 답이다.
+  const over = price != null && buyPrice != null && buyPrice > 0
+      ? price / buyPrice - 1
+      : null;
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <p className="text-xs text-muted-foreground">내 가정으로는</p>
-        <p className="text-3xl font-extrabold tabular-nums text-primary">
-          연 {pct(cagr)}
-        </p>
-      </div>
+      {/* 맨 위는 **가격 두 개**다 — 비율보다 이게 먼저다. 요구수익률을 채우는 상한과
+          지금 값을 나란히 두면 "얼마나 더 빠져야 하나"가 바로 읽힌다. */}
+      {buyPrice != null ? (
+        <div className="flex flex-col gap-3 rounded-xl bg-secondary p-4">
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <p className="text-xs text-muted-foreground">
+                {requiredReturn != null
+                  ? `연 ${pct(requiredReturn)}를 채우려면`
+                  : "이 값 이하로 사면"}
+              </p>
+              <p className="text-2xl font-extrabold tabular-nums text-primary">
+                {money(buyPrice, ccy)}
+              </p>
+            </div>
+            {price != null && (
+              <div className="text-right">
+                <p className="text-xs text-muted-foreground">지금</p>
+                <p className="text-lg font-bold tabular-nums">
+                  {money(price, ccy)}
+                </p>
+              </div>
+            )}
+          </div>
+          {over != null && (
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              {over > 0.0001 ? (
+                <>
+                  지금이 <b>{pct(over)} 비싸요</b> — 이만큼 빠지면 요구수익률을
+                  채웁니다.
+                </>
+              ) : (
+                <>
+                  지금이 <b>{pct(-over)} 싸요</b> — 요구수익률을 이미 넘깁니다.
+                </>
+              )}
+            </p>
+          )}
+        </div>
+      ) : (
+        <div>
+          <p className="text-xs text-muted-foreground">내 가정으로는</p>
+          <p className="text-3xl font-extrabold tabular-nums text-primary">
+            연 {pct(cagr)}
+          </p>
+        </div>
+      )}
+
+      <p className="text-xs text-muted-foreground">
+        내 가정으로는 <b className="text-foreground">연 {pct(cagr)}</b>
+      </p>
 
       {er ? (
         <>
@@ -165,15 +228,12 @@ function CagrExplain({
             <p className="mt-1 font-bold tabular-nums">= 연 {pct(cagr)}</p>
           </div>
 
-          {row?.buyPrice != null && requiredReturn != null && (
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              요구수익률 <b>연 {pct(requiredReturn)}</b>를 채우려면{" "}
-              <b>{money(row.buyPrice, ccy)}</b> 이하로 사야 해요
-              {price != null && (
-                <> — 지금은 {money(price, ccy)}예요.</>
-              )}
-            </p>
-          )}
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            매수가는 <b>{er.years}년 뒤 예상 주가를 요구수익률로 되돌린 값</b>이에요 —{" "}
+            {money(er.futurePrice, ccy)} ÷ (1 +{" "}
+            {requiredReturn != null ? pct(requiredReturn) : "요구수익률"})
+            <sup>{er.years}</sup>.
+          </p>
         </>
       ) : (
         <p className="text-sm text-muted-foreground">
@@ -185,6 +245,17 @@ function CagrExplain({
         ⚠️ 이건 <b>사실이 아니라 가정</b>이에요. 성장률·배수·요구수익률은 직접
         넣은 값이라, 바꾸면 이 숫자와 순위도 바뀝니다.
       </p>
+
+      {/* 기본값을 그대로 쓰면 종목마다 **비율이 똑같아진다.** 배수를 현재 PER 로 두면
+          매수가 ÷ 현재가 = ((1+성장률)/(1+요구수익률))^기간 이라 가격이 약분되기 때문이다.
+          그걸 안 밝히면 균일한 숫자를 종목별 판단으로 오해한다. */}
+      {isDefaultShaped(row, requiredReturn) && (
+        <p className="rounded-xl bg-secondary p-4 text-xs leading-relaxed text-muted-foreground">
+          지금은 <b>기본 가정</b> 그대로예요 — 배수를 현재 PER 로 뒀기 때문에 할인율이
+          모든 종목에서 같게 나옵니다. <b>성장률을 이 기업에 맞게 고쳐야</b> 매수가가
+          종목마다 갈려요.
+        </p>
+      )}
     </div>
   );
 }
@@ -295,4 +366,24 @@ function Row({ k, v }: { k: string; v: string }) {
       <dd className="font-semibold tabular-nums">{v}</dd>
     </div>
   );
+}
+
+/**
+ * 기본 가정을 **손대지 않은** 상태인가 — 종료배수가 지금 PER 와 같은가.
+ *
+ * 그러면 `미래가격 = 현재가 × (1+g)^Y` 라 매수가 ÷ 현재가가 성장률·요구수익률만으로
+ * 정해진다. 즉 **모든 종목이 같은 할인율**을 갖는다. 화면이 그 사실을 말해야 사용자가
+ * 균일한 숫자를 종목별 판단으로 오해하지 않는다.
+ *
+ * 판정은 반올림 여유를 크게 둔다 — 정확히 같을 필요는 없고 "사실상 안 고쳤다"면 된다.
+ */
+function isDefaultShaped(
+  row: AllocateRow | undefined,
+  requiredReturn?: number | null,
+): boolean {
+  const er = row?.erInputs;
+  const price = row?.nativePrice;
+  if (!er || price == null || price <= 0 || requiredReturn == null) return false;
+  const impliedPer = price / er.metric;
+  return Math.abs(impliedPer - er.terminalMultiple) / impliedPer < 0.01;
 }

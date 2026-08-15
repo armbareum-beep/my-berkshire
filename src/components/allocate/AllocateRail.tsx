@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/QuickAdd";
 import { SymbolAvatar } from "@/components/onboarding/SymbolPicker";
 import { cn } from "@/lib/utils";
-import { money, pct, type Currency } from "@/lib/format";
+import { money, moneyShort, pct, type Currency } from "@/lib/format";
 import { planAllocation, type AllocateLeg } from "@/lib/allocate";
 import {
   rankBasis,
@@ -706,8 +706,16 @@ function PlanRow({
           <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
             {why}
           </p>
-          {/* 기대수익률은 오른쪽 칩으로 올라갔다 — 같은 값을 두 번 적지 않는다. */}
+          {/* 오른쪽 칩이 "얼마까지 사면 되나"를 말하므로 여기엔 **지금 얼마인가**를
+              붙인다 — 사용자 지적: *"지금 얼마고 얼마에 사야 하는지 말해줘야."*
+              둘이 한 줄 안에 같이 보여야 비교가 된다. 현재가를 모르면 비중만. */}
           <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
+            {row?.nativePrice != null && (
+              <>
+                지금 {moneyShort(row.nativePrice, row.nativeCcy ?? "KRW")}
+                <span className="mx-1 opacity-40">·</span>
+              </>
+            )}
             {pct(leg.currentWeight)}
             {buying && ` → ${pct(leg.weightAfter)}`}
           </p>
@@ -875,9 +883,12 @@ function DefaultAssumptionsCard({ count }: { count: number }) {
           가정을 아직 안 넣은 종목이 {count}개 있어요
         </p>
         <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-          <b>성장률 10% · 종료배수는 지금 PER</b> 로 한 번에 깔아드려요. 배수가 그대로면
-          기대수익률은 곧 성장률이라 <b>전부 10%로 같아집니다</b> — 출발점이라는 뜻이에요.
-          종목 화면에서 성장률을 고치면 그때부터 순위가 갈려요.
+          <b>성장률 10% · 종료배수는 지금 PER</b> 로 한 번에 깔아드려요. 깔고 나면 종목마다{" "}
+          <b>&#34;얼마까지 사면 되는지&#34;</b>(요구수익률을 채우는 매수가)가 나옵니다.
+        </p>
+        <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+          다만 배수를 지금 PER 로 두면 <b>할인율은 전 종목이 같아요</b> — 종목 화면에서
+          성장률을 그 기업에 맞게 고쳐야 매수가와 순위가 갈립니다.
         </p>
       </div>
       <button
