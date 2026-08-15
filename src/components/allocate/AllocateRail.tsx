@@ -34,6 +34,7 @@ import {
 import type { AllocateRow } from "@/lib/allocateData";
 import { STATUS_META } from "./statusMeta";
 import { HurdleCard } from "./HurdleCard";
+import { RankBasisChip } from "./RankBasisChip";
 import { TargetLensPanel, type LensRows } from "./TargetLensPanel";
 
 const USD_STEPS = [100, 1_000, 10_000];
@@ -514,12 +515,13 @@ export function AllocateRail({
                   </p>
                 )}
                 <ul className="mt-2 flex flex-col gap-0.5">
-                  {s.items.map(({ rank, basis, leg }) => (
+                  {s.items.map(({ rank, basis, row, leg }) => (
                     <PlanRow
                       key={leg.key}
                       rank={rank}
                       basis={basis}
                       leg={leg}
+                      row={row}
                       currency={currency}
                     />
                   ))}
@@ -644,38 +646,19 @@ function gapLabel(gap: number): string {
   return `${gap > 0 ? "−" : "+"}${pct(Math.abs(gap))}`;
 }
 
-/** 정렬 키를 사람 말로 — `rankBasis` 가 준 것만 쓴다(여기서 다시 계산하지 않는다). */
-function basisLabel(b: RankBasis): string {
-  if (b.kind === "cagr") return `기대 ${pct(b.cagr)}`;
-  if (b.kind === "unjudged") return "가정 없음";
-  return b.gap > 0.0001 ? `미달 ${pct(b.gap)}` : "목표 도달";
-}
-
-/**
- * 한 줄 — **순위 번호**와 **그 번호를 만든 숫자**와 금액을 같이 보여준다.
- *
- * 예전엔 번호와 "왜 이 금액인가"만 있었다. 사용자 지적: *"왜 그게 고순위인지 말해주는
- * 단서를 써줘야지. 지금은 그냥 순위 매기니까 랜덤인지 로직이 있는지 알 수 없잖아."*
- *
- * 맞다. 번호만 있고 그 번호를 만든 값이 안 보이면 순위는 주장일 뿐이다. 그래서 이름 옆에
- * **정렬 키를 그대로** 붙인다(`lib/allocateRanking.ts:rankBasis` — 정렬과 같은 함수).
- * 목록을 내려읽으면 그 숫자가 내림차순이라, 로직이 있다는 게 눈으로 증명된다.
- *
- * 세 겹이 각자 다른 자리에서 말한다.
- *   · 상태 배지  — "살 수 있는가"(한도·목표 도달). 가장 위 겹
- *   · 정렬 키 칩 — 그 안에서의 순서 근거
- *   · 아래 한 줄 — "왜 이 금액인가"(목표까지의 부족분)
- */
 function PlanRow({
   rank,
   basis,
   leg,
+  row,
   currency,
 }: {
   rank: number;
   /** 이 줄이 이 자리인 근거 — 섹션의 정렬 키. */
   basis: RankBasis;
   leg: AllocateLeg;
+  /** 근거를 펼쳐 보여줄 때 쓰는 가정·중간값. */
+  row?: AllocateRow;
   currency: Currency;
 }) {
   const meta = STATUS_META[leg.status];
@@ -690,13 +673,17 @@ function PlanRow({
     : meta.note;
 
   return (
-    <li>
+    <li
+      className={
+        "flex items-center gap-3 rounded-xl px-2 py-2.5 " +
+        (buying ? "" : "opacity-55")
+      }
+    >
+      {/* 근거 칩은 **버튼**이라 링크 안에 넣을 수 없다(anchor 안의 button 은 금지).
+          그래서 줄을 둘로 나눈다 — 왼쪽은 종목으로 가는 링크, 오른쪽은 근거·금액. */}
       <Link
         href={`/stocks/${leg.key}`}
-        className={
-          "flex items-center gap-3 rounded-xl px-2 py-2.5 transition active:scale-[0.99] " +
-          (buying ? "" : "opacity-55")
-        }
+        className="flex min-w-0 flex-1 items-center gap-3 transition active:scale-[0.99]"
       >
         <span className="w-4 shrink-0 text-center text-xs font-bold tabular-nums text-muted-foreground">
           {rank}
@@ -705,18 +692,6 @@ function PlanRow({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <p className="truncate text-sm font-semibold">{leg.label}</p>
-            {/* 이 줄이 이 자리인 근거 — 섹션 머리말의 정렬 기준과 같은 값이다.
-                내려읽으면 내림차순이라 순위에 로직이 있다는 게 보인다. */}
-            <span
-              className={
-                "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums " +
-                (basis.kind === "unjudged"
-                  ? "bg-secondary text-muted-foreground"
-                  : "bg-primary/10 text-primary")
-              }
-            >
-              {basisLabel(basis)}
-            </span>
             <span
               className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${meta.tone}`}
             >
@@ -726,18 +701,29 @@ function PlanRow({
           <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
             {why}
           </p>
-          {/* 기대수익률은 위 칩으로 올라갔다 — 같은 값을 두 번 적지 않는다. */}
+          {/* 기대수익률은 오른쪽 칩으로 올라갔다 — 같은 값을 두 번 적지 않는다. */}
           <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
             {pct(leg.currentWeight)}
             {buying && ` → ${pct(leg.weightAfter)}`}
           </p>
         </div>
+      </Link>
+
+      {/* 오른쪽 정렬 — 칩이 한 열로 서므로 내려읽으면 내림차순이 눈에 띈다. */}
+      <div className="flex shrink-0 flex-col items-end gap-1">
+        <RankBasisChip
+          basis={basis}
+          row={row}
+          label={leg.label}
+          symbol={leg.key}
+          requiredReturn={row?.requiredReturn ?? null}
+        />
         {buying && (
-          <p className="shrink-0 text-sm font-bold tabular-nums">
+          <p className="text-sm font-bold tabular-nums">
             {money(leg.amount, currency)}
           </p>
         )}
-      </Link>
+      </div>
     </li>
   );
 }

@@ -44,6 +44,27 @@ export interface AllocateRow extends AllocateTarget {
   country: string;
   /** 산업 태그. 공시 backfill 에 의존해 아직 못 채운 종목은 "미분류". */
   sector: string;
+  /**
+   * 기대수익률 **식을 그대로 펼쳐 보여주기 위한** 가정과 중간값(종목 통화).
+   *
+   * 순위 옆 `기대 17.2%` 칩의 ⓘ 가 이걸 쓴다 — 사용자 지적: *"그 기대수익률을 계산한
+   * 공식도 볼 수 있게 해줘."* 숫자만 던지면 어디서 나온 값인지 알 수 없고, 이 모형은
+   * 애초에 **사실이 아니라 사용자 가정**이라 근거를 같이 보여주는 게 원칙이다
+   * (`lib/finance/expectedReturn.ts` 머리말 — "적정가 X" 금지, "내 가정으로는 X").
+   *
+   * 가정이 없어 계산을 못 한 종목은 `undefined`.
+   */
+  erInputs?: {
+    /** 현재 이익력(주당) — EPS 또는 주당 FCF. */
+    metric: number;
+    /** 향후 `years` 연평균 성장률(소수). */
+    growth: number;
+    /** 기간 종료 시점 배수(PER/PFCF). */
+    terminalMultiple: number;
+    years: number;
+    /** `metric × (1+growth)^years × terminalMultiple`. */
+    futurePrice: number;
+  };
 }
 
 export interface AllocateData {
@@ -217,6 +238,15 @@ export async function loadAllocateData(
     );
     return {
       ...base,
+      erInputs: er
+        ? {
+            metric: pair.metric,
+            growth: assumption.expectedGrowth as number,
+            terminalMultiple: assumption.terminalMultiple as number,
+            years: er.holdingYears,
+            futurePrice: er.futurePrice,
+          }
+        : undefined,
       attractiveness: attractivenessFromCagr(er?.expectedCagr ?? null, requiredReturn),
       expectedCagr: er?.expectedCagr ?? null,
       requiredReturn,
