@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_GROWTH,
+  GROWTH_CAP,
   defaultAssumptionFor,
+  historicalGrowth,
   needsDefault,
 } from "./defaultAssumptions";
 import { computeExpectedReturn } from "./finance/expectedReturn";
@@ -76,5 +78,84 @@ describe("needsDefault — 사람이 정한 값은 안 덮는다", () => {
     expect(needsDefault({ expectedGrowth: 0.12, terminalMultiple: 15 })).toBe(
       false,
     );
+  });
+});
+
+describe("historicalGrowth — 사장님 실제 종목으로", () => {
+  const p = (start: number, ...eps: number[]) =>
+    eps.map((e, i) => ({ year: start + i, eps: e }));
+
+  it("정상 종목은 그대로 쓴다 — 삼성전자", () => {
+    const r = historicalGrowth(p(2020, 4370, 6574, 9168, 2424, 5660, 7595));
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.growth).toBeCloseTo(0.117, 2);
+      expect(r.value.clamped).toBe(false);
+      expect(r.value.span).toBe(5);
+    }
+  });
+
+  it("BGF리테일 · NICE평가정보도 한 자릿수로 나온다", () => {
+    const bgf = historicalGrowth(p(2020, 7103, 8547, 11203, 11337, 11301, 11303));
+    const nice = historicalGrowth(p(2020, 789, 915, 884, 948, 1299, 1319));
+    expect(bgf.ok && bgf.value.growth).toBeCloseTo(0.097, 2);
+    expect(nice.ok && nice.value.growth).toBeCloseTo(0.108, 2);
+  });
+
+  it("적자 연도가 끼면 안 쓴다 — SK하이닉스 2023년 −13,242원", () => {
+    // 끝점만 보면 +54.5% 다. 두 점 CAGR 이 사이클을 지우는 정확한 사례.
+    const r = historicalGrowth(p(2020, 6952, 13965, 3242, -13242, 28719, 61165));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe("loss");
+  });
+
+  it("시작 연도가 적자여도 안 쓴다 — 백산 2020년 −665원", () => {
+    const r = historicalGrowth(p(2020, -665, 792, 1935, 1835, 2851, 1640));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe("loss");
+  });
+
+  it("일회성으로 튄 해가 있어도 끝점이 멀쩡하면 쓴다 — NAVER 2021년 라인 합병", () => {
+    // 이건 자르기가 막는다: 원래 +17.9% → 15%.
+    const r = historicalGrowth(p(2020, 5730, 110367, 5069, 6721, 12914, 13058));
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.raw).toBeCloseTo(0.179, 2);
+      expect(r.value.growth).toBe(GROWTH_CAP);
+      expect(r.value.clamped).toBe(true);
+    }
+  });
+
+  it("높게 튄 값은 자르고 원래 값을 남긴다 — 휴젤 +31.2%", () => {
+    const r = historicalGrowth(p(2020, 3353, 4744, 4856, 8512, 12616, 13040));
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.raw).toBeGreaterThan(0.3);
+      expect(r.value.growth).toBe(GROWTH_CAP);
+      expect(r.value.clamped).toBe(true);
+    }
+  });
+
+  it("역성장은 0%로 자르지 않고 아예 안 쓴다 — 0%는 관측이 아니라 판단이다", () => {
+    const r = historicalGrowth(p(2020, 5000, 4500, 4000, 3500));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe("negative");
+  });
+
+  it("연도가 모자라면 안 쓴다 — 한 해 차이는 그냥 작년 증감률이다", () => {
+    expect(historicalGrowth(p(2025, 3300)).ok).toBe(false);
+    expect(historicalGrowth(p(2024, 1000, 1200)).ok).toBe(false);
+    const short = historicalGrowth(p(2024, 1000, 1200));
+    if (!short.ok) expect(short.reason).toBe("short");
+  });
+
+  it("최근 구간만 본다 — 오래된 해는 창 밖으로 밀린다", () => {
+    const long = p(2015, 100, 200, 400, 800, 1600, 3200, 3400, 3600, 3800, 4000, 4200);
+    const r = historicalGrowth(long, 6);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.fromYear).toBe(2020);
+      expect(r.value.toYear).toBe(2025);
+    }
   });
 });

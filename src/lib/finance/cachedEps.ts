@@ -47,17 +47,72 @@ export async function loadCachedEps(
   const out: CachedEpsMap = {};
   for (const row of sorted) {
     if (out[row.symbol] != null) continue; // 이미 더 최신 행을 잡았다
-    const f = row.data as unknown as CachedShape | null;
-    if (!f) continue;
-    const eps =
-      f.eps != null && Number.isFinite(f.eps)
-        ? Number(f.eps)
-        : f.netIncome != null && f.shares != null && f.shares > 0
-          ? Number(f.netIncome) / Number(f.shares)
-          : null;
+    const eps = epsOf(row.data as unknown as CachedShape | null);
     // 적자·0 은 기대수익률 모형을 못 쓴다 → 담지 않는다(가짜 정밀 금지).
-    if (eps != null && Number.isFinite(eps) && eps > 0) out[row.symbol] = eps;
+    if (eps != null && eps > 0) out[row.symbol] = eps;
   }
+  return out;
+}
+
+/** 캐시 한 행에서 주당순이익을 뽑는다. `eps` 가 비면 netIncome/shares 로 보완(옛 행 대응). */
+function epsOf(f: CachedShape | null): number | null {
+  if (!f) return null;
+  const eps =
+    f.eps != null && Number.isFinite(f.eps)
+      ? Number(f.eps)
+      : f.netIncome != null && f.shares != null && f.shares > 0
+        ? Number(f.netIncome) / Number(f.shares)
+        : null;
+  return eps != null && Number.isFinite(eps) ? eps : null;
+}
+
+/** 한 종목의 연도별 이익력(₩). 오래된 해부터. */
+export interface EpsPoint {
+  year: number;
+  eps: number;
+}
+
+/**
+ * 종목별 **EPS 시계열** — 과거 성장률을 재는 데 쓴다(`lib/defaultAssumptions.ts`).
+ *
+ * `loadCachedEps` 와 같은 캐시를 보지만 최신 한 해만 접는 대신 **연도별로 편다.**
+ * 여기서도 공시 API 는 안 부른다 — 캐시에 있는 해만 쓴다.
+ *
+ * ⚠️ 적자 연도를 **버리지 않고 그대로 담는다.** 손실은 성장률을 못 재게 만드는 사실
+ * 자체이고, 조용히 빼면 사이클 바닥이 지워져 성장률이 부풀려진다(SK하이닉스 2023년
+ * −13,242원을 빼면 5년 CAGR 이 +54% 가 된다). 판단은 읽는 쪽이 한다.
+ */
+export async function loadEpsSeries(
+  supabase: SupabaseClient<Database>,
+  symbols: string[],
+): Promise<Record<string, EpsPoint[]>> {
+  const uniq = [...new Set(symbols)].filter(Boolean);
+  if (uniq.length === 0) return {};
+
+  const { data } = await supabase
+    .from("fundamentals_cache")
+    .select("symbol, year, fs_div, data")
+    .in("symbol", uniq);
+  if (!data || data.length === 0) return {};
+
+  // 같은 해에 연결·개별이 함께 있으면 연결을 쓴다(`loadCachedEps` 와 같은 규칙).
+  const best = new Map<string, { fs: string; eps: number }>();
+  for (const row of data) {
+    const eps = epsOf(row.data as unknown as CachedShape | null);
+    if (eps == null) continue;
+    const key = `${row.symbol}:${row.year}`;
+    const prev = best.get(key);
+    if (!prev || (prev.fs !== "연결" && row.fs_div === "연결"))
+      best.set(key, { fs: row.fs_div, eps });
+  }
+
+  const out: Record<string, EpsPoint[]> = {};
+  for (const [key, v] of best) {
+    const i = key.lastIndexOf(":");
+    const symbol = key.slice(0, i);
+    (out[symbol] ??= []).push({ year: Number(key.slice(i + 1)), eps: v.eps });
+  }
+  for (const list of Object.values(out)) list.sort((a, b) => a.year - b.year);
   return out;
 }
 

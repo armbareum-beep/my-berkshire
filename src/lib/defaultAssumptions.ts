@@ -31,8 +31,36 @@
  * 현재 PER 는 **판단이 아니라 관측값**이라 기본값으로 쓸 수 있다.
  */
 
-/** 기본 성장률 — 향후 N년 이익 CAGR. */
+/** 과거 성장률을 못 재는 종목에 쓰는 성장률. */
 export const DEFAULT_GROWTH = 0.1;
+
+/**
+ * 과거 성장률을 그대로 미래로 밀 때의 **상한·하한**.
+ *
+ * 사용자 제안: *"그건 과거 5년 평균성장률로 지정할까?"* 방향은 맞다 — 종목마다 다른 값이
+ * 나와야 순위가 갈린다. 그런데 이 앱의 실제 데이터로 재보면 그대로 쓰는 건 위험하다:
+ *
+ * ```text
+ *   삼성전자   +11.7%   정상
+ *   BGF리테일   +9.7%   정상
+ *   SK하이닉스 +54.5%   2023년 −13,242원 적자(사이클 바닥에서 쟀다)
+ *   휴젤       +31.2%
+ *   NAVER      +17.9%   2021년 EPS 110,367원(라인 합병 일회성)
+ * ```
+ *
+ * 하이닉스를 54% 로 5년 돌리면 이익이 **8.8배**가 된다. 과거 CAGR 은 시작·끝 두 점만
+ * 보므로 사이클 바닥에서 재면 이렇게 튄다 — 그걸 그대로 미래 가정으로 쓰면 앱이
+ * 사용자 대신 낙관을 만들어내는 셈이다.
+ *
+ * 그래서 **자르되 자른 사실을 말한다.** 원래 값도 같이 돌려주므로 화면이 "과거는 54.5%
+ * 였고 15% 로 잘랐다"고 적을 수 있다. 조용히 자르면 그것도 거짓말이다.
+ *
+ * 상한 15% 는 기본 요구수익률(12%)보다 조금 위다 — 이보다 높게 두면 기본값만으로 모든
+ * 종목이 허들을 넘겨 "다 사도 된다"가 된다.
+ */
+export const GROWTH_CAP = 0.15;
+/** 하한 0% — 과거가 역성장이어도 **줄어든다고 앱이 단정하지는 않는다**(그건 판단이다). */
+export const GROWTH_FLOOR = 0;
 
 export interface DefaultAssumption {
   /** 향후 N년 이익 CAGR(소수). */
@@ -76,4 +104,71 @@ export function needsDefault(a: {
   terminalMultiple: number | null;
 }): boolean {
   return a.expectedGrowth == null && a.terminalMultiple == null;
+}
+
+export interface HistoricalGrowth {
+  /** 실제로 쓸 성장률(잘린 뒤). */
+  growth: number;
+  /** 자르기 전 값 — 화면이 "원래는 얼마였다"를 말할 수 있게. */
+  raw: number;
+  /** 잰 구간. */
+  fromYear: number;
+  toYear: number;
+  /** 몇 해에 걸쳐 쟀나(= toYear − fromYear). */
+  span: number;
+  /** 상·하한에 걸렸나. */
+  clamped: boolean;
+}
+
+/** 과거 성장률을 **못 쓰는** 이유. 화면이 그대로 말한다. */
+export type GrowthGap =
+  | "short" // 연도가 모자라다(2년 이상 걸쳐야 잰다)
+  | "loss" // 구간 안에 적자 연도가 있다
+  | "negative"; // 역성장 — 자르면 0%가 되는데 그건 측정이 아니라 가정이다
+
+/**
+ * 과거 이익 성장률(CAGR). 못 재면 이유를 돌려준다.
+ *
+ * ## 적자 연도가 하나라도 있으면 안 쓴다
+ *
+ * 시작점이 음수면 `(끝÷시작)^(1/n)` 자체가 뜻이 없고, 중간에 적자가 있으면 그건 **성장이
+ * 아니라 사이클**이다. 두 점만 보는 CAGR 로는 그 사실이 지워진다 — SK하이닉스가 2023년
+ * 적자를 지나고도 +54.5% 로 보이는 게 정확히 그 경우다. 이런 종목은 사람이 판단해야
+ * 하므로 기본값(10%)으로 두고 **왜 못 썼는지 말한다.**
+ *
+ * 최근 `window` 해만 본다(기본 6개 = 5년 구간). 캐시가 그보다 짧으면 있는 만큼 쓰되
+ * 2년 이상은 걸쳐야 한다 — 한 해 차이로 낸 CAGR 은 그냥 작년 증감률이다.
+ */
+export function historicalGrowth(
+  series: { year: number; eps: number }[],
+  window = 6,
+): { ok: true; value: HistoricalGrowth } | { ok: false; reason: GrowthGap } {
+  const recent = [...series].sort((a, b) => a.year - b.year).slice(-window);
+  if (recent.length < 3) return { ok: false, reason: "short" };
+
+  const first = recent[0];
+  const last = recent[recent.length - 1];
+  const span = last.year - first.year;
+  if (span < 2) return { ok: false, reason: "short" };
+
+  // 구간 안 어디든 적자면 못 쓴다 — 끝점만 멀쩡해도 마찬가지다.
+  if (recent.some((p) => p.eps <= 0)) return { ok: false, reason: "loss" };
+
+  const raw = Math.pow(last.eps / first.eps, 1 / span) - 1;
+  if (!Number.isFinite(raw)) return { ok: false, reason: "loss" };
+  // 역성장은 0%로 자르는 대신 아예 안 쓴다. 0%는 "안 큰다"는 **판단**이지 관측이 아니다.
+  if (raw < GROWTH_FLOOR) return { ok: false, reason: "negative" };
+
+  const growth = Math.min(raw, GROWTH_CAP);
+  return {
+    ok: true,
+    value: {
+      growth,
+      raw,
+      fromYear: first.year,
+      toYear: last.year,
+      span,
+      clamped: growth !== raw,
+    },
+  };
 }

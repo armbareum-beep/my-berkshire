@@ -883,12 +883,14 @@ function DefaultAssumptionsCard({ count }: { count: number }) {
           가정을 아직 안 넣은 종목이 {count}개 있어요
         </p>
         <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-          <b>성장률 10% · 종료배수는 지금 PER</b> 로 한 번에 깔아드려요. 깔고 나면 종목마다{" "}
-          <b>&#34;얼마까지 사면 되는지&#34;</b>(요구수익률을 채우는 매수가)가 나옵니다.
+          <b>성장률은 과거 실적(최근 5년 EPS) · 종료배수는 지금 PER</b> 로 한 번에
+          깔아드려요. 깔고 나면 종목마다 <b>&#34;얼마까지 사면 되는지&#34;</b>(요구수익률을
+          채우는 매수가)가 나옵니다.
         </p>
         <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-          다만 배수를 지금 PER 로 두면 <b>할인율은 전 종목이 같아요</b> — 종목 화면에서
-          성장률을 그 기업에 맞게 고쳐야 매수가와 순위가 갈립니다.
+          과거가 미래는 아니에요. <b>적자가 낀 종목·역성장은 재지 않고</b> 10%로 두고,
+          잰 값도 <b>15%에서 자릅니다</b> — 사이클 바닥에서 재면 튀거든요. 결국 사장님이
+          종목마다 고쳐야 하는 값이에요.
         </p>
       </div>
       <button
@@ -902,9 +904,14 @@ function DefaultAssumptionsCard({ count }: { count: number }) {
               return;
             }
             const skipped = res.skipped ?? 0;
+            const measured = res.measured ?? 0;
+            const clamped = res.clamped ?? 0;
+            // 무엇을 어떻게 넣었는지 그대로 말한다 — "채웠다"만 말하면 잰 것과 기본값을
+            // 쓴 것이 구분되지 않는다.
             toast.success(
-              `${res.applied ?? 0}개에 기본 가정을 넣었어요` +
-                // 조용히 빠뜨리면 "채웠다"는 말이 거짓이 된다.
+              `${res.applied ?? 0}개에 가정을 넣었어요` +
+                (measured > 0 ? ` · ${measured}개는 과거 실적으로 계산` : "") +
+                (clamped > 0 ? `(${clamped}개는 15%로 자름)` : "") +
                 (skipped > 0
                   ? ` · ${skipped}개는 공시 이익이 아직 없어 건너뛰었어요`
                   : ""),

@@ -33,10 +33,12 @@ import {
   resolveUniverse,
 } from "@/lib/universe";
 import { loadExpectedReturnAssumptions } from "@/lib/expectedReturnAssumptions";
-import { loadCachedEps } from "@/lib/finance/cachedEps";
+import { loadCachedEps, loadEpsSeries } from "@/lib/finance/cachedEps";
 import { valuationApplies } from "@/lib/finance/expectedReturn";
 import {
+  DEFAULT_GROWTH,
   defaultAssumptionFor,
+  historicalGrowth,
   needsDefault,
 } from "@/lib/defaultAssumptions";
 import type { Json } from "@/lib/supabase/database.types";
@@ -683,7 +685,7 @@ export async function restoreTargets(
 }
 
 /**
- * 기대수익률 가정을 **한 번에 깔아준다** — 성장률 10% · 종료배수 = 지금 PER.
+ * 기대수익률 가정을 **한 번에 깔아준다** — 성장률은 과거 실적, 종료배수는 지금 PER.
  *
  * ## 왜
  *
@@ -691,12 +693,17 @@ export async function restoreTargets(
  * 기대수익률 순위에서 통째로 빠진다 — 사용자 지적: *"주식에 일일이 넣기 힘드니까 일단
  * 통일해줘. 10%랑 현재 그 주식의 PER로 디폴트 하면 되겠네."*
  *
- * ## 이 기본값은 순위를 만들지 않는다
+ * ## 성장률은 잴 수 있으면 잰다
  *
- * 종료배수를 현재 PER 로 두면 식이 상쇄돼 **기대수익률이 정확히 성장률과 같아진다**
- * (`lib/defaultAssumptions.ts`). 그래서 깔고 나면 전 종목이 10% 로 똑같다. 그건 중립
- * 출발점이라는 뜻이고, 종목마다 성장률을 고치는 순간 순위가 갈린다. 화면이 그 사실을
- * 같이 말한다 — 균일한 순위를 의미 있는 판단으로 오해하면 안 된다.
+ * 처음엔 전부 10% 였는데, 종료배수가 현재 PER 이면 식이 상쇄돼 **기대수익률이 곧
+ * 성장률**이라 모든 종목이 똑같아졌다. 사용자 제안대로(*"과거 5년 평균성장률로
+ * 지정할까?"*) 과거 EPS 로 잰다 — 종목마다 다른 값이 나와야 순위가 갈린다.
+ *
+ * 다만 **그대로 쓰지는 않는다.** 두 점 CAGR 은 사이클 바닥에서 재면 튄다(SK하이닉스는
+ * 2023년 적자를 지나고도 +54.5%). 적자가 낀 구간·역성장·연도 부족은 **전부 사람이
+ * 판단해야 하는 경우**라 기본값 10% 로 두고, 잰 값도 15% 에서 자른다
+ * (`lib/defaultAssumptions.ts`). 몇 개를 쟀고 몇 개를 잘랐는지 돌려주므로 화면이 그대로
+ * 말할 수 있다 — 조용히 자르면 그것도 거짓말이다.
  *
  * ## 이미 정한 값은 안 덮는다
  *
@@ -707,7 +714,13 @@ export async function restoreTargets(
  * 빠뜨리면 "채웠다"는 말이 거짓이 된다(그 종목은 상세 화면을 한 번 열면 캐시가 찬다).
  */
 export async function applyDefaultAssumptions(): Promise<
-  Result & { applied?: number; skipped?: number; kept?: number }
+  Result & {
+    applied?: number;
+    skipped?: number;
+    kept?: number;
+    measured?: number;
+    clamped?: number;
+  }
 > {
   const supabase = await createClient();
   const {
@@ -727,10 +740,11 @@ export async function applyDefaultAssumptions(): Promise<
     ),
   );
 
-  const [meta, assumptions, cachedEps] = await Promise.all([
+  const [meta, assumptions, cachedEps, epsSeries] = await Promise.all([
     loadClassifiedMeta(supabase, candidates),
     loadExpectedReturnAssumptions(supabase, portfolio.holding.id),
     loadCachedEps(supabase, candidates),
+    loadEpsSeries(supabase, candidates),
   ]);
 
   // 밸류에이션은 개별주에만 적용된다 — ETF·채권·원자재·코인은 이익력 개념이 없다.
@@ -740,6 +754,8 @@ export async function applyDefaultAssumptions(): Promise<
 
   let kept = 0;
   let skipped = 0;
+  let measured = 0; // 과거 실적으로 성장률을 잰 종목
+  let clamped = 0; // 그중 상한에 걸려 잘린 종목
   const rows: {
     holding_id: string;
     symbol: string;
@@ -753,10 +769,21 @@ export async function applyDefaultAssumptions(): Promise<
       kept += 1;
       continue;
     }
+
+    // 성장률은 **잴 수 있으면 잰다.** 못 재는 이유(적자·역성장·연도 부족)는 전부
+    // 사람이 판단해야 하는 경우라 기본값으로 두고 넘어간다(`historicalGrowth`).
+    const past = historicalGrowth(epsSeries[symbol] ?? []);
+    const growth = past.ok ? past.value.growth : DEFAULT_GROWTH;
+    if (past.ok) {
+      measured += 1;
+      if (past.value.clamped) clamped += 1;
+    }
+
     // 가격·EPS 둘 다 ₩ 라 그대로 나눈다(`finance/cachedEps.ts` — 미국 공시도 ₩ 로 들어온다).
     const next = defaultAssumptionFor(
       portfolio.prices[symbol] ?? 0,
       cachedEps[symbol] ?? 0,
+      growth,
     );
     if (!next) {
       skipped += 1;
@@ -781,5 +808,5 @@ export async function applyDefaultAssumptions(): Promise<
 
   revalidateAllocate();
   revalidatePath("/ranking");
-  return { ok: true, applied: rows.length, skipped, kept };
+  return { ok: true, applied: rows.length, skipped, kept, measured, clamped };
 }
