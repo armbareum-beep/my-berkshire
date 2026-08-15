@@ -5,7 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { saveRebalancePlan } from "@/app/rebalance/actions";
-import { setInvestableCash } from "@/app/allocate/actions";
+import {
+  applyDefaultAssumptions,
+  setInvestableCash,
+} from "@/app/allocate/actions";
 import { StepShell } from "@/components/transactions/wizard/StepShell";
 import { SuccessOverlay } from "@/components/transactions/wizard/SuccessOverlay";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
@@ -34,6 +37,7 @@ import {
   type AllocateBucket,
   type BucketLens,
 } from "@/lib/allocateBuckets";
+import { valuationApplies } from "@/lib/finance/expectedReturn";
 import type { AllocateRow } from "@/lib/allocateData";
 import { STATUS_META } from "./statusMeta";
 import { HurdleCard } from "./HurdleCard";
@@ -188,6 +192,18 @@ export function AllocateRail({
     ? (["targets", "amount", "bucket", "split", "shares"] as const)
     : (["targets", "amount", "split", "shares"] as const);
   const stepId = stepIds[stepIdx];
+
+  // 가정을 아직 안 넣은 개별주 수. `metric`(공시 이익 캐시 미스)은 뺀다 — 그건 넣어도
+  // PER 를 못 구해 기본값을 만들 수 없다(`applyDefaultAssumptions` 가 건너뛴다).
+  const unjudged = useMemo(
+    () =>
+      rows.filter(
+        (r) =>
+          valuationApplies(r.assetType) &&
+          (r.erGap === "none" || r.erGap === "incomplete"),
+      ).length,
+    [rows],
+  );
 
   // ── 배분 ──
   // 고른 묶음에만 돈이 가되, 목록은 전부 넘긴다(비중 분모 보존 — PlanOptions 주석).
@@ -487,6 +503,10 @@ export function AllocateRail({
           </div>
         ) : (
           <>
+            {/* 가정을 아직 안 넣은 개별주가 있으면 여기서 한 번에 깐다 — 순위가 왜
+                기대수익률로 안 갈리는지가 드러나는 자리가 바로 여기다. */}
+            {unjudged > 0 && <DefaultAssumptionsCard count={unjudged} />}
+
             {/* 섹션마다 번호가 무슨 기준으로 매겨졌는지 밝힌다 — 기준 없는 순위는
                 거짓말이다. 섹션이 하나뿐이면 예전과 똑같이 보인다. */}
             {sections.map((s) => (
@@ -830,5 +850,61 @@ function BucketCard({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * 가정 일괄 채우기 — 4단계에 붙는 카드.
+ *
+ * 여기 두는 이유는 **순위가 왜 안 갈리는지 드러나는 자리**이기 때문이다. 가정이 없는
+ * 종목은 기대수익률 순위에서 빠져 목표 미달로만 판단되는데, 그 사실이 보이는 건 이
+ * 목록이다. 설정 화면으로 내보내면 여기까지 온 맥락이 끊긴다.
+ *
+ * **깔고 나면 전부 10% 로 같아진다는 걸 먼저 말한다.** 종료배수를 현재 PER 로 두면
+ * 식이 상쇄돼 기대수익률이 곧 성장률이 되기 때문이다(`lib/defaultAssumptions.ts`).
+ * 그걸 안 밝히면 균일한 순위를 의미 있는 판단으로 오해한다.
+ */
+function DefaultAssumptionsCard({ count }: { count: number }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+
+  return (
+    <section className="mb-3 flex flex-col gap-3 rounded-2xl border border-dashed border-primary/40 bg-primary/5 p-4">
+      <div>
+        <p className="text-sm font-semibold">
+          가정을 아직 안 넣은 종목이 {count}개 있어요
+        </p>
+        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+          <b>성장률 10% · 종료배수는 지금 PER</b> 로 한 번에 깔아드려요. 배수가 그대로면
+          기대수익률은 곧 성장률이라 <b>전부 10%로 같아집니다</b> — 출발점이라는 뜻이에요.
+          종목 화면에서 성장률을 고치면 그때부터 순위가 갈려요.
+        </p>
+      </div>
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() =>
+          start(async () => {
+            const res = await applyDefaultAssumptions();
+            if (!res.ok) {
+              toast.error(res.error);
+              return;
+            }
+            const skipped = res.skipped ?? 0;
+            toast.success(
+              `${res.applied ?? 0}개에 기본 가정을 넣었어요` +
+                // 조용히 빠뜨리면 "채웠다"는 말이 거짓이 된다.
+                (skipped > 0
+                  ? ` · ${skipped}개는 공시 이익이 아직 없어 건너뛰었어요`
+                  : ""),
+            );
+            router.refresh();
+          })
+        }
+        className="h-11 rounded-xl bg-primary text-sm font-semibold text-primary-foreground transition active:scale-[0.98] disabled:opacity-50"
+      >
+        기본값으로 채우기
+      </button>
+    </section>
   );
 }

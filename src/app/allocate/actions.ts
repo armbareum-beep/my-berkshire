@@ -27,6 +27,18 @@ import { pct } from "@/lib/format";
 import { tagLabel, type TagKey } from "@/lib/allocation";
 import { backfillSectors } from "@/lib/securities";
 import { loadClassifiedMeta } from "@/lib/classifiedMeta";
+import {
+  approvedSymbols,
+  loadUniverseStatuses,
+  resolveUniverse,
+} from "@/lib/universe";
+import { loadExpectedReturnAssumptions } from "@/lib/expectedReturnAssumptions";
+import { loadCachedEps } from "@/lib/finance/cachedEps";
+import { valuationApplies } from "@/lib/finance/expectedReturn";
+import {
+  defaultAssumptionFor,
+  needsDefault,
+} from "@/lib/defaultAssumptions";
 import type { Json } from "@/lib/supabase/database.types";
 
 type Result = { ok: true } | { ok: false; error: string };
@@ -668,4 +680,106 @@ export async function restoreTargets(
   revalidateAllocate();
   revalidatePath("/rebalance");
   return { ok: true };
+}
+
+/**
+ * 기대수익률 가정을 **한 번에 깔아준다** — 성장률 10% · 종료배수 = 지금 PER.
+ *
+ * ## 왜
+ *
+ * 가정은 종목당 세 값이라 열 종목이면 서른 번을 넣어야 한다. 그 전까지 그 종목들은
+ * 기대수익률 순위에서 통째로 빠진다 — 사용자 지적: *"주식에 일일이 넣기 힘드니까 일단
+ * 통일해줘. 10%랑 현재 그 주식의 PER로 디폴트 하면 되겠네."*
+ *
+ * ## 이 기본값은 순위를 만들지 않는다
+ *
+ * 종료배수를 현재 PER 로 두면 식이 상쇄돼 **기대수익률이 정확히 성장률과 같아진다**
+ * (`lib/defaultAssumptions.ts`). 그래서 깔고 나면 전 종목이 10% 로 똑같다. 그건 중립
+ * 출발점이라는 뜻이고, 종목마다 성장률을 고치는 순간 순위가 갈린다. 화면이 그 사실을
+ * 같이 말한다 — 균일한 순위를 의미 있는 판단으로 오해하면 안 된다.
+ *
+ * ## 이미 정한 값은 안 덮는다
+ *
+ * 성장률·종료배수가 **둘 다 빈** 종목만 채운다(`needsDefault`). 자산유형 제안과 같은
+ * 원칙이다 — 기본값이 사람의 판단을 덮으면 안 된다.
+ *
+ * 공시 이익이 캐시에 없는 종목은 PER 를 못 구해 **건너뛰고 그 수를 돌려준다.** 조용히
+ * 빠뜨리면 "채웠다"는 말이 거짓이 된다(그 종목은 상세 화면을 한 번 열면 캐시가 찬다).
+ */
+export async function applyDefaultAssumptions(): Promise<
+  Result & { applied?: number; skipped?: number; kept?: number }
+> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "로그인이 필요합니다." };
+
+  const portfolio = await getPortfolio(supabase);
+  if (!portfolio) return { ok: false, error: "회사를 찾을 수 없습니다." };
+
+  const dashboard = computeDashboard(portfolio, "KRW");
+  const statuses = await loadUniverseStatuses(supabase, portfolio.holding.id);
+  const candidates = approvedSymbols(
+    resolveUniverse(
+      dashboard.allocation.map((a) => a.symbol),
+      statuses,
+    ),
+  );
+
+  const [meta, assumptions, cachedEps] = await Promise.all([
+    loadClassifiedMeta(supabase, candidates),
+    loadExpectedReturnAssumptions(supabase, portfolio.holding.id),
+    loadCachedEps(supabase, candidates),
+  ]);
+
+  // 밸류에이션은 개별주에만 적용된다 — ETF·채권·원자재·코인은 이익력 개념이 없다.
+  const stocks = candidates.filter((s) =>
+    valuationApplies(meta[s]?.assetType ?? "주식"),
+  );
+
+  let kept = 0;
+  let skipped = 0;
+  const rows: {
+    holding_id: string;
+    symbol: string;
+    er_expected_growth: number;
+    er_terminal_multiple: number;
+  }[] = [];
+
+  for (const symbol of stocks) {
+    const a = assumptions[symbol];
+    if (a && !needsDefault(a)) {
+      kept += 1;
+      continue;
+    }
+    // 가격·EPS 둘 다 ₩ 라 그대로 나눈다(`finance/cachedEps.ts` — 미국 공시도 ₩ 로 들어온다).
+    const next = defaultAssumptionFor(
+      portfolio.prices[symbol] ?? 0,
+      cachedEps[symbol] ?? 0,
+    );
+    if (!next) {
+      skipped += 1;
+      continue;
+    }
+    rows.push({
+      holding_id: portfolio.holding.id,
+      symbol,
+      er_expected_growth: next.expectedGrowth,
+      er_terminal_multiple: next.terminalMultiple,
+    });
+  }
+
+  if (rows.length > 0) {
+    // 부분 upsert — 넘긴 컬럼만 갱신하고 이익력·기간·요구수익률은 그대로 둔다
+    // (`app/stocks/[symbol]/actions.ts:upsertAssumption` 과 같은 규칙).
+    const { error } = await supabase
+      .from("valuation_assumptions")
+      .upsert(rows, { onConflict: "holding_id,symbol" });
+    if (error) return { ok: false, error: error.message };
+  }
+
+  revalidateAllocate();
+  revalidatePath("/ranking");
+  return { ok: true, applied: rows.length, skipped, kept };
 }
