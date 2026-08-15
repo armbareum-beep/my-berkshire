@@ -16,9 +16,20 @@
  * 이 파일은 그 묶기(`buildLens`)와, 반대로 **묶음을 움직여 진실을 다시 쓰는 것**
  * (`scaleGroupTarget`)을 한다. 화면은 계산하지 않는다.
  *
+ * ## 분모는 **증권**이다 — 현금은 안 센다
+ *
+ * 목표비중은 배분 대상 증권을 100% 로 보고 나눈 값이고, 엔진도 같은 분모를 쓴다
+ * (`lib/allocate.ts:planAllocation` 의 `portfolioValue`). 한때 화면만 현금을 더해 나눴는데,
+ * 그러면 같은 "45%" 를 화면은 *증권+현금의 45%* 로 말하고 엔진은 *증권의 45%* 로 계산해
+ * 배분액이 조용히 깎였다. 사용자 지적: *"비중 조절할 때 현금은 빼주는 게 낫겠어."*
+ *
+ * 현금은 **안 채운 만큼 남는 결과**다. 얼마를 현금으로 둘지는 레일 2단계(넣을 금액)가 정한다.
+ * 통화 현금 목표(`CASH:USD`)만 예외로 같은 맵에 살지만, 분모가 **현금**이라 증권의 100%
+ * 와 서로 간섭하지 않는다(`sumTargets` / `roomFor` 가 걸러낸다).
+ *
  * ## 두 가지 기준
  *
- * 비중은 늘 **전체 자산 대비**로 저장·계산한다. 그런데 "주식 안에서 META 가 몇 %인가"는
+ * 비중은 늘 **증권 전체 대비**로 저장·계산한다. 그런데 "주식 안에서 META 가 몇 %인가"는
  * 다른 질문이라 그것만으로는 답이 안 된다. `withinBasis` 가 한 묶음을 100% 로 다시
  * 정규화해준다 — 저장값은 건드리지 않고 **보는 기준만** 바꾼다.
  */
@@ -97,24 +108,19 @@ export interface LensGroup {
   /** 목표 − 현재. 양수면 더 채워야 한다는 뜻. */
   gap: number;
   members: LensMember[];
-  /** 현금 묶음인가. */
-  isCash: boolean;
   /** 미분류·기타인가 — 그룹 단위 조정에서 뺀다. */
   isUntagged: boolean;
 }
 
 export interface LensInput {
   holdings: LensHolding[];
-  cash: number;
   meta: Record<string, SecurityRecord | undefined>;
   targets: FlatTargets;
 }
 
-/** 묶음 정렬 — 현금 최하단, 그 위에 미분류·기타, 나머지는 평가액 내림차순. */
+/** 묶음 정렬 — 미분류·기타를 맨 아래로, 나머지는 평가액 내림차순. */
 function pinnedOrder(label: string): number {
-  if (label === CASH_LABEL) return 2;
-  if (UNTAGGED.has(label)) return 1;
-  return 0;
+  return UNTAGGED.has(label) ? 1 : 0;
 }
 
 /**
@@ -123,15 +129,16 @@ function pinnedOrder(label: string): number {
  * **보유하지 않은 목표 종목도 넣는다.** "아직 안 샀지만 미국 20% 목표"가 빠지면 목표 합이
  * 실제와 달라진다(#70). 그런 종목은 `held: false`, 평가액 0 으로 참여한다.
  *
- * **현금은 목표 합의 나머지다.** 목표 합이 100% 미만이면 나머지는 현금으로 두겠다는
- * 뜻이다(스펙 §16.2) — 그래서 현금 묶음의 목표는 `1 − Σ목표`다.
+ * **현금은 묶음으로 세우지 않는다.** 분모도 증권만이다(파일 첫머리). 목표 합이 100%
+ * 미만이면 그만큼이 현금으로 남는다.
  */
 export function buildLens(input: LensInput, key: TagKey): LensGroup[] {
-  const { holdings, cash, meta, targets } = input;
+  const { holdings, meta, targets } = input;
 
-  const total = holdings.reduce((s, h) => s + h.value, 0) + Math.max(0, cash);
-  const denom = total > 0 ? total : 0;
-  const weight = (v: number) => (denom > 0 ? v / denom : 0);
+  // 분모는 **증권만**이다 — 엔진(`planAllocation` 의 `portfolioValue`)과 같은 기준.
+  // 예전엔 현금을 더해 나눴는데, 그러면 같은 "45%" 를 화면과 엔진이 다르게 읽었다.
+  const total = holdings.reduce((s, h) => s + h.value, 0);
+  const weight = (v: number) => (total > 0 ? v / total : 0);
 
   const groups = new Map<string, LensGroup>();
   const push = (label: string, member: LensMember) => {
@@ -144,7 +151,6 @@ export function buildLens(input: LensInput, key: TagKey): LensGroup[] {
         target: 0,
         gap: 0,
         members: [],
-        isCash: label === CASH_LABEL,
         isUntagged: UNTAGGED.has(label),
       } satisfies LensGroup);
     g.value += member.value;
@@ -168,7 +174,8 @@ export function buildLens(input: LensInput, key: TagKey): LensGroup[] {
 
   // 목표만 있고 아직 안 산 종목 — 빠지면 묶음 목표 합이 진실과 어긋난다.
   for (const [symbol, rule] of Object.entries(targets)) {
-    if (seen.has(symbol) || rule.target <= 0) continue;
+    // 통화 현금 키는 종목이 아니다 — 태그가 없어 "주식/기타" 로 묶이면 엉뚱한 묶음이 된다.
+    if (seen.has(symbol) || rule.target <= 0 || isCashKey(symbol)) continue;
     push(tagLabel(meta[symbol], key), {
       symbol,
       label: meta[symbol]?.name ?? symbol,
@@ -179,24 +186,9 @@ export function buildLens(input: LensInput, key: TagKey): LensGroup[] {
     });
   }
 
-  // 현금 — 목표 합의 나머지(§16.2).
-  const targetSum = Object.values(targets).reduce((s, r) => s + r.target, 0);
-  const cashTarget = Math.max(0, 1 - targetSum);
-  if (cash > 0 || cashTarget > 1e-9) {
-    const g = groups.get(CASH_LABEL) ?? {
-      label: CASH_LABEL,
-      value: 0,
-      current: 0,
-      target: 0,
-      gap: 0,
-      members: [],
-      isCash: true,
-      isUntagged: false,
-    };
-    g.value += Math.max(0, cash);
-    g.target += cashTarget;
-    groups.set(CASH_LABEL, g);
-  }
+  // 현금은 묶음으로 세우지 않는다. 목표비중은 **증권끼리** 나누는 것이고, 현금은 그중
+  // 안 채운 만큼 남는 결과다 — 사용자 지적: *"비중 조절할 때 현금은 빼주는 게 낫겠어."*
+  // 목록에 끼워 두면 분모가 커져 현금 비중이 실제보다 부풀려 보이기도 했다.
 
   return [...groups.values()]
     .map((g) => {
@@ -405,46 +397,50 @@ export function scaleGroupLocked(
 }
 
 /**
- * **현금 목표를 직접 정한다** — 나머지 종목을 통째로 비례 조정한다.
+ * 목표 합을 **정확히 100%로** 맞춘다 — 종목 목표를 통째로 비례 조정한다.
  *
- * 축 고정을 켜면 어느 묶음을 밀어도 현금이 안 움직인다(그게 고정의 정의다). 그래서
- * 현금을 정할 길이 따로 없으면 **현금 수준을 영영 못 바꾼다.** 현금은 여전히 저장되지
- * 않는다 — 종목 목표를 조정해 `1 − Σ목표` 가 요청한 값이 되게 할 뿐이라 §16.2 그대로다.
+ * 축 고정을 켜면 어느 묶음을 밀어도 상계가 일어나 **합이 안 변한다**(그게 고정의 정의다).
+ * 그래서 합이 85% 인 채로 시작하면 영영 85% 다. 예전엔 현금 줄이 그 손잡이였는데, 현금을
+ * 목록에서 빼면서 손잡이도 같이 사라졌다. 이 함수가 그 자리를 대신한다.
  *
- * 전 종목을 같은 비율로 움직이므로 **세 축의 상대 모양이 전부 보존된다** — 현금만 오르내린다.
+ * 전 종목이 같은 비율로 움직이므로 **세 축의 상대 모양이 전부 보존된다** — 유형·국가·산업
+ * 어느 각도로 봐도 비율은 그대로고 합만 100% 가 된다.
  *
- * 통화에 배정한 몫(`CASH:USD`)은 이미 현금이라 건드리지 않는다. 그래서 요청값이 그 합보다
- * 작으면 만들 수 없다 — 호출부가 막아야 한다(`canSetCash`).
+ * 통화 현금 목표(`CASH:USD`)는 분모가 달라(현금 안에서) 건드리지 않는다.
  */
-export function setCashTarget(targets: FlatTargets, next: number): FlatTargets {
-  if (!Number.isFinite(next) || next < 0 || next > 1) return targets;
-
+export function normalizeTargets(targets: FlatTargets): FlatTargets {
   const securities = Object.keys(targets).filter((s) => !isCashKey(s));
   if (securities.length === 0) return targets;
-
-  // 통화에 배정한 몫(`CASH:USD`)도 현금이라 그대로 둔다. 남는 현금은
-  //   1 − 종목합 − 배정분 이므로, 총 현금이 next 가 되려면 종목합 = 1 − next 다.
   return scaleGroupTarget(
     targets,
     securities.map((symbol) => ({ symbol, value: targets[symbol].target })),
-    Math.max(0, 1 - next),
+    1,
   );
 }
 
-/** 현금을 이 값으로 정할 수 있는가 — 통화에 배정한 몫보다 작게는 못 줄인다. */
-export function canSetCash(
-  targets: FlatTargets,
-  next: number,
-): { ok: true } | { ok: false; reserved: number } {
-  const reserved = Object.entries(targets)
-    .filter(([s]) => isCashKey(s))
-    .reduce((s, [, r]) => s + r.target, 0);
-  return next + 1e-9 >= reserved ? { ok: true } : { ok: false, reserved };
+/**
+ * 목표 합(0~1+) — **증권만.** 통화 현금 키는 세지 않는다.
+ *
+ * 목표비중의 분모는 배분 대상 증권이다(`lib/allocate.ts:planAllocation` 의 `portfolioValue`).
+ * 현금은 그 100% 를 나눠 갖는 항목이 아니라 **안 채운 만큼 남는 결과**다 — 사용자 지적:
+ * *"비중 조절할 때 현금은 빼주는 게 낫겠어."*
+ *
+ * 통화 현금 목표(`CASH:USD`)는 "현금 안에서 달러를 얼마나"라 분모가 아예 다르다
+ * (`/allocation/cash`). 같은 맵에 살지만 다른 100% 를 나눠 갖는다.
+ */
+export function sumTargets(map: FlatTargets): number {
+  return Object.entries(map).reduce(
+    (s, [symbol, r]) => (isCashKey(symbol) ? s : s + r.target),
+    0,
+  );
 }
 
-/** 목표 합(0~1+). 화면이 "합계 120%" 같은 경고를 낼 때 쓴다. */
-export function sumTargets(map: FlatTargets): number {
-  return Object.values(map).reduce((s, r) => s + r.target, 0);
+/** 통화 현금 목표만의 합(0~1) — 분모는 **현금**이다. */
+export function sumCashTargets(map: FlatTargets): number {
+  return Object.entries(map).reduce(
+    (s, [symbol, r]) => (isCashKey(symbol) ? s + r.target : s),
+    0,
+  );
 }
 
 /**
@@ -466,7 +462,8 @@ export function roomFor(map: FlatTargets, exclude: Iterable<string>): number {
   const skip = new Set(exclude);
   let others = 0;
   for (const [symbol, rule] of Object.entries(map)) {
-    if (!skip.has(symbol)) others += rule.target;
+    // 통화 현금 목표는 **현금 안에서의** 비중이라 증권 예산을 안 쓴다(`sumTargets`).
+    if (!skip.has(symbol) && !isCashKey(symbol)) others += rule.target;
   }
   return Math.max(0, 1 - others);
 }

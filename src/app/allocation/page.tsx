@@ -95,9 +95,13 @@ export default async function AllocationPage() {
 
   const financial = data.allocation.reduce((s, a) => s + a.value, 0);
   const cash = Math.max(0, data.cash);
-  // 이 화면의 100% = 목표비중의 분모. 둘을 일치시키는 게 이 계층의 존재 이유다.
+  // 화면의 100% 는 **투자자산**(증권 + 현금)이다 — "내가 굴리는 돈이 어떻게 나뉘어 있나"의
+  // 답이라 현금이 한 줄로 서야 읽힌다.
+  //
+  // 반면 **목표비중의 분모는 증권만**이다(엔진과 같은 기준). 그래서 이 화면에서만 두
+  // 분모가 섞이는데, 현금 줄에 목표를 안 붙이고 아래 각주로 밝혀 구분한다.
   const investable = financial + cash;
-  const cashTarget = Math.max(0, 1 - sumTargets(targets));
+  const targetLeft = Math.max(0, 1 - sumTargets(targets));
   const rate = portfolio.usdKrw;
   const toDisplay = (krw: number) =>
     displayCcy === "USD" ? (rate && rate > 0 ? krw / rate : 0) : krw;
@@ -120,13 +124,13 @@ export default async function AllocationPage() {
         badge: g.n > 0 ? `${g.n}종목` : "미보유",
       };
     }),
-    // 현금은 유형과 형제다 — 목표 합 100%의 마지막 칸이다.
+    // 현금은 목표 대상이 아니다 — 목표를 붙이면 증권끼리의 100% 에 끼어들어 분모가
+    // 두 개가 된다. 얼마를 현금으로 둘지는 레일 2단계(넣을 금액)가 정한다.
     {
       key: "cash",
       label: "현금",
       value: cash,
       weight: investable > 0 ? cash / investable : 0,
-      target: cashTarget,
       href: "/allocation/cash",
       badge: "통화별",
     },
@@ -137,12 +141,18 @@ export default async function AllocationPage() {
       <BottomTabBar />
       <AllocationLevel
         title="투자자산"
-        parentNote={`전체 자산의 ${pct(total > 0 ? investable / total : 0)} · 목표비중은 여기가 100%예요`}
+        parentNote={`전체 자산의 ${pct(total > 0 ? investable / total : 0)} · 아래 비중은 투자자산 안에서 100%`}
         value={investable}
         currency={data.currency}
         rows={rows}
         emptyText="아직 보유 종목이 없어요."
       />
+
+      <p className="px-2 text-xs leading-relaxed text-muted-foreground">
+        목록의 비중은 <b>투자자산(증권 + 현금) 안에서</b>예요. 목표비중은{" "}
+        <b>증권끼리 100%</b>라 현금 줄에는 목표가 없어요 — 지금 증권 목표 합은{" "}
+        {pct(1 - targetLeft)}이고, 안 채운 {pct(targetLeft)}만큼이 현금으로 남습니다.
+      </p>
 
       {/* 실물자산은 목표비중 대상이 아니다 — 부동산은 쌀 때 사는 것이지 비중 맞춰
           사는 게 아니다. 계층을 차지하지 않고 한 줄로만 둔다. */}

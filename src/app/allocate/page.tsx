@@ -18,9 +18,10 @@ import type { TypeTargetRow } from "@/components/allocate/TypeTargetList";
  * 이 화면 안에서 이어진다 — 목표 → 금액 → 묶음 → 배분 → 주수
  * (`components/allocate/AllocateRail.tsx`).
  *
- * 1단계에서 정할 목표는 **세 각도**로 만들어 넘긴다(유형·국가·산업). 셋 다 분모가 투자자산
- * 이라 어느 탭을 봐도 합이 100% 다 — 축만 바뀌고 진실은 하나다(`lib/targetLens.ts`).
- * 세 축 모두 그 자리에서 밀 수 있고, 밀면 구성 종목의 평면 목표가 비례로 따라간다.
+ * 1단계에서 정할 목표는 **세 각도**로 만들어 넘긴다(유형·국가·산업). 셋 다 분모가 **배분
+ * 대상 증권**이라 어느 탭을 봐도 합이 100% 다 — 축만 바뀌고 진실은 하나다
+ * (`lib/targetLens.ts`). 세 축 모두 그 자리에서 밀 수 있고, 밀면 구성 종목의 평면 목표가
+ * 비례로 따라간다. **현금은 목록에 없다** — 안 채운 만큼이 현금으로 남을 뿐이다.
  *
  * 이 서버 컴포넌트가 하는 일은 데이터 적재와 **못 넘어가는 관문 두 개**뿐이다. 관문도
  * 카드를 늘어놓지 않고 "지금 할 일 하나 + 버튼 하나"로 낸다(`docs/user-rails-v1.md` §3
@@ -56,20 +57,18 @@ export default async function AllocatePage() {
   // 같은 일을 하는 화면을 하나 더 지나가게 하는 셈이다.
 
   // ── 1단계에서 볼 목표 — 세 각도 ──
-  // 분모는 **투자자산**(배분 대상 + 현금)이다. 목표비중의 정의와 같은 기준이라
-  // 어느 렌즈로 봐도 이 화면의 합이 곧 100% 가 된다(§16.2 — 안 채운 나머지가 현금).
+  // 분모는 **배분 대상 증권**이다. 현금은 안 센다 — 사용자 지적: *"비중 조절할 때 현금은
+  // 빼주는 게 낫겠어. 금융자산만 떼어 놓으니까 (현금이) 과대계상돼."*
+  //
+  // 이게 엔진과도 맞다. `planAllocation` 의 `portfolioValue` 는 증권 합계라, 현금을 더해
+  // 나눈 화면 숫자를 그대로 목표로 저장하면 같은 "45%" 를 화면과 엔진이 다르게 읽었다.
   // 아래 헬퍼가 중첩 함수라 `data` 의 non-null 좁힘이 안 따라온다 — 먼저 꺼내 둔다.
   const allRows = data.rows;
   const invested = allRows.reduce((s, r) => s + r.value, 0);
   const cash = Math.max(0, data.cash);
-  const investable = invested + cash;
-  const w = (v: number) => (investable > 0 ? v / investable : 0);
-  const targetSum = allRows.reduce((s, r) => s + r.target, 0);
+  const w = (v: number) => (invested > 0 ? v / invested : 0);
 
-  /**
-   * 한 렌즈의 줄들. 현금은 늘 마지막에 붙는다 — 어느 축으로 묶어도 현금은 **목표를 안
-   * 채운 나머지**이고, 빼면 합이 100% 가 아니게 되어 "얼마 남았나"를 읽을 수 없다.
-   */
+  /** 한 렌즈의 줄들 — 증권만. 분모도 증권이라 합이 100% 면 다 채운 것이다. */
   function lensRowsFor(
     tag: (r: AllocateRow) => string,
     href: (label: string) => string,
@@ -108,17 +107,8 @@ export default async function AllocatePage() {
           : undefined,
         href: href(label),
       })),
-      // 현금도 정할 수 있다. 축 고정을 켠 뒤로는 어느 묶음을 밀어도 현금이 안 움직이므로
-      // (그게 고정의 정의다) 여기가 **현금 수준을 바꾸는 유일한 자리**다. 저장 형식은
-      // 그대로 — 종목 목표를 통째로 비례 조정해 나머지를 맞춘다(§16.2).
-      {
-        label: "현금",
-        value: cash,
-        current: w(cash),
-        target: Math.max(0, 1 - targetSum),
-        isCash: true,
-        href: "/allocation/cash",
-      },
+      // 현금 줄은 없다. 목표비중은 **증권끼리** 나누는 것이고, 안 채운 만큼이 현금으로
+      // 남는다. 얼마를 현금으로 둘지는 2단계(넣을 금액)가 정한다.
     ];
   }
 

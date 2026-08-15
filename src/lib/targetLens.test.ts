@@ -3,11 +3,10 @@ import {
   buildLens,
   cashCurrency,
   cashKey,
-  canSetCash,
   isCashKey,
+  normalizeTargets,
   roomFor,
   scaleGroupLocked,
-  setCashTarget,
   scaleGroupTarget,
   sumTargets,
   withinBasis,
@@ -34,7 +33,7 @@ function sec(
 const t = (map: Record<string, number>): FlatTargets =>
   Object.fromEntries(Object.entries(map).map(([k, v]) => [k, { target: v }]));
 
-/** 미국 주식 2 + 한국 주식 1 + 현금. 전체 1000. */
+/** 미국 주식 2 + 한국 주식 1. 증권 합계 900. */
 function base(over: Partial<LensInput> = {}): LensInput {
   return {
     holdings: [
@@ -42,7 +41,6 @@ function base(over: Partial<LensInput> = {}): LensInput {
       { symbol: "NVDA", name: "Nvidia", value: 200 },
       { symbol: "005930", name: "삼성전자", value: 300 },
     ],
-    cash: 100,
     meta: {
       META: sec("META"),
       NVDA: sec("NVDA"),
@@ -59,9 +57,9 @@ describe("buildLens — 묶어서 보기", () => {
     const us = groups.find((g) => g.label === "미국")!;
     const kr = groups.find((g) => g.label === "한국")!;
 
-    expect(us.current).toBeCloseTo(0.6); // (400+200)/1000
+    expect(us.current).toBeCloseTo(600 / 900); // 분모는 증권만
     expect(us.target).toBeCloseTo(0.6);
-    expect(kr.current).toBeCloseTo(0.3);
+    expect(kr.current).toBeCloseTo(300 / 900);
     expect(us.members).toHaveLength(2);
   });
 
@@ -70,10 +68,10 @@ describe("buildLens — 묶어서 보기", () => {
       base({ targets: t({ META: 0.5, NVDA: 0.2, "005930": 0.2 }) }),
       "country",
     );
-    // 미국 목표 70% − 현재 60% = +10%p
-    expect(groups.find((g) => g.label === "미국")!.gap).toBeCloseTo(0.1);
-    // 한국 목표 20% − 현재 30% = −10%p
-    expect(groups.find((g) => g.label === "한국")!.gap).toBeCloseTo(-0.1);
+    // 미국 목표 70% − 현재 (600/900)
+    expect(groups.find((g) => g.label === "미국")!.gap).toBeCloseTo(0.7 - 600 / 900);
+    // 한국 목표 20% − 현재 (300/900)
+    expect(groups.find((g) => g.label === "한국")!.gap).toBeCloseTo(0.2 - 300 / 900);
   });
 
   it("보유하지 않은 목표 종목도 묶음에 넣는다", () => {
@@ -90,18 +88,27 @@ describe("buildLens — 묶어서 보기", () => {
     expect(tw.members[0].held).toBe(false);
   });
 
-  it("현금 목표는 목표 합의 나머지다", () => {
-    // 목표 합 70% → 현금 목표 30%
+  it("현금은 묶음으로 세우지 않는다 — 목표는 증권끼리의 100%다", () => {
     const groups = buildLens(
       base({ targets: t({ META: 0.4, NVDA: 0.2, "005930": 0.1 }) }),
       "country",
     );
-    const cash = groups.find((g) => g.label === "현금")!;
-    expect(cash.target).toBeCloseTo(0.3);
-    expect(cash.current).toBeCloseTo(0.1); // 실제 현금 100/1000
+    expect(groups.find((g) => g.label === "현금")).toBeUndefined();
+    // 분모도 증권만 — 미국 600 / 증권 900
+    expect(groups.find((g) => g.label === "미국")!.current).toBeCloseTo(600 / 900);
   });
 
-  it("현금은 맨 아래, 미분류·기타는 그 위에 둔다", () => {
+  it("통화 현금 키는 종목 묶음에 끼지 않는다", () => {
+    const groups = buildLens(
+      base({ targets: t({ META: 0.4, "CASH:USD": 0.3 }) }),
+      "country",
+    );
+    expect(groups.flatMap((g) => g.members).map((m) => m.symbol)).not.toContain(
+      "CASH:USD",
+    );
+  });
+
+  it("미분류·기타는 맨 아래에 둔다", () => {
     const groups = buildLens(
       base({
         holdings: [
@@ -112,8 +119,7 @@ describe("buildLens — 묶어서 보기", () => {
       }),
       "country",
     );
-    expect(groups.at(-1)!.label).toBe("현금");
-    expect(groups.at(-2)!.label).toBe("기타");
+    expect(groups.at(-1)!.label).toBe("기타");
   });
 
   it("산업 렌즈도 같은 진실을 다르게 묶는다", () => {
@@ -128,13 +134,13 @@ describe("buildLens — 묶어서 보기", () => {
       "sector",
     );
     const semi = groups.find((g) => g.label === "반도체")!;
-    expect(semi.current).toBeCloseTo(0.5); // (200+300)/1000
+    expect(semi.current).toBeCloseTo(500 / 900); // 분모는 증권만
     expect(semi.target).toBeCloseTo(0.5);
   });
 
   it("자산이 하나도 없어도 NaN 을 만들지 않는다", () => {
     const groups = buildLens(
-      { holdings: [], cash: 0, meta: {}, targets: {} },
+      { holdings: [], meta: {}, targets: {} },
       "country",
     );
     expect(groups.every((g) => Number.isFinite(g.current))).toBe(true);
@@ -146,21 +152,23 @@ describe("withinBasis — 묶음 안에서 보기", () => {
     const us = buildLens(base(), "country").find((g) => g.label === "미국")!;
     const within = withinBasis(us);
 
-    // 전체 대비 META 40% · NVDA 20% → 미국 안에서 2:1
+    // 저장값 META 40% · NVDA 20% → 미국 안에서 2:1
     expect(within.find((m) => m.symbol === "META")!.current).toBeCloseTo(2 / 3);
     expect(within.find((m) => m.symbol === "NVDA")!.current).toBeCloseTo(1 / 3);
     expect(within.reduce((s, m) => s + m.current, 0)).toBeCloseTo(1);
   });
 
-  it("저장값(전체 대비)은 건드리지 않는다", () => {
+  it("원본 비중은 건드리지 않는다", () => {
     const us = buildLens(base(), "country").find((g) => g.label === "미국")!;
     withinBasis(us);
-    expect(us.members.find((m) => m.symbol === "META")!.current).toBeCloseTo(0.4);
+    expect(us.members.find((m) => m.symbol === "META")!.current).toBeCloseTo(
+      400 / 900,
+    );
   });
 
   it("그룹 합이 0이면 0을 준다 — NaN 금지", () => {
     const empty = buildLens(
-      base({ holdings: [], cash: 0, targets: {} }),
+      base({ holdings: [], targets: {} }),
       "country",
     );
     for (const g of empty) {
@@ -398,32 +406,40 @@ describe("scaleGroupLocked — 다른 축은 그대로 둔다", () => {
   });
 });
 
-describe("setCashTarget — 현금을 직접 정한다", () => {
-  it("종목 전체를 비례로 줄여 현금을 만든다", () => {
-    const next = setCashTarget(t({ META: 0.4, NVDA: 0.2, KO: 0.1 }), 0.5);
-    expect(sumTargets(next)).toBeCloseTo(0.5);
+describe("normalizeTargets — 합을 100%로", () => {
+  it("종목 전체를 비례로 늘려 합을 1로 만든다", () => {
+    const next = normalizeTargets(t({ META: 0.4, NVDA: 0.2, KO: 0.1 }));
+    expect(sumTargets(next)).toBeCloseTo(1);
     // 4:2:1 비율 보존 — 세 축의 상대 모양이 전부 그대로다
     expect(next.META.target / next.NVDA.target).toBeCloseTo(2);
     expect(next.NVDA.target / next.KO.target).toBeCloseTo(2);
   });
 
-  it("현금을 줄이면 종목이 커진다", () => {
-    const next = setCashTarget(t({ META: 0.4, NVDA: 0.2 }), 0.1);
-    expect(sumTargets(next)).toBeCloseTo(0.9);
+  it("넘친 합도 1로 내린다", () => {
+    const next = normalizeTargets(t({ META: 0.8, NVDA: 0.6 }));
+    expect(sumTargets(next)).toBeCloseTo(1);
   });
 
-  it("통화에 배정한 몫은 건드리지 않는다", () => {
-    // 현금 35% 중 10% 는 달러 — 종목은 65% 가 되어야 한다.
-    const next = setCashTarget(t({ META: 0.5, "CASH:USD": 0.1 }), 0.35);
-    expect(next["CASH:USD"].target).toBeCloseTo(0.1);
-    expect(next.META.target).toBeCloseTo(0.65);
+  it("통화 현금 목표는 건드리지 않는다 — 분모가 다르다", () => {
+    const next = normalizeTargets(t({ META: 0.5, "CASH:USD": 0.3 }));
+    expect(next["CASH:USD"].target).toBeCloseTo(0.3);
+    expect(next.META.target).toBeCloseTo(1);
+    expect(sumTargets(next)).toBeCloseTo(1);
   });
 
-  it("통화에 배정한 몫보다 작게는 못 줄인다", () => {
-    const map = t({ META: 0.5, "CASH:USD": 0.1 });
-    expect(canSetCash(map, 0.2).ok).toBe(true);
-    const no = canSetCash(map, 0.05);
-    expect(no.ok).toBe(false);
-    if (!no.ok) expect(no.reserved).toBeCloseTo(0.1);
+  it("종목이 없으면 그대로 둔다", () => {
+    const only = t({ "CASH:USD": 0.3 });
+    expect(normalizeTargets(only)).toEqual(only);
+  });
+});
+
+describe("sumTargets — 증권만 센다", () => {
+  it("통화 현금 키는 빼고 더한다", () => {
+    expect(sumTargets(t({ META: 0.4, "CASH:USD": 0.3 }))).toBeCloseTo(0.4);
+  });
+
+  it("roomFor 도 증권 기준이다", () => {
+    // 통화에 30% 를 배정해 뒀어도 증권 여유는 60% 다.
+    expect(roomFor(t({ META: 0.4, "CASH:USD": 0.3 }), ["NVDA"])).toBeCloseTo(0.6);
   });
 });

@@ -6,7 +6,7 @@ import { computeDashboard } from "@/lib/dashboard";
 import { companyCashPools } from "@/lib/finance/valuation";
 import { getFxToKrw } from "@/lib/finance/fx";
 import { readTargets } from "@/lib/targetWeights";
-import { cashKey, sumTargets } from "@/lib/targetLens";
+import { cashKey, sumCashTargets } from "@/lib/targetLens";
 import { money, pct } from "@/lib/format";
 import { BackButton } from "@/components/BackButton";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
@@ -72,9 +72,11 @@ export default async function CashAllocationPage() {
     })
     .sort((a, b) => b.value - a.value);
 
-  // 목표를 안 채운 나머지가 곧 현금이다(§16.2). 통화에 배정한 몫과 별개로 남는 부분.
-  const assigned = rows.reduce((s, r) => s + r.target, 0);
-  const unassigned = Math.max(0, 1 - sumTargets(targets));
+  // 통화 목표의 분모는 **현금**이다 — 증권 목표(증권끼리 100%)와 다른 100% 를 나눠 갖는다.
+  // 예전엔 둘을 한 100% 안에 욱여넣어 "달러 10%" 가 현금의 10%인지 자산의 10%인지
+  // 헷갈렸다. 이제 이 화면은 현금 안에서만 말한다.
+  const assigned = sumCashTargets(targets);
+  const unassigned = Math.max(0, 1 - assigned);
   const financial = data.allocation.reduce((s, a) => s + a.value, 0);
   const investable = financial + cash;
 
@@ -103,8 +105,9 @@ export default async function CashAllocationPage() {
       )}
 
       <p className="px-2 text-xs leading-relaxed text-muted-foreground">
-        목표는 <b>투자자산 대비</b>예요. 통화에 배정한 {pct(assigned)} 외에, 목표를
-        안 채운 나머지 {pct(unassigned)}도 현금으로 남습니다.
+        여기 목표는 <b>현금 안에서</b>예요 — 증권 목표(증권끼리 100%)와 따로 놉니다.
+        지금 통화에 배정한 몫은 {pct(assigned)}이고, 나머지 {pct(unassigned)}는
+        아직 안 정했어요.
       </p>
     </main>
   );

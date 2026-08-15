@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { PercentPad } from "@/components/ui/PercentPad";
 import {
   setGroupTarget,
-  setCashTargetAction,
+  normalizeTargetsAction,
   restoreTargets,
 } from "@/app/allocate/actions";
 import type { TagKey } from "@/lib/allocation";
@@ -16,26 +16,20 @@ import { Donut } from "@/components/dashboard/Donut";
 import { donutColor } from "@/components/dashboard/donutPalette";
 
 export interface TypeTargetRow {
-  /** 묶음 이름 — 유형(주식·ETF…) / 국가 / 산업, 또는 현금. */
+  /** 묶음 이름 — 유형(주식·ETF…) / 국가 / 산업. **현금은 없다.** */
   label: string;
   value: number;
-  /** 투자자산 대비 현재 비중 0~1. */
+  /** 배분 대상 증권 대비 현재 비중 0~1. */
   current: number;
-  /** 투자자산 대비 목표 0~1. */
+  /** 배분 대상 증권 대비 목표 0~1. */
   target: number;
   /**
-   * 직접 못 정하는 줄. 둘뿐이다 —
-   * · 현금: "목표를 안 채운 나머지"가 곧 현금이라 정의상 정할 수 없다(§16.2)
-   * · 기타·미분류: 구성이 유동적이라 묶음으로 밀면 엉뚱한 종목이 딸려간다
+   * 직접 못 정하는 줄 — **기타·미분류**뿐이다. 구성이 유동적이라 묶음으로 밀면 엉뚱한
+   * 종목이 딸려간다.
    */
   readOnly?: boolean;
   /** 못 정하는 줄에 이유를 한 줄로. */
   note?: string;
-  /**
-   * 현금 줄인가. 현금은 저장되는 목표가 아니라 **나머지**라 다른 액션을 탄다
-   * (`setCashTargetAction` — 종목 전체를 비례 조정해 나머지를 맞춘다).
-   */
-  isCash?: boolean;
   /** 이 줄을 누르면 갈 곳 — 그 묶음 안(종목 목록). */
   href?: string;
 }
@@ -56,6 +50,13 @@ export interface TypeTargetRow {
  *
  * 그래서 레일의 첫 칸으로 들여왔다. 여기서 정하는 합이 곧 100% 이고, 그게 그대로 뒤
  * 단계의 배분 기준이 된다.
+ *
+ * ## 현금은 이 목록에 없다
+ *
+ * 분모는 **배분 대상 증권**이다. 현금을 한 줄로 끼워 두면 분모가 커져 현금 비중이 실제보다
+ * 부풀려 보였고(사용자 지적), 무엇보다 엔진(`planAllocation` 의 `portfolioValue`)은 처음부터
+ * 증권만으로 나누고 있어서 화면과 저장이 어긋났다. 얼마를 현금으로 둘지는 **2단계(넣을
+ * 금액)** 가 정한다.
  *
  * ## 그래프와 조절이 한 자리다
  *
@@ -84,7 +85,7 @@ export interface TypeTargetRow {
 export function TypeTargetList({
   rows,
   currency,
-  heading = "투자자산 100%를 나눠요",
+  heading = "증권 100%를 나눠요",
   lens = "assetType",
 }: {
   rows: TypeTargetRow[];
@@ -92,9 +93,8 @@ export function TypeTargetList({
   /** 렌즈마다 주어가 다르다 — 유형은 "나눠요", 국가·산업은 "이렇게 갈려 있어요". */
   heading?: string;
   /**
-   * 저장할 때 어느 축의 묶음인지. 국가·산업 줄은 전부 `readOnly` 라 실제로는 저장에
-   * 닿지 않지만, 축을 하드코딩해두면 나중에 편집을 열었을 때 **엉뚱한 묶음이 조용히**
-   * 바뀐다. 그래서 축을 값으로 받는다.
+   * 저장할 때 어느 축의 묶음인지. 하드코딩해두면 국가 줄을 고쳤는데 **유형 묶음이
+   * 조용히** 바뀐다. 그래서 축을 값으로 받는다.
    */
   lens?: TagKey;
 }) {
@@ -150,6 +150,72 @@ export function TypeTargetList({
           <TypeRow key={r.label} row={r} currency={currency} lens={lens} />
         ))}
       </ul>
+
+      {Math.abs(total - 1) >= 0.005 && <FillToFull total={total} />}
+    </div>
+  );
+}
+
+/**
+ * 합이 100% 가 아닐 때의 손잡이.
+ *
+ * 축 고정을 켜면 어느 묶음을 밀어도 상계가 일어나 **합이 안 변한다**. 예전엔 현금 줄이
+ * 합을 바꾸는 자리였는데, 현금을 목록에서 빼면서 그 손잡이도 같이 사라졌다. 그래서
+ * 합이 어긋났을 때만 이 줄이 나온다.
+ *
+ * 누르면 전 종목이 같은 비율로 움직여 합만 100% 가 된다 — 세 축의 상대 모양은 그대로다.
+ * 자동으로 하지 않는 이유는 `capToOne` 때와 같다: 사용자가 시킨 적 없는 값을 조용히
+ * 만들지 않는다.
+ */
+function FillToFull({ total }: { total: number }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const short = total < 1;
+
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-dashed border-border px-4 py-3">
+      <p className="min-w-0 flex-1 text-xs leading-relaxed text-muted-foreground">
+        {short ? (
+          <>
+            합이 {pct(total)}예요 — 남은 <b>{pct(1 - total)}</b>만큼은 안 사고
+            현금으로 남습니다.
+          </>
+        ) : (
+          <>합이 {pct(total)}예요 — 100%를 넘겼습니다.</>
+        )}
+      </p>
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() =>
+          start(async () => {
+            const res = await normalizeTargetsAction();
+            if (!res.ok) {
+              toast.error(res.error);
+              return;
+            }
+            const { previous } = res;
+            toast.success("합을 100%로 맞췄어요", {
+              action: {
+                label: "되돌리기",
+                onClick: () =>
+                  start(async () => {
+                    const back = await restoreTargets(previous);
+                    if (!back.ok) {
+                      toast.error(back.error);
+                      return;
+                    }
+                    router.refresh();
+                  }),
+              },
+            });
+            router.refresh();
+          })
+        }
+        className="h-9 shrink-0 rounded-xl bg-secondary px-3 text-xs font-semibold transition active:scale-[0.97] disabled:opacity-50"
+      >
+        100%로 맞추기
+      </button>
     </div>
   );
 }
@@ -170,9 +236,7 @@ function TypeRow({
 
   function save(next: number) {
     start(async () => {
-      const res = row.isCash
-        ? await setCashTargetAction(next)
-        : await setGroupTarget(lens, row.label, next);
+      const res = await setGroupTarget(lens, row.label, next);
       if (!res.ok) {
         toast.error(res.error);
         return;

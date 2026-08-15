@@ -13,11 +13,10 @@ import {
 } from "@/lib/targetWeights";
 import {
   buildLens,
-  canSetCash,
   isCashKey,
+  normalizeTargets,
   roomFor,
   scaleGroupLocked,
-  setCashTarget,
   sumTargets,
   CASH_LABEL,
 } from "@/lib/targetLens";
@@ -303,9 +302,12 @@ export async function setGroupTarget(
   if (!label) return { ok: false, error: "묶음이 올바르지 않습니다." };
   if (!Number.isFinite(next) || next < 0 || next > 1)
     return { ok: false, error: "목표비중은 0~100% 사이여야 합니다." };
-  // 현금은 저장되는 목표가 아니라 나머지라 계산이 다르다 — 전용 액션으로 간다.
+  // 현금은 목표 대상이 아니다 — 증권끼리 나눈 뒤 안 채운 만큼이 현금으로 남는다.
   if (label === CASH_LABEL)
-    return { ok: false, error: "현금은 `setCashTargetAction` 으로 정합니다." };
+    return {
+      ok: false,
+      error: "현금은 목표로 정하지 않아요 — 증권 목표를 안 채운 만큼이 현금입니다.",
+    };
 
   const supabase = await createClient();
   const {
@@ -347,7 +349,6 @@ export async function setGroupTarget(
         name: a.name,
         value: a.value,
       })),
-      cash: dashboard.cash,
       meta,
       targets: current,
     },
@@ -422,20 +423,14 @@ export async function setGroupTarget(
 /**
  * **현금 목표를 직접 정한다.**
  *
- * 축 고정을 켜면 어느 묶음을 밀어도 현금이 안 움직인다 — 그게 고정의 정의다. 그래서
- * 현금을 정하는 길이 따로 없으면 **현금 수준을 영영 못 바꾼다.** 예전엔 "목표를 안 채우면
- * 나머지가 현금"이라 다른 줄을 밀어서 간접으로 조절했는데, 이제 그 길이 막혔다.
+ * 축 고정을 켜면 어느 묶음을 밀어도 상계가 일어나 **합이 안 변한다** — 그게 고정의
+ * 정의다. 그래서 합이 85% 인 채로 시작하면 영영 85% 다. 예전엔 현금 줄이 그 손잡이였는데,
+ * 현금을 목록에서 뺀 뒤로 손잡이가 사라졌다.
  *
- * 저장 형식은 그대로다 — 현금은 여전히 저장되지 않고, 종목 목표를 통째로 비례 조정해
- * `1 − Σ목표` 가 요청한 값이 되게 한다(§16.2). 전 종목이 같은 비율로 움직이므로
- * **세 축의 상대 모양이 전부 보존된다.**
+ * 저장 형식은 그대로다 — 종목 목표를 통째로 비례 조정할 뿐이라 세 축의 상대 모양이
+ * 전부 보존되고, 합만 100% 가 된다.
  */
-export async function setCashTargetAction(
-  next: number,
-): Promise<GroupTargetResult> {
-  if (!Number.isFinite(next) || next < 0 || next > 1)
-    return { ok: false, error: "목표비중은 0~100% 사이여야 합니다." };
-
+export async function normalizeTargetsAction(): Promise<GroupTargetResult> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -454,16 +449,11 @@ export async function setCashTargetAction(
     symbols.map((s) => ({ symbol: s, assetType: meta[s]?.assetType ?? "주식" })),
   );
 
-  // 통화에 배정한 몫도 현금이라 그보다 작게는 만들 수 없다.
-  const room = canSetCash(current, next);
-  if (!room.ok)
-    return {
-      ok: false,
-      error: `달러·엔 같은 통화에 이미 ${pct(room.reserved)}를 배정해 뒀어요. 현금은 그보다 작게 못 줄입니다 — 현금 화면에서 통화 목표를 먼저 줄여주세요.`,
-    };
+  if (sumTargets(current) <= 0)
+    return { ok: false, error: "맞출 목표가 아직 없어요. 유형부터 정해주세요." };
 
   const previous = toStored(current);
-  const updated = toStored(setCashTarget(current, next));
+  const updated = toStored(normalizeTargets(current));
 
   const { error } = await supabase
     .from("holdings")

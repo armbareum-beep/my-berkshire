@@ -38,7 +38,7 @@ import {
  * ## 두 개의 분모가 한 화면에 있다
  *
  * · 목록 비중 = **이 묶음 안에서**(이 화면의 100%)
- * · 목표비중 = **투자자산 대비** — 저장·엔진이 쓰는 기준
+ * · 목표비중 = **배분 대상 증권 대비**(현금 제외) — 저장·엔진이 쓰는 기준
  */
 const KEYS: Record<string, { key: TagKey; noun: string }> = {
   country: { key: "country", noun: "국가" },
@@ -95,8 +95,8 @@ export default async function GroupAllocationPage({
   );
   const groupValue = mine.reduce((s, a) => s + a.value, 0);
   const financial = data.allocation.reduce((s, a) => s + a.value, 0);
-  // 목표의 분모 — 엔진과 같아야 한다(금융자산 + 현금, 실물자산 제외).
-  const investable = financial + Math.max(0, data.cash);
+  // 목표의 분모 — 엔진과 같아야 한다(**배분 대상 증권만**, 현금·실물자산 제외).
+  const invested = financial;
 
   // 미보유 목표 종목도 넣는다 — 빼면 저장된 값이 보이지도 지워지지도 않는다(#70).
   const heldSet = new Set(data.allocation.map((a) => a.symbol));
@@ -143,7 +143,7 @@ export default async function GroupAllocationPage({
 
       <AllocationLevel
         title={label}
-        parentNote={`${lens.noun} · 투자자산의 ${pct(investable > 0 ? groupValue / investable : 0)} · 목표 ${pct(groupTarget)}`}
+        parentNote={`${lens.noun} · 증권의 ${pct(invested > 0 ? groupValue / invested : 0)} · 목표 ${pct(groupTarget)}`}
         value={groupValue}
         currency={data.currency}
         rows={rows}
@@ -151,7 +151,7 @@ export default async function GroupAllocationPage({
       />
 
       <p className="px-2 text-xs leading-relaxed text-muted-foreground">
-        목록의 비중은 <b>{label} 안에서</b>, 목표비중은 <b>투자자산 대비</b>예요.
+        목록의 비중은 <b>{label} 안에서</b>, 목표비중은 <b>증권 대비</b>예요(현금 제외).
         {label} 전체를 몇 %로 들고 갈지는 <b>자본배분 1단계의 {lens.noun} 탭</b>에서
         정하고(다른 축은 안 움직여요), 여기서는 그 안의 종목끼리 비율을 손봐요. 여기서
         한 종목을 올리면 <b>{label} 합도 그만큼 커지고 현금이 줄어요.</b>

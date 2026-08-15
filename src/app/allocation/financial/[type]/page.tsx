@@ -30,13 +30,14 @@ import {
  * 같은 값을 두 화면에서 정하게 되고, 어느 쪽이 진짜인지 헷갈린다. 이 화면에 남는 조절은
  * **종목 줄의 입력칸 하나**뿐이다.
  *
- * 아래 국가별·산업별 렌즈는 **이 유형 안에서의** 비중이라 1단계의 국가 탭(투자자산 전체
+ * 아래 국가별·산업별 렌즈는 **이 유형 안에서의** 비중이라 1단계의 국가 탭(증권 전체
  * 기준)과 다른 질문에 답한다. 그래서 여기선 보기만 하고, 묶음을 밀려면 1단계로 간다.
  *
  * ## 두 개의 분모가 한 화면에 있다
  *
  * · 목록 비중 = **이 유형 안에서** (이 화면의 100%)
- * · 목표비중 = **금융자산 + 현금 대비** — 저장·엔진이 쓰는 기준(`lib/targetLens.ts`)
+ * · 목표비중 = **배분 대상 증권 대비** — 저장·엔진이 쓰는 기준(`lib/targetLens.ts`).
+ *   현금은 안 센다 — 그래야 화면의 45% 와 엔진의 45% 가 같은 금액을 가리킨다.
  *
  * 섞이면 조용히 틀린 숫자가 되므로 화면에 둘 다 이름을 달아 표시한다.
  */
@@ -97,8 +98,9 @@ export default async function TypeAllocationPage({
   const typeValue = mine.reduce((s, a) => s + a.value, 0);
   const financial = data.allocation.reduce((s, a) => s + a.value, 0);
 
-  // 목표의 분모 — 엔진과 같아야 한다(금융자산 + 현금, 실물자산 제외).
-  const investable = financial + Math.max(0, data.cash);
+  // 목표의 분모 — 엔진과 같아야 한다(**배분 대상 증권만**, 현금·실물자산 제외).
+  // 현금을 더해 나누면 같은 "45%" 를 화면과 엔진이 다르게 읽는다.
+  const invested = financial;
 
   // 미보유 목표 종목도 목록에 넣는다 — 빼면 저장된 값이 보이지도 지워지지도 않는다(#70).
   const heldSet = new Set(data.allocation.map((a) => a.symbol));
@@ -113,9 +115,8 @@ export default async function TypeAllocationPage({
   // ── 화면의 주어 ── 기본은 유형, 묶음을 골라 들어왔으면 그 묶음이 주어가 된다.
   let subjectTitle = type;
   let subjectValue = typeValue;
-  // ⚠️ 부모(투자자산) 화면의 행과 **같은 분모**를 써야 같은 숫자가 나온다.
-  //    금융자산만으로 나누면 같은 종목이 화면마다 다른 %로 보인다.
-  let subjectParent = `투자자산의 ${pct(investable > 0 ? typeValue / investable : 0)} · 아래 비중은 ${type} 안에서 100%`;
+  // ⚠️ 부모 화면의 행과 **같은 분모**를 써야 같은 숫자가 나온다.
+  let subjectParent = `증권의 ${pct(invested > 0 ? typeValue / invested : 0)} · 아래 비중은 ${type} 안에서 100%`;
 
   // ── 렌즈에 따라 행을 만든다 ──
   let rows: LevelRow[];
@@ -239,7 +240,7 @@ export default async function TypeAllocationPage({
 
 
       <p className="px-2 text-xs leading-relaxed text-muted-foreground">
-        목록의 비중은 <b>{subjectTitle} 안에서</b>, 목표비중은 <b>투자자산 대비</b>예요.
+        목록의 비중은 <b>{subjectTitle} 안에서</b>, 목표비중은 <b>증권 대비</b>예요(현금 제외).
       </p>
     </main>
   );
