@@ -20,8 +20,14 @@ export function tagLabel(m: SecurityRecord | undefined, tag: TagKey): string {
   return m?.assetType ?? "주식";
 }
 
-/** 자산 유형 표시 순서 — 보유한 유형만 이 순서대로 노출. */
-export const ASSET_TYPE_ORDER = ["주식", "ETF", "원자재", "코인"] as const;
+/**
+ * 자산 유형 표시 순서 — 보유한 유형만 이 순서대로 노출.
+ *
+ * `채권`·`원자재` 는 야후 instrumentType 에 없다(국채 ETF 도 `ETF` 로 온다). 사용자가
+ * `/allocation/types` 에서 옮겨 준 것만 여기로 들어온다 — `lib/assetClass.ts`.
+ * 이 순서에 없으면 화면 맨 뒤로 밀리므로, 옮길 수 있는 유형은 전부 여기 있어야 한다.
+ */
+export const ASSET_TYPE_ORDER = ["주식", "ETF", "채권", "원자재", "코인"] as const;
 
 export interface AllocationGroup {
   type: string;

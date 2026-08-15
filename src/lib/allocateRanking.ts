@@ -5,7 +5,7 @@
  *   1. **살 수 있는 것이 먼저** — 한도에 걸린 종목을 위에 두면 "오늘의 1순위"가 거짓말이 된다
  *   2. 그 안에서 기대수익률 높은 순, 가정이 없으면 목표 미달이 큰 순
  *
- * 화면(`components/allocate/AllocateRanking.tsx`)은 이 결과를 그리기만 한다.
+ * 화면(`components/allocate/AllocateRail.tsx` 2·3단계)은 이 결과를 그리기만 한다.
  */
 import { planAllocation, type AllocateLeg, type AllocateStatus } from "./allocate";
 import { valuationApplies } from "./finance/expectedReturn";
@@ -40,6 +40,44 @@ export interface RankedGroups {
 /** 목표까지 얼마나 모자란가(%p, 소수). 음수면 이미 넘긴 것. */
 export function targetGap(r: RankedRow): number {
   return r.leg.targetWeight - r.leg.currentWeight;
+}
+
+/**
+ * 이 줄이 **왜 이 자리인지** — 정렬에 실제로 쓰인 키.
+ *
+ * 화면은 "기대수익률 순"이라는 머리말만 달고 정작 줄마다 그 값을 근거로 내세우지 않았다.
+ * 사용자 지적: *"왜 그게 고순위인지 말해주는 단서를 써줘야지. 지금은 그냥 순위 매기니까
+ * 랜덤인지 로직이 있는지 알 수 없잖아."*
+ *
+ * 맞다. 번호만 있고 그 번호를 만든 숫자가 안 보이면 순위는 주장일 뿐이다. 이 함수가
+ * `rankRows`·`groupRanked` 와 **같은 키**를 돌려주므로, 줄에 그대로 띄우면 목록이
+ * 내림차순으로 읽힌다 — 로직이 있다는 게 눈으로 증명된다.
+ *
+ * 상태(한도·목표 도달)는 **더 위 겹**이라 여기서 안 다룬다. 그건 배지가 이미 말한다.
+ */
+export type RankBasis =
+  /** 개별주 — 기대수익률 순. */
+  | { kind: "cagr"; cagr: number }
+  /**
+   * 개별주인데 기대수익률을 못 내 아래로 내려간 것. 그 안에서는 목표 미달 순.
+   *
+   * `reason` 을 같이 준다 — **"안 넣은 것"과 "넣었는데 계산이 안 된 것"은 다른 상태**다.
+   * 뭉뚱그리면 가정을 저장해 둔 사용자에게 "가정 없음"이라고 거짓말을 하게 된다
+   * (`lib/allocateData.ts:erGap`).
+   */
+  | { kind: "unjudged"; gap: number; reason: NonNullable<AllocateRow["erGap"]> }
+  /** ETF·기타 — 기대수익률 모형을 못 써서 목표 미달 순. */
+  | { kind: "gap"; gap: number };
+
+export function rankBasis(
+  r: RankedRow,
+  section: keyof RankedGroups,
+): RankBasis {
+  if (section === "others") return { kind: "gap", gap: targetGap(r) };
+  const cagr = r.row.expectedCagr;
+  return cagr != null
+    ? { kind: "cagr", cagr }
+    : { kind: "unjudged", gap: targetGap(r), reason: r.row.erGap ?? "none" };
 }
 
 export function groupRanked(ranked: RankedRow[]): RankedGroups {

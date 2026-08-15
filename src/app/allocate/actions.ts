@@ -4,17 +4,90 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveHolding } from "@/lib/holdings";
 import { getPortfolio } from "@/lib/portfolio";
-import { readTargets, toStored, withTarget } from "@/lib/targetWeights";
-import { loadSecurityMeta, upsertSecurities } from "@/lib/securities";
+import { computeDashboard } from "@/lib/dashboard";
+import {
+  readTargets,
+  toStored,
+  withTarget,
+  type TargetRule,
+} from "@/lib/targetWeights";
+import {
+  buildLens,
+  groupBudget,
+  isCashKey,
+  isUntaggedLabel,
+  normalizeTargets,
+  roomFor,
+  scaleGroupLocked,
+  setWithinGroup,
+  sumTargets,
+  CASH_LABEL,
+} from "@/lib/targetLens";
+import { pct } from "@/lib/format";
+import { tagLabel, type TagKey } from "@/lib/allocation";
+import { backfillSectors } from "@/lib/securities";
+import { loadClassifiedMeta } from "@/lib/classifiedMeta";
+import {
+  approvedSymbols,
+  loadUniverseStatuses,
+  resolveUniverse,
+} from "@/lib/universe";
+import { loadExpectedReturnAssumptions } from "@/lib/expectedReturnAssumptions";
+import { loadCachedEps, loadEpsSeries } from "@/lib/finance/cachedEps";
+import { valuationApplies } from "@/lib/finance/expectedReturn";
+import {
+  DEFAULT_GROWTH,
+  defaultAssumptionFor,
+  historicalGrowth,
+  needsDefault,
+} from "@/lib/defaultAssumptions";
 import type { Json } from "@/lib/supabase/database.types";
 
 type Result = { ok: true } | { ok: false; error: string };
 
-/** 배분에 관련된 화면 전부. 하나가 바뀌면 나머지가 같이 틀어진다. */
+/** 반올림 오차로 저장이 막히지 않게 두는 여유. */
+const OVER_EPS = 1e-9;
+
+/**
+ * **100% 를 넘기면 저장하지 않는다.**
+ *
+ * 예전엔 넘겨도 그냥 저장되고, 읽을 때 `capToOne` 이 전부를 비례로 축소했다. 그래서 80%
+ * 를 넣었는데 화면에 72.7% 로 보였다 — 사용자가 시킨 적 없는 값이 조용히 만들어진 것이고,
+ * 더 나쁜 건 **다른 종목의 목표까지 같이 줄었다**는 점이다.
+ *
+ * 나머지를 자동으로 줄이는 길(진짜 연동)도 있었지만 택하지 않았다. 한 칸을 고쳤을 뿐인데
+ * 손대지 않은 값들이 전부 움직이면 "내가 정한 값"이 남지 않는다. 대신 **막고 여유를
+ * 알려준다** — 줄일 곳은 사용자가 고른다.
+ *
+ * ## 얼마 남았는지만 말하면 안 된다
+ *
+ * 예산은 **증권 전체**에서 하나인데 화면은 한 유형만 보여준다. 그래서 주식 목표가 48%뿐인
+ * 화면에서 "100%를 넘는다"는 말을 들으면 앞뒤가 안 맞아 보인다 — 사용자 지적:
+ * *"주식 > 비중에서 100%가 안 넘는데 100% 넘었다고 나와."* 실제로는 ETF 두 개가 이미
+ * 51.6% 를 쓰고 있었다.
+ *
+ * 그래서 **남은 양이 아니라 쓰이고 있는 양부터** 말한다. 어디를 줄여야 할지 찾으려면
+ * 그 숫자가 먼저다.
+ */
+function overflowError(room: number): string {
+  const used = Math.max(0, 1 - room);
+  return room <= OVER_EPS
+    ? `다른 목표가 이미 100%를 다 쓰고 있어요. 먼저 어딘가를 줄여야 여기에 넣을 수 있어요.`
+    : `다른 목표가 이미 ${pct(used)}를 쓰고 있어요 — 여기엔 ${pct(room)}까지만 넣을 수 있습니다.`;
+}
+
+/**
+ * 배분에 관련된 화면 전부. 하나가 바뀌면 나머지가 같이 틀어진다.
+ *
+ * `/allocation` 아래는 계층이 깊고 동적 구간이 섞여 있어(`financial/[type]`,
+ * `group/[key]/[label]`) 주소를 하나씩 적으면 화면을 더할 때마다 빠뜨린다. 그래서
+ * **서브트리 통째로** 지운다 — `type: "layout"` 은 그 아래 모든 레이아웃과 페이지를
+ * 무효화한다(`next/dist/docs/01-app/03-api-reference/04-functions/revalidatePath.md`).
+ */
 function revalidateAllocate() {
   revalidatePath("/allocate");
-  revalidatePath("/allocate/ranking");
-  revalidatePath("/allocate/settings");
+  // 렌즈 화면이 목표비중을 함께 보여준다 — 안 지우면 방금 바꾼 값이 옛 숫자로 보인다.
+  revalidatePath("/allocation", "layout");
 }
 
 /**
@@ -86,6 +159,157 @@ export async function setUniverseStatus(
 }
 
 /**
+ * 드릴다운 화면이 보고 있는 **묶음**. 서버가 구성원을 다시 세울 수 있을 만큼만 담는다.
+ *
+ * 화면이 종목 목록을 통째로 보내게 하면 화면과 저장이 갈릴 때 **엉뚱한 종목의 목표가
+ * 바뀐다**(`setGroupTarget` 이 같은 이유로 서버에서 다시 묶는다).
+ *
+ * ```text
+ *   /allocation/financial/주식                    { assetType: "주식" }
+ *   /allocation/financial/주식?by=country&pick=한국 { assetType: "주식", key: "country", label: "한국" }
+ *   /allocation/group/country/미국                 { key: "country", label: "미국" }
+ * ```
+ */
+export interface GroupScope {
+  /** 자산유형으로 한 번 거른다. 없으면 증권 전체. */
+  assetType?: string;
+  /** 국가·산업으로 한 번 더 거른다. */
+  key?: TagKey;
+  label?: string;
+}
+
+/**
+ * 이 화면에서 **밀 대상**. 종목 한 줄이거나, 그 안의 또 다른 묶음이다.
+ *
+ * 주식 안의 `미국`·`반도체` 는 1단계 국가 탭의 `미국`(증권 전체)과 **다른 질문**이다 —
+ * 미국 ETF 가 들어가느냐 아니냐가 다르다. 그래서 같은 값을 두 곳에서 정하는 게 아니고,
+ * 여기서 못 밀 이유가 없었다. 사용자 지적: *"주식이랑 ETF 안에서 국가별·산업별은 왜
+ * 비중조절 못 하게 되어 있지?"*
+ */
+export type GroupPick = { symbol: string } | { key: TagKey; label: string };
+
+/**
+ * 묶음 **안에서의** 비중으로 목표를 정한다 — 묶음 합은 그대로 둔다.
+ *
+ * ## 왜 별도 액션인가
+ *
+ * `setTargetWeight` 는 "증권 전체 대비" 를 저장한다. 그런데 주식 안으로 들어간 화면의
+ * 100% 는 **주식**이다. 같은 화면에서 목록 비중은 주식 기준, 목표는 증권 기준이라
+ * 합이 안 맞았다 — 사용자 지적: *"아직도 종목 내에서 100%가 아니잖아."*
+ *
+ * 화면의 분모는 화면 하나당 하나여야 한다. 그래서 드릴다운의 종목 입력은 전부 이쪽을
+ * 쓴다. 변환은 `setWithinGroup` 이 하고, 저장 형식은 여전히 평면 하나다.
+ *
+ * ## 100% 초과 검사가 없다
+ *
+ * 묶음 예산이 안 변하므로 전체 합도 안 변한다 — 넘길 방법이 구조적으로 없다.
+ * 대신 **나눌 수 없는 두 경우**를 먼저 막는다(예산 0 · 구성원 하나).
+ */
+export async function setTargetWithinGroup(
+  pick: GroupPick,
+  /** 묶음 안에서의 비중 0~1. */
+  fraction: number,
+  scope: GroupScope,
+): Promise<Result> {
+  if (!Number.isFinite(fraction) || fraction < 0 || fraction > 1)
+    return { ok: false, error: "비중은 0~100% 사이여야 합니다." };
+  if ("symbol" in pick && !pick.symbol)
+    return { ok: false, error: "종목이 올바르지 않습니다." };
+  // 기타·미분류는 구성이 유동적이라 묶음으로 밀면 엉뚱한 종목이 딸려간다
+  // (`isUntaggedLabel` — 화면·서버가 같은 판정을 쓴다).
+  if ("label" in pick && isUntaggedLabel(pick.label))
+    return {
+      ok: false,
+      error: `${pick.label}는 구성이 자주 바뀌어 묶음으로는 못 정해요 — 종목별로 정해주세요.`,
+    };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "로그인이 필요합니다." };
+
+  const portfolio = await getPortfolio(supabase);
+  if (!portfolio) return { ok: false, error: "회사를 찾을 수 없습니다." };
+
+  // 비중 비율만 쓰므로 표시통화는 결과에 영향이 없다(₩ 기준으로 고정).
+  const dashboard = computeDashboard(portfolio, "KRW");
+  const stored = (portfolio.holding.target_weights ?? {}) as Record<
+    string,
+    unknown
+  >;
+  const symbols = [
+    ...new Set([
+      ...dashboard.allocation.map((a) => a.symbol),
+      ...Object.keys(stored).filter((s) => !isCashKey(s)),
+    ]),
+  ];
+  const meta = await loadClassifiedMeta(supabase, symbols);
+  // 산업 태그는 공시에서 채워 온다 — 축으로 쓰기 전에 한 번 채워야 라벨이 맞는다.
+  if (scope.key === "sector" || ("key" in pick && pick.key === "sector")) {
+    const filled = await backfillSectors(supabase, meta);
+    for (const [s, sec] of Object.entries(filled)) if (meta[s]) meta[s].sector = sec;
+  }
+
+  const current = readTargets(
+    portfolio.holding.target_weights,
+    (portfolio.holding.category_targets ?? {}) as Record<string, number>,
+    symbols.map((s) => ({ symbol: s, assetType: meta[s]?.assetType ?? "주식" })),
+  );
+
+  // 구성원은 **서버에서 다시 묶는다.** 평가액도 여기서 붙인다 — 목표가 아직 없는 종목에
+  // 나머지 몫을 나눌 때 그 비율을 쓴다(`scaleGroupTarget`).
+  const valueOf = new Map(dashboard.allocation.map((a) => [a.symbol, a.value]));
+  const members = symbols
+    .filter((s) => {
+      if (scope.assetType && (meta[s]?.assetType ?? "주식") !== scope.assetType)
+        return false;
+      if (scope.key && scope.label)
+        return tagLabel(meta[s], scope.key) === scope.label;
+      return true;
+    })
+    .map((s) => ({ symbol: s, value: valueOf.get(s) ?? 0 }));
+
+  // 밀 대상도 서버에서 다시 고른다 — 묶음이면 그 라벨에 속한 종목 전부다.
+  const picked =
+    "symbol" in pick
+      ? members.filter((m) => m.symbol === pick.symbol)
+      : members.filter((m) => tagLabel(meta[m.symbol], pick.key) === pick.label);
+  const noun = "symbol" in pick ? "종목" : pick.label;
+
+  if (picked.length === 0)
+    return { ok: false, error: `이 묶음에 ${noun}이(가) 없습니다.` };
+  if (picked.length === members.length)
+    return {
+      ok: false,
+      error: `여기엔 ${noun}뿐이라 나눌 수 없어요 — 그게 곧 100%예요.`,
+    };
+
+  const budget = groupBudget(current, members);
+  if (budget <= 0) {
+    const where = scope.label ?? scope.assetType ?? "이 묶음";
+    return {
+      ok: false,
+      error: `${where}에 배정된 목표가 없어요 — 자본배분 1단계에서 ${where} 목표를 먼저 정해주세요.`,
+    };
+  }
+
+  const next = toStored(
+    setWithinGroup(current, members, picked.map((m) => m.symbol), fraction),
+  );
+
+  const { error } = await supabase
+    .from("holdings")
+    .update({ target_weights: next as unknown as Json })
+    .eq("id", portfolio.holding.id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidateAllocate();
+  revalidatePath("/rebalance");
+  return { ok: true };
+}
+
+/**
  * 종목 하나의 목표비중 저장 — 스펙 v1.1 §13.2 의 **평면 저장**.
  *
  * 저장 형식이 아직 레거시 2층이면 이 저장이 곧 이사(migration)다 — 읽기 시점 환산 결과를
@@ -96,8 +320,8 @@ export async function setUniverseStatus(
  * 포트폴리오와 securities 를 다시 읽는다 — 화면이 보낸 값을 믿고 쓰면 화면마다 다른
  * 유형을 보내 조용히 틀린 환산이 저장될 수 있다.
  *
- * 합계는 검증하지 않는다. 편집 도중 100%를 안 맞추는 건 정상이고, 합이 1 미만이면
- * 나머지는 현금이라는 뜻이다(§16.2).
+ * 합이 1 **미만**인 건 검증하지 않는다 — 나머지는 현금이라는 뜻이다(§16.2). 하지만 1을
+ * **넘기는** 저장은 막는다(`overflowError`).
  */
 export async function setTargetWeight(
   symbol: string,
@@ -120,13 +344,18 @@ export async function setTargetWeight(
   // 레거시 환산에 필요한 자산유형 — 저장된 목표비중의 키 전부를 대상으로 잡는다.
   const stored = (holding.target_weights ?? {}) as Record<string, unknown>;
   const symbols = [...new Set([...Object.keys(stored), symbol])];
-  const meta = await loadSecurityMeta(supabase, symbols);
+  const meta = await loadClassifiedMeta(supabase, symbols);
 
   const current = readTargets(
     holding.target_weights,
     (holding.category_targets ?? {}) as Record<string, number>,
     symbols.map((s) => ({ symbol: s, assetType: meta[s]?.assetType ?? "주식" })),
   );
+
+  // 자기 자신은 빼고 센다 — 포함해서 세면 20%인 종목을 20%로 다시 저장하는 것도 막힌다.
+  const room = roomFor(current, [symbol]);
+  if (target > room + OVER_EPS)
+    return { ok: false, error: overflowError(room) };
 
   const next = toStored(withTarget(current, symbol, target));
 
@@ -143,6 +372,10 @@ export async function setTargetWeight(
 
 /**
  * 투자 가능 현금 저장 — 스펙 v1.1 §16.4. null 이면 "안 정함"(보유 현금 전액으로 폴백).
+ *
+ * 이걸 정하는 **전용 화면·카드는 없다.** 레일 2단계에 적는 금액이 곧 이 값이고, 계획을
+ * 등기할 때 거기서 부른다 — *"얼마 넣을까요에 투자 가능 현금 없어도 되지 않아?"* 같은 걸
+ * 두 번 묻지 않으려는 것이다. 다음에 레일을 열면 이 값이 기본으로 깔린다.
  *
  * ⚠️ **₩ 로 저장한다.** 화면은 표시통화로 입력받으므로 USD 화면이면 여기서 되돌린다.
  * 표시통화 그대로 저장하면 USD 로 넣은 값이 ₩ 화면에서 1/1400 로 보인다(§16.3).
@@ -183,37 +416,397 @@ export async function setInvestableCash(
   return { ok: true };
 }
 
+/* 검색으로 새 종목을 넣던 `setTargetFromSearch` 는 지웠다 — 자본배분은 **이미 가진 것의
+   비중을 다시 맞추는** 일이고, 새로 사는 건 기록(거래) 쪽 일이다. 죽은 서버 액션을 남기면
+   없는 기능이 있는 것처럼 보인다. */
+
+/** 그룹 조정 결과 — 되돌리기를 위해 **바꾸기 직전의 저장값**을 그대로 돌려준다. */
+export type GroupTargetResult =
+  | {
+      ok: true;
+      /** 직전 저장값(평면). `restoreTargets` 에 그대로 넘기면 원상복구된다. */
+      previous: Record<string, TargetRule>;
+      /** 바꾼 뒤의 목표 합(0~1+). */
+      total: number;
+      /**
+       * 고정 축이 움직인 양(0~1). 상계할 종목이 없어 현금에서 가져온 몫이다.
+       * 0 이 아니면 화면이 "유형도 조금 움직였어요"라고 말해야 한다.
+       */
+      shortfall: number;
+      /** 고정하려 한 축의 이름(사용자에게 보여줄 말). */
+      lockedLabel: string;
+    }
+  | { ok: false; error: string };
+
 /**
- * 검색에서 바로 목표비중 지정 — 검색형 설정의 저장 경로.
+ * 어느 축을 밀 때 **어느 축을 고정할 것인가**.
  *
- * 리스트를 스크롤해 칸을 채우는 대신 **찾아서 정한다.** 그래서 한 번의 동작이 세 가지를
- * 한꺼번에 처리한다.
- *
- *   1. 종목명을 `securities` 에 적재 — 아직 보유도 관심도 아닌 기업이라 이름이 없을 수 있다
- *   2. 자본배분 **후보로 승격** — 목표비중을 정한다는 건 사겠다는 뜻이다. 후보 지정을
- *      따로 시키면 "비중을 넣었는데 왜 배분이 안 되지?"가 된다
- *   3. 목표비중 저장(평면)
- *
- * `target` 이 0 이면 목표비중만 지운다. **후보에서 빼지는 않는다** — 비중을 비우는 것과
- * 후보에서 제외하는 것은 다른 결정이고, 후자는 후보 목록에서 명시적으로 하게 둔다.
+ * 유형(주식/ETF)은 배분 엔진이 다르게 다루는 축이라 국가·산업을 손볼 때 흔들리면 가장
+ * 곤란하다. 그래서 기본은 유형 고정이고, 유형 자체를 밀 때만 국가를 고정한다.
  */
-export async function setTargetFromSearch(
-  symbol: string,
-  name: string,
-  target: number,
-): Promise<Result> {
-  if (!symbol) return { ok: false, error: "종목이 올바르지 않습니다." };
+const LOCKED_AXIS: Record<TagKey, { key: TagKey; label: string }> = {
+  country: { key: "assetType", label: "유형" },
+  sector: { key: "assetType", label: "유형" },
+  assetType: { key: "country", label: "국가" },
+};
+
+/**
+ * 묶음(유형·국가·산업) 목표를 옮긴다 — 예: "미국 60%".
+ *
+ * **묶음 목표를 그 자체로 저장하지 않는다.** 구성 종목의 평면 목표를 움직여 합이 요청한
+ * 값이 되게 한다. 진실은 여전히 종목 목표 하나뿐이라 은퇴시킨 2층 구조가 되돌아오지
+ * 않는다(스펙 §13.2, #70).
+ *
+ * ## 다른 축은 그대로 둔다 — "축 고정"
+ *
+ * 예전엔 늘어난 몫을 **현금에서** 가져왔다. 그래서 국가를 밀면 유형이 따라 움직였다 —
+ * 미국을 올리면 미국 ETF 목표도 같이 커지기 때문이다. 사용자 지적: *"유형 국가 산업이
+ * 모두 연동되어 있어? 연동 안 되게 하는 건 어때?"*
+ *
+ * 이제 **고정 축의 같은 칸에 있는 다른 종목에서** 가져온다(`scaleGroupLocked`). 미국을
+ * 올리면 한국 주식이 줄어 주식 합이 유지되고, 한국 ETF 가 줄어 ETF 합이 유지된다.
+ * 상계할 곳이 없으면 요청대로 옮기되 **깨진 양을 `shortfall` 로 돌려준다.**
+ *
+ * 구성원은 **서버에서 다시 묶는다** — 화면이 보낸 목록을 믿으면 화면과 저장이 갈릴 때
+ * 엉뚱한 종목의 목표가 바뀐다.
+ */
+export async function setGroupTarget(
+  key: TagKey,
+  label: string,
+  /** 0~1. 0 이면 그 묶음의 목표를 전부 지운다. */
+  next: number,
+): Promise<GroupTargetResult> {
+  if (!label) return { ok: false, error: "묶음이 올바르지 않습니다." };
+  if (!Number.isFinite(next) || next < 0 || next > 1)
+    return { ok: false, error: "목표비중은 0~100% 사이여야 합니다." };
+  // 현금은 목표 대상이 아니다 — 증권끼리 나눈 뒤 안 채운 만큼이 현금으로 남는다.
+  if (label === CASH_LABEL)
+    return {
+      ok: false,
+      error: "현금은 목표로 정하지 않아요 — 증권 목표를 안 채운 만큼이 현금입니다.",
+    };
 
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "로그인이 필요합니다." };
-  if (name) await upsertSecurities(supabase, [{ symbol, name }]);
 
-  if (target > 0) {
-    const approved = await setUniverseStatus(symbol, "APPROVED");
-    if (!approved.ok) return approved;
+  const portfolio = await getPortfolio(supabase);
+  if (!portfolio) return { ok: false, error: "회사를 찾을 수 없습니다." };
+
+  // 비중 비율만 쓰므로 표시통화는 결과에 영향이 없다(₩ 기준으로 고정).
+  const dashboard = computeDashboard(portfolio, "KRW");
+  const stored = (portfolio.holding.target_weights ?? {}) as Record<
+    string,
+    unknown
+  >;
+  const symbols = [
+    ...new Set([
+      ...dashboard.allocation.map((a) => a.symbol),
+      ...Object.keys(stored),
+    ]),
+  ];
+  const meta = await loadClassifiedMeta(supabase, symbols);
+  if (key === "sector") {
+    const filled = await backfillSectors(supabase, meta);
+    for (const [s, sec] of Object.entries(filled)) if (meta[s]) meta[s].sector = sec;
   }
-  return setTargetWeight(symbol, target);
+
+  const current = readTargets(
+    portfolio.holding.target_weights,
+    (portfolio.holding.category_targets ?? {}) as Record<string, number>,
+    symbols.map((s) => ({ symbol: s, assetType: meta[s]?.assetType ?? "주식" })),
+  );
+
+  const group = buildLens(
+    {
+      holdings: dashboard.allocation.map((a) => ({
+        symbol: a.symbol,
+        name: a.name,
+        value: a.value,
+      })),
+      meta,
+      targets: current,
+    },
+    key,
+  ).find((g) => g.label === label);
+
+  if (!group) return { ok: false, error: "그 묶음을 찾지 못했어요." };
+  if (group.isUntagged)
+    return {
+      ok: false,
+      error: `"${label}"는 구성이 유동적이라 묶음으로 조정하지 않아요. 종목별로 정해주세요.`,
+    };
+  if (group.members.length === 0)
+    return { ok: false, error: "이 묶음에 조정할 종목이 없어요." };
+
+  // ── 고정 축으로 스트라텀을 만든다 ──
+  // 통화 현금 키(`CASH:USD`)는 종목이 아니라 현금이다. 태그가 없어 "주식/기타"로 묶이므로
+  // 걸러내지 않으면 국가를 밀 때 달러 목표가 조용히 깎인다.
+  const locked = LOCKED_AXIS[key];
+  const inGroup = new Set(group.members.map((m) => m.symbol));
+  const stratumOf = (symbol: string) => tagLabel(meta[symbol], locked.key);
+
+  const members = group.members
+    .filter((m) => !isCashKey(m.symbol))
+    .map((m) => ({ symbol: m.symbol, value: m.value, stratum: stratumOf(m.symbol) }));
+
+  const valueOf = new Map(dashboard.allocation.map((a) => [a.symbol, a.value]));
+  const others = symbols
+    .filter((s) => !inGroup.has(s) && !isCashKey(s))
+    .map((s) => ({
+      symbol: s,
+      value: valueOf.get(s) ?? 0,
+      stratum: stratumOf(s),
+    }));
+
+  if (members.length === 0)
+    return { ok: false, error: "이 묶음에 조정할 종목이 없어요." };
+
+  const { targets: moved, shortfall } = scaleGroupLocked(
+    current,
+    members,
+    others,
+    next,
+  );
+
+  // 상계가 완전하면 합은 그대로다. 모자란 만큼만 현금에서 오므로 그때만 100% 를 넘을 수 있다.
+  const updated = toStored(moved);
+  if (sumTargets(updated) > 1 + OVER_EPS) {
+    const room = roomFor(current, [...inGroup]);
+    return { ok: false, error: overflowError(room) };
+  }
+
+  const previous = toStored(current);
+
+  const { error } = await supabase
+    .from("holdings")
+    .update({ target_weights: updated as unknown as Json })
+    .eq("id", portfolio.holding.id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidateAllocate();
+  revalidatePath("/rebalance");
+  return {
+    ok: true,
+    previous,
+    total: sumTargets(updated),
+    shortfall,
+    lockedLabel: locked.label,
+  };
+}
+
+/**
+ * **현금 목표를 직접 정한다.**
+ *
+ * 축 고정을 켜면 어느 묶음을 밀어도 상계가 일어나 **합이 안 변한다** — 그게 고정의
+ * 정의다. 그래서 합이 85% 인 채로 시작하면 영영 85% 다. 예전엔 현금 줄이 그 손잡이였는데,
+ * 현금을 목록에서 뺀 뒤로 손잡이가 사라졌다.
+ *
+ * 저장 형식은 그대로다 — 종목 목표를 통째로 비례 조정할 뿐이라 세 축의 상대 모양이
+ * 전부 보존되고, 합만 100% 가 된다.
+ */
+export async function normalizeTargetsAction(): Promise<GroupTargetResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "로그인이 필요합니다." };
+
+  const holding = await getActiveHolding(supabase);
+  if (!holding) return { ok: false, error: "회사를 찾을 수 없습니다." };
+
+  const stored = (holding.target_weights ?? {}) as Record<string, unknown>;
+  const symbols = Object.keys(stored);
+  const meta = await loadClassifiedMeta(supabase, symbols);
+  const current = readTargets(
+    holding.target_weights,
+    (holding.category_targets ?? {}) as Record<string, number>,
+    symbols.map((s) => ({ symbol: s, assetType: meta[s]?.assetType ?? "주식" })),
+  );
+
+  if (sumTargets(current) <= 0)
+    return { ok: false, error: "맞출 목표가 아직 없어요. 유형부터 정해주세요." };
+
+  const previous = toStored(current);
+  const updated = toStored(normalizeTargets(current));
+
+  const { error } = await supabase
+    .from("holdings")
+    .update({ target_weights: updated as unknown as Json })
+    .eq("id", holding.id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidateAllocate();
+  revalidatePath("/rebalance");
+  return {
+    ok: true,
+    previous,
+    total: sumTargets(updated),
+    shortfall: 0,
+    lockedLabel: "",
+  };
+}
+
+/**
+ * 저장값을 통째로 되돌린다 — `setGroupTarget` 의 되돌리기 전용.
+ *
+ * 묶음 조정은 종목 여러 개를 한 번에 바꾸므로, 실수했을 때 하나씩 되돌리게 하면 안 된다.
+ * 받은 값은 `readTargets`→`toStored` 를 태워 검증한다(임의 JSON 을 그대로 쓰지 않는다).
+ */
+export async function restoreTargets(
+  stored: Record<string, TargetRule>,
+): Promise<Result> {
+  if (!stored || typeof stored !== "object")
+    return { ok: false, error: "되돌릴 값이 올바르지 않습니다." };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "로그인이 필요합니다." };
+
+  const holding = await getActiveHolding(supabase);
+  if (!holding) return { ok: false, error: "회사를 찾을 수 없습니다." };
+
+  // 평면 형식으로만 되돌린다 — 레거시 환산이 필요 없으므로 symbols 는 비운다.
+  const safe = toStored(readTargets(stored, {}, []));
+
+  const { error } = await supabase
+    .from("holdings")
+    .update({ target_weights: safe as unknown as Json })
+    .eq("id", holding.id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidateAllocate();
+  revalidatePath("/rebalance");
+  return { ok: true };
+}
+
+/**
+ * 기대수익률 가정을 **한 번에 깔아준다** — 성장률은 과거 실적, 종료배수는 지금 PER.
+ *
+ * ## 왜
+ *
+ * 가정은 종목당 세 값이라 열 종목이면 서른 번을 넣어야 한다. 그 전까지 그 종목들은
+ * 기대수익률 순위에서 통째로 빠진다 — 사용자 지적: *"주식에 일일이 넣기 힘드니까 일단
+ * 통일해줘. 10%랑 현재 그 주식의 PER로 디폴트 하면 되겠네."*
+ *
+ * ## 성장률은 잴 수 있으면 잰다
+ *
+ * 처음엔 전부 10% 였는데, 종료배수가 현재 PER 이면 식이 상쇄돼 **기대수익률이 곧
+ * 성장률**이라 모든 종목이 똑같아졌다. 사용자 제안대로(*"과거 5년 평균성장률로
+ * 지정할까?"*) 과거 EPS 로 잰다 — 종목마다 다른 값이 나와야 순위가 갈린다.
+ *
+ * 다만 **그대로 쓰지는 않는다.** 두 점 CAGR 은 사이클 바닥에서 재면 튄다(SK하이닉스는
+ * 2023년 적자를 지나고도 +54.5%). 적자가 낀 구간·역성장·연도 부족은 **전부 사람이
+ * 판단해야 하는 경우**라 기본값 10% 로 두고, 잰 값도 15% 에서 자른다
+ * (`lib/defaultAssumptions.ts`). 몇 개를 쟀고 몇 개를 잘랐는지 돌려주므로 화면이 그대로
+ * 말할 수 있다 — 조용히 자르면 그것도 거짓말이다.
+ *
+ * ## 이미 정한 값은 안 덮는다
+ *
+ * 성장률·종료배수가 **둘 다 빈** 종목만 채운다(`needsDefault`). 자산유형 제안과 같은
+ * 원칙이다 — 기본값이 사람의 판단을 덮으면 안 된다.
+ *
+ * 공시 이익이 캐시에 없는 종목은 PER 를 못 구해 **건너뛰고 그 수를 돌려준다.** 조용히
+ * 빠뜨리면 "채웠다"는 말이 거짓이 된다(그 종목은 상세 화면을 한 번 열면 캐시가 찬다).
+ */
+export async function applyDefaultAssumptions(): Promise<
+  Result & {
+    applied?: number;
+    skipped?: number;
+    kept?: number;
+    measured?: number;
+    clamped?: number;
+  }
+> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "로그인이 필요합니다." };
+
+  const portfolio = await getPortfolio(supabase);
+  if (!portfolio) return { ok: false, error: "회사를 찾을 수 없습니다." };
+
+  const dashboard = computeDashboard(portfolio, "KRW");
+  const statuses = await loadUniverseStatuses(supabase, portfolio.holding.id);
+  const candidates = approvedSymbols(
+    resolveUniverse(
+      dashboard.allocation.map((a) => a.symbol),
+      statuses,
+    ),
+  );
+
+  const [meta, assumptions, cachedEps, epsSeries] = await Promise.all([
+    loadClassifiedMeta(supabase, candidates),
+    loadExpectedReturnAssumptions(supabase, portfolio.holding.id),
+    loadCachedEps(supabase, candidates),
+    loadEpsSeries(supabase, candidates),
+  ]);
+
+  // 밸류에이션은 개별주에만 적용된다 — ETF·채권·원자재·코인은 이익력 개념이 없다.
+  const stocks = candidates.filter((s) =>
+    valuationApplies(meta[s]?.assetType ?? "주식"),
+  );
+
+  let kept = 0;
+  let skipped = 0;
+  let measured = 0; // 과거 실적으로 성장률을 잰 종목
+  let clamped = 0; // 그중 상한에 걸려 잘린 종목
+  const rows: {
+    holding_id: string;
+    symbol: string;
+    er_expected_growth: number;
+    er_terminal_multiple: number;
+  }[] = [];
+
+  for (const symbol of stocks) {
+    const a = assumptions[symbol];
+    if (a && !needsDefault(a)) {
+      kept += 1;
+      continue;
+    }
+
+    // 성장률은 **잴 수 있으면 잰다.** 못 재는 이유(적자·역성장·연도 부족)는 전부
+    // 사람이 판단해야 하는 경우라 기본값으로 두고 넘어간다(`historicalGrowth`).
+    const past = historicalGrowth(epsSeries[symbol] ?? []);
+    const growth = past.ok ? past.value.growth : DEFAULT_GROWTH;
+    if (past.ok) {
+      measured += 1;
+      if (past.value.clamped) clamped += 1;
+    }
+
+    // 가격·EPS 둘 다 ₩ 라 그대로 나눈다(`finance/cachedEps.ts` — 미국 공시도 ₩ 로 들어온다).
+    const next = defaultAssumptionFor(
+      portfolio.prices[symbol] ?? 0,
+      cachedEps[symbol] ?? 0,
+      growth,
+    );
+    if (!next) {
+      skipped += 1;
+      continue;
+    }
+    rows.push({
+      holding_id: portfolio.holding.id,
+      symbol,
+      er_expected_growth: next.expectedGrowth,
+      er_terminal_multiple: next.terminalMultiple,
+    });
+  }
+
+  if (rows.length > 0) {
+    // 부분 upsert — 넘긴 컬럼만 갱신하고 이익력·기간·요구수익률은 그대로 둔다
+    // (`app/stocks/[symbol]/actions.ts:upsertAssumption` 과 같은 규칙).
+    const { error } = await supabase
+      .from("valuation_assumptions")
+      .upsert(rows, { onConflict: "holding_id,symbol" });
+    if (error) return { ok: false, error: error.message };
+  }
+
+  revalidateAllocate();
+  revalidatePath("/ranking");
+  return { ok: true, applied: rows.length, skipped, kept, measured, clamped };
 }

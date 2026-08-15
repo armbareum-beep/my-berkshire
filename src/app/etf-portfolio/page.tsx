@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getPortfolio } from "@/lib/portfolio";
 import { computeDashboard } from "@/lib/dashboard";
-import { loadSecurityMeta } from "@/lib/securities";
+import { loadClassifiedMeta } from "@/lib/classifiedMeta";
 import { fetchKrxEtfTers } from "@/lib/finance/krxEtf";
 import { BackButton } from "@/components/BackButton";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
@@ -23,7 +23,7 @@ export default async function EtfPortfolioPage() {
   if (!portfolio) redirect("/onboarding");
 
   const data = computeDashboard(portfolio, "KRW");
-  const secMeta = await loadSecurityMeta(
+  const secMeta = await loadClassifiedMeta(
     supabase,
     data.allocation.map((a) => a.symbol),
   );

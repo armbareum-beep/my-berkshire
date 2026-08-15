@@ -12,7 +12,9 @@ import type { Database } from "./supabase/database.types";
 import type { Currency } from "./format";
 import { getPortfolio } from "./portfolio";
 import { computeDashboard } from "./dashboard";
-import { loadSecurityMeta } from "./securities";
+import { backfillSectors } from "./securities";
+import { loadClassifiedMeta } from "./classifiedMeta";
+import { tagLabel } from "./allocation";
 import { readTargets } from "./targetWeights";
 import { approvedSymbols, loadUniverseStatuses, resolveUniverse } from "./universe";
 import { loadExpectedReturnAssumptions } from "./expectedReturnAssumptions";
@@ -39,6 +41,46 @@ export interface AllocateRow extends AllocateTarget {
   price: number;
   /** 자산유형(주식/ETF/코인/원자재…). 밸류에이션 적용 여부를 가른다. */
   assetType: string;
+  /** 국가 태그. 묶음(렌즈)으로 볼 때 쓴다 — 없으면 "기타". */
+  country: string;
+  /** 산업 태그. 공시 backfill 에 의존해 아직 못 채운 종목은 "미분류". */
+  sector: string;
+  /**
+   * 기대수익률을 **못 낸 이유**. `expectedCagr` 가 null 일 때만 채운다.
+   *
+   * 예전엔 이유를 안 남겨서 화면이 전부 "가정 없음"으로 뭉뚱그렸다 — 사용자 지적:
+   * *"버크셔 가정 등록했는데 가정 없다고 나와."* 실제로는 성장률·배수를 넣어 뒀는데
+   * **공시 EPS 가 캐시에 없어서** 계산이 안 된 것이었다. 배분 화면은 N+1 을 피하려고
+   * 캐시만 읽으므로(`finance/cachedEps.ts`), 종목 화면을 한 번 열어 캐시가 채워지기 전까지는
+   * 자동 이익력이 없다. 그건 "안 넣은 것"과 전혀 다른 상태다.
+   *
+   *  · `none`       — 가정을 아직 안 넣었다
+   *  · `incomplete` — 넣긴 했는데 성장률·종료배수 중 빠진 게 있다
+   *  · `metric`     — 이익력을 못 구했다(수기 없음 + 공시 캐시 미스)
+   *  · `price`      — 현재가(종목 통화)를 몰라 CAGR 만 못 냈다
+   */
+  erGap?: "none" | "incomplete" | "metric" | "price";
+  /**
+   * 기대수익률 **식을 그대로 펼쳐 보여주기 위한** 가정과 중간값(종목 통화).
+   *
+   * 순위 옆 `기대 17.2%` 칩의 ⓘ 가 이걸 쓴다 — 사용자 지적: *"그 기대수익률을 계산한
+   * 공식도 볼 수 있게 해줘."* 숫자만 던지면 어디서 나온 값인지 알 수 없고, 이 모형은
+   * 애초에 **사실이 아니라 사용자 가정**이라 근거를 같이 보여주는 게 원칙이다
+   * (`lib/finance/expectedReturn.ts` 머리말 — "적정가 X" 금지, "내 가정으로는 X").
+   *
+   * 가정이 없어 계산을 못 한 종목은 `undefined`.
+   */
+  erInputs?: {
+    /** 현재 이익력(주당) — EPS 또는 주당 FCF. */
+    metric: number;
+    /** 향후 `years` 연평균 성장률(소수). */
+    growth: number;
+    /** 기간 종료 시점 배수(PER/PFCF). */
+    terminalMultiple: number;
+    years: number;
+    /** `metric × (1+growth)^years × terminalMultiple`. */
+    futurePrice: number;
+  };
 }
 
 export interface AllocateData {
@@ -51,8 +93,9 @@ export interface AllocateData {
   /** 보유 현금 전액. */
   cash: number;
   /**
-   * 투자 가능 현금 — 사용자가 정한 값, 없으면 보유 현금 전액(스펙 §16.4).
+   * 투자 가능 현금 — 지난번 등기 때 넣은 금액, 없으면 보유 현금 전액(스펙 §16.4).
    * 전체 현금과 분리하는 이유는 "생활비까지 다 넣지는 않는다"이기 때문이다.
+   * 레일 2단계 금액 칸의 기본값으로만 쓰인다 — 따로 정하는 화면은 없다.
    */
   investableCash: number;
   /** 사용자가 투자 가능 현금을 직접 정했는가(= 보유 현금 폴백이 아닌가). */
@@ -65,10 +108,25 @@ export interface AllocateData {
   judged: number;
 }
 
+export interface LoadAllocateOptions {
+  /**
+   * 산업 태그를 공시에서 채워 올 것인가(`backfillSectors`).
+   *
+   * 산업 축을 쓰는 화면만 켠다. 멱등이고 **처음 한 번만** 실제로 일한다 — 채워진 뒤에는
+   * 대상이 없어 즉시 반환된다. 끄면 아직 안 채워진 종목이 전부 "미분류"로 묶인다.
+   *
+   * ⚠️ **지금은 켜는 곳이 없다.** 자본배분에서 산업 축을 뺐기 때문이다(ETF 가 전부 미분류라
+   * 쓸모가 없었다 — `lib/allocateBuckets.ts:BUCKET_LENSES`). 산업 축을 되살릴 때 같이
+   * 켜라. 끝내 못 채우는 종목은 **열 때마다 공시 조회를 재시도**하므로 공짜가 아니다.
+   */
+  withSectors?: boolean;
+}
+
 /** 로그인·온보딩이 끝난 사용자의 배분 데이터. 없으면 null(호출부가 redirect). */
 export async function loadAllocateData(
   supabase: SupabaseClient<Database>,
   displayCcy: Currency,
+  options: LoadAllocateOptions = {},
 ): Promise<AllocateData | null> {
   const portfolio = await getPortfolio(supabase);
   if (!portfolio) return null;
@@ -82,11 +140,18 @@ export async function loadAllocateData(
   const candidates = approvedSymbols(resolveUniverse(heldSymbols, statuses));
 
   const [meta, assumptions, cachedEps] = await Promise.all([
-    loadSecurityMeta(supabase, candidates),
+    loadClassifiedMeta(supabase, candidates),
     loadExpectedReturnAssumptions(supabase, portfolio.holding.id),
     // 공시 EPS — 캐시만 읽는다(API 호출 없음). 캐시에 없는 종목은 자동값 없이 넘어간다.
     loadCachedEps(supabase, candidates),
   ]);
+
+  // 산업 렌즈를 쓰는 화면에서만. 채워진 값은 `meta` 에 바로 반영해 이번 렌더부터 보이게 한다.
+  if (options.withSectors) {
+    const filled = await backfillSectors(supabase, meta);
+    for (const [s, sector] of Object.entries(filled))
+      if (meta[s]) meta[s].sector = sector;
+  }
 
   const heldValue: Record<string, number> = {};
   const heldName: Record<string, string> = {};
@@ -152,6 +217,10 @@ export async function loadAllocateData(
       // 미보유 후보는 dashboard 에 없으므로 원본 시세(₩)를 직접 환산한다.
       price: heldPrice[symbol] ?? (portfolio.prices[symbol] ?? 0) * factor,
       assetType: meta[symbol]?.assetType ?? "주식",
+      // 렌즈 태그는 화면마다 다시 계산하지 않는다 — 갈라지면 같은 종목이 화면마다 다른
+      // 묶음에 들어간다. `tagLabel` 하나만 쓴다.
+      country: tagLabel(meta[symbol], "country"),
+      sector: tagLabel(meta[symbol], "sector"),
       target: rule?.target ?? 0,
       softCap: rule?.softCap,
       hardCap: rule?.hardCap,
@@ -169,7 +238,13 @@ export async function loadAllocateData(
       assumption?.expectedGrowth != null &&
       assumption?.terminalMultiple != null &&
       assumption.terminalMultiple > 0;
-    if (!usable) return base;
+    if (!usable)
+      return {
+        ...base,
+        // 왜 못 냈는지를 남긴다. 순서가 중요하다 — 가정이 아예 없으면 "이익력 없음"이
+        // 아니라 "안 넣음"이다(공시 캐시가 우연히 있어도 마찬가지).
+        erGap: !assumption ? "none" : pair == null ? "metric" : "incomplete",
+      };
 
     // 종목별 값 > 전사 기본값("난이도") > 코드 기본값 12%.
     const requiredReturn = effectiveHurdle(assumption.requiredReturn, house);
@@ -185,6 +260,17 @@ export async function loadAllocateData(
     );
     return {
       ...base,
+      // 가정·식은 성립했는데 현재가를 몰라 CAGR 만 못 낸 경우 — 이것도 "안 넣음"이 아니다.
+      erGap: er?.expectedCagr == null ? ("price" as const) : undefined,
+      erInputs: er
+        ? {
+            metric: pair.metric,
+            growth: assumption.expectedGrowth as number,
+            terminalMultiple: assumption.terminalMultiple as number,
+            years: er.holdingYears,
+            futurePrice: er.futurePrice,
+          }
+        : undefined,
       attractiveness: attractivenessFromCagr(er?.expectedCagr ?? null, requiredReturn),
       expectedCagr: er?.expectedCagr ?? null,
       requiredReturn,

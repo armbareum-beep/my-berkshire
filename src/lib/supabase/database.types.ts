@@ -342,6 +342,7 @@ export type Database = {
         Row: {
           active_plan: Json | null
           archived_plans: Json
+          asset_type_overrides: Json
           category_targets: Json
           completed_years: number[]
           created_at: string
@@ -364,6 +365,7 @@ export type Database = {
         Insert: {
           active_plan?: Json | null
           archived_plans?: Json
+          asset_type_overrides?: Json
           category_targets?: Json
           completed_years?: number[]
           created_at?: string
@@ -386,6 +388,7 @@ export type Database = {
         Update: {
           active_plan?: Json | null
           archived_plans?: Json
+          asset_type_overrides?: Json
           category_targets?: Json
           completed_years?: number[]
           created_at?: string

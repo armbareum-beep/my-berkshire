@@ -12,7 +12,7 @@ import {
   manualCompositionInput,
 } from "@/lib/rankingComposition";
 import { computeHoldingsPct, parseHoldingsV1 } from "@/lib/rankingHoldings";
-import { loadSecurityMeta } from "@/lib/securities";
+import { loadClassifiedMeta } from "@/lib/classifiedMeta";
 import { cashBalance } from "@/lib/finance/valuation";
 import { loadLiabilities } from "@/lib/liabilities";
 import { loadManualAssets, loadManualAssetIncome } from "@/lib/realAssets";
@@ -101,7 +101,7 @@ export default async function RankingPage() {
           events,
           today,
         }),
-        loadSecurityMeta(supabase, Object.keys(positions)),
+        loadClassifiedMeta(supabase, Object.keys(positions)),
         loadManualAssets(supabase, holding.id),
         loadManualAssetIncome(supabase, holding.id),
       ]);

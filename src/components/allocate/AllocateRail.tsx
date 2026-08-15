@@ -5,6 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { saveRebalancePlan } from "@/app/rebalance/actions";
+import {
+  applyDefaultAssumptions,
+  setInvestableCash,
+} from "@/app/allocate/actions";
 import { StepShell } from "@/components/transactions/wizard/StepShell";
 import { SuccessOverlay } from "@/components/transactions/wizard/SuccessOverlay";
 import { BottomTabBar } from "@/components/dashboard/BottomTabBar";
@@ -16,10 +20,29 @@ import {
   wonStepLabel,
 } from "@/components/ui/QuickAdd";
 import { SymbolAvatar } from "@/components/onboarding/SymbolPicker";
-import { money, pct, type Currency } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import { money, moneyShort, pct, type Currency } from "@/lib/format";
 import { planAllocation, type AllocateLeg } from "@/lib/allocate";
+import {
+  rankBasis,
+  rankRows,
+  targetGap,
+  type RankBasis,
+} from "@/lib/allocateRanking";
+import {
+  buildBuckets,
+  buildSubBuckets,
+  subLensOf,
+  BUCKET_LENSES,
+  type AllocateBucket,
+  type BucketLens,
+} from "@/lib/allocateBuckets";
+import { valuationApplies } from "@/lib/finance/expectedReturn";
 import type { AllocateRow } from "@/lib/allocateData";
 import { STATUS_META } from "./statusMeta";
+import { HurdleCard } from "./HurdleCard";
+import { RankBasisChip } from "./RankBasisChip";
+import { TargetLensPanel, type LensRows } from "./TargetLensPanel";
 
 const USD_STEPS = [100, 1_000, 10_000];
 
@@ -28,51 +51,89 @@ const USD_STEPS = [100, 1_000, 10_000];
  *
  * ## 왜 카드가 아니라 레일인가
  *
- * 직전 재설계(`docs/allocate-redesign-v1.md`)는 화면을 셋으로 갈랐다(보기 / 실행 / 설정).
- * 카드 수는 줄었지만 문제는 그대로였다 — `/allocate` 에 현금 카드·1순위 카드·순위 카드가
- * **동시에** 놓여 있어 사용자가 "이 중 뭘 해야 하지"를 매번 골라야 했다. 게다가 1순위 카드와
- * 순위 1번 줄은 같은 정보였고, 정작 "얼마를 어디에"라는 답은 한 화면 더 들어가야 나왔다.
+ * v1 재설계(`docs/allocate-redesign-v1.md`)는 "한 화면 한 가지 일"을 화면을 쪼개서 풀었다.
+ * 카드 수는 줄었지만 조각들을 **동시에 늘어놓아** 사용자가 매번 "이 중 뭘 해야 하지"를
+ * 골라야 했다. 이 앱은 같은 문제를 거래 입력에서 이미 풀었다 — `docs/user-rails-v1.md` §1-1:
+ * *"폼 한 장에 다 넣으면 회계 입력이고, 한 번에 하나씩 물으면 딜 체결이다."*
  *
- * 그래서 **고르게 하지 않는다.** 이 앱은 이미 거래 입력에서 같은 답을 냈다 —
- * `docs/user-rails-v1.md` §1-1: *"폼 한 장에 다 넣으면 회계 입력이고, 한 번에 하나씩 물으면
- * 딜 체결이다."* 자본배분도 같은 레일에 태운다.
+ * ## 단계
  *
- * 구현도 새로 만들지 않고 거래 위저드의 부품을 그대로 쓴다 — `StepShell`(진행 점 ●●●),
- * `NumberPadField`(키패드 시트), `SuccessOverlay`(도장 ✓). 같은 부품을 쓰므로 두 여정이
- * 같은 앱처럼 느껴진다.
- *
- * ## 세 단계는 각각 다른 일을 한다
- *
- * | 단계 | 묻는 것 | 왜 합칠 수 없나 |
+ * | 단계 | 묻는 것 | 왜 따로인가 |
  * |---|---|---|
- * | 1 | 얼마를 넣을까 | 사용자만 아는 값 |
- * | 2 | 어디에 얼마씩 | 엔진이 낸 답 — 확인이 필요하다 |
- * | 3 | 몇 주씩 | 금액은 주가로 나눠떨어지지 않는다. 계획은 **주수**로 등기된다 |
+ * | 1 | 얼마나 들고 갈까 | 목표비중. 유형·국가 두 축을 여기서 정한다 |
+ * | 2 | 얼마를 넣을까 | 사용자만 아는 값 |
+ * | 3 | 어디에 넣을까 | 유형·국가 중 한 묶음. 고른 쪽에만 돈이 간다 |
+ * | 4 | 어디에 얼마씩 | 고른 묶음의 순위 + 금액 |
+ * | 5 | 몇 주씩 | 금액은 주가로 나눠떨어지지 않는다. 계획은 **주수**로 등기된다 |
  *
- * 3단계가 2단계의 요약이었다면 뺐을 것이다. 실제로 다른 숫자라서 남긴다.
+ * 3단계는 어느 렌즈로 봐도 묶음이 하나뿐일 때만 건너뛴다(고를 게 없는 질문은 마찰이다).
  *
- * 계산은 전부 `src/lib/allocate.ts:planAllocation` 이 한다 — **엔진은 손대지 않았다.**
- * 여기서는 표시와 진행만 한다.
+ * ## 순위를 레일 안에서 보여준다
+ *
+ * 직전 버전은 순위 목록을 `/allocate/ranking` 조회 화면으로 빼고 1단계 하단 작은 링크로만
+ * 걸었다 — 사실상 안 보였다. 지금은 4단계가 곧 순위다.
+ *
+ * 번호만 보여주면 순위는 주장일 뿐이라, **그 번호를 만든 값**을 줄마다 칩으로 붙인다
+ * (`rankBasis` — 정렬과 같은 함수). 목록을 내려읽으면 그 숫자가 내림차순이다.
+ * 사용자 지적: *"왜 그게 고순위인지 단서를 써줘야지. 지금은 랜덤인지 로직이 있는지
+ * 알 수 없잖아."*
+ *
+ * 주식과 ETF 를 **한 줄로 세우지 않는 이유**는 `lib/allocateRanking.ts` 에 있다 — 주식은
+ * 기대수익률, ETF 는 목표 미달로 줄 세운다. 기대수익률 모형이 개별기업에만 성립하기
+ * 때문이다. 기준이 다른 둘에 연속 번호를 매기면 비교 가능한 척이 된다.
+ *
+ * 그래서 묶음을 국가로도 고를 수 있게 넓히면서(*"어디에 넣을까요도 바꿔야지 않아?"*)
+ * **묶음 안을 두 섹션으로 갈라 각각 1번부터** 세게 했다(`lib/allocateBuckets.ts`). "미국"을
+ * 고르면 미국 주식과 미국 ETF 가 각자의 기준으로 줄 선다. 유형으로 골랐으면 한쪽이 비어
+ * 예전과 똑같이 한 목록만 보인다.
+ *
+ * 묶음(산업 "기타" vs 국가 "기타")이 헷갈리지 않게 고른 묶음은 렌즈까지 같이 기억한다.
+ *
+ * ## 고른 쪽에만 넣되, 비중은 전체 기준
+ *
+ * `planAllocation` 에 목록을 걸러서 넘기지 않고 `eligible` 로 넘긴다. 걸러서 넘기면
+ * 비중의 분모가 그 부분집합이 되어 **현재 비중이 부풀려진다**(`lib/allocate.ts` `PlanOptions`).
+ *
+ * 계산은 전부 엔진이 한다 — 여기서는 표시와 진행만 한다.
  */
 export function AllocateRail({
   rows,
   currency,
   investableCash,
   investableCashSet,
+  cash,
+  house,
+  passing,
+  judged,
+  lensRows,
+  misfiled,
 }: {
   rows: AllocateRow[];
   currency: Currency;
-  /** 설정에서 정한 투자 가능 현금(스펙 §16.4). 미지정이면 보유 현금 전액. */
+  /** 보유 현금 전액 — 2단계 부제에서 "얼마까지 넣을 수 있나"의 맥락으로 쓴다. */
+  cash: number;
+  /** 전사 요구수익률(허들)과 통과 현황 — 4단계에 접어 넣는다. */
+  house: number;
+  passing: number;
+  judged: number;
+  /** 1단계에서 정할 목표 — 유형·국가. 서버에서 계산해 넘긴다. */
+  lensRows: LensRows;
+  /** 이름으로 보면 유형이 다른 종목 수 — 0 이면 정리 문을 띄우지 않는다. */
+  misfiled: number;
+  /**
+   * 2단계 금액 칸의 **기본값** — 지난번에 넣은 금액이다(스펙 §16.4 투자 가능 현금).
+   * 아직 없으면 보유 현금 전액. 등기할 때 그때 넣은 금액으로 갱신된다.
+   */
   investableCash: number;
-  /** 사용자가 직접 정한 값인가(= 보유 현금 폴백이 아닌가). */
+  /** 기억된 값인가(= 보유 현금 폴백이 아닌가). 부제 문구가 갈린다. */
   investableCashSet: boolean;
 }) {
   const router = useRouter();
-  const [step, setStep] = useState(0);
+  const [stepIdx, setStepIdx] = useState(0);
   const [saving, startSave] = useTransition();
   const [done, setDone] = useState<{ title: string; sub: string } | null>(null);
 
-  // 투자 가능 현금을 기본값으로 깔아둔다 — 대부분은 그대로 두고 한 번 눌러 넘어간다.
+  // 지난번 금액을 깔아둔다 — 대부분은 그대로 두고 한 번 눌러 넘어간다.
   const [raw, setRaw] = useState(
     investableCash > 0 ? String(Math.floor(investableCash)) : "",
   );
@@ -82,25 +143,135 @@ export function AllocateRail({
   const stepLabel = currency === "USD" ? usdStepLabel : wonStepLabel;
   const symbol = currency === "USD" ? "$" : "₩";
 
-  const plan = useMemo(() => planAllocation(rows, amount), [rows, amount]);
+  // ── 묶음 ──
+  // 두 렌즈를 한 번에 만들어 둔다. 탭을 눌러도 다시 계산하지 않고, "어느 렌즈로 봐도
+  // 고를 게 하나뿐인가"(= 이 단계를 건너뛸까)를 판단할 수 있다.
+  const rankedAll = useMemo(() => rankRows(rows), [rows]);
+  const bucketsByLens = useMemo(
+    () =>
+      new Map(
+        BUCKET_LENSES.map((l) => [l.key, buildBuckets(rankedAll, l.key)] as const),
+      ),
+    [rankedAll],
+  );
+
+  const [lens, setLens] = useState<BucketLens>("assetType");
+  // 고른 묶음은 **렌즈까지 같이** 기억한다 — 라벨만 두면 탭을 옮겼을 때 같은 이름의 다른
+  // 묶음(예: 유형 "기타" vs 국가 "기타")이 조용히 선택된 것처럼 보인다.
+  // 고른 묶음. `sub` 가 있으면 **두 축이 겹친** 묶음이다 — "주식 안의 미국".
+  const [picked, setPicked] = useState<{
+    lens: BucketLens;
+    key: string;
+    sub?: string;
+  } | null>(null);
+
+  const buckets = bucketsByLens.get(lens) ?? [];
+  const bucket = useMemo(() => {
+    const outer = picked
+      ? (bucketsByLens.get(picked.lens) ?? []).find((b) => b.key === picked.key)
+      : undefined;
+    // 안쪽까지 골랐으면 겹친 묶음이 진짜 대상이다. 이름은 둘을 이어 붙인다 —
+    // "미국" 만 적으면 주식만 받는다는 사실이 4단계에서 사라진다.
+    if (outer && picked?.sub) {
+      const inner = buildSubBuckets(
+        rankedAll,
+        outer,
+        subLensOf(picked.lens),
+      ).find((b) => b.key === picked.sub);
+      if (inner) return { ...inner, label: `${outer.label} · ${inner.label}` };
+    }
+    // 안 골랐으면 유형 렌즈의 첫 묶음 — 건너뛴 경우 그게 유일한 묶음이다.
+    return outer ?? (bucketsByLens.get("assetType") ?? [])[0] ?? null;
+  }, [picked, bucketsByLens, rankedAll]);
+
+  const needsPick = BUCKET_LENSES.some(
+    (l) => (bucketsByLens.get(l.key) ?? []).length > 1,
+  );
+  // 목표 → 금액 → (묶음) → 배분 → 주수. 셋으로 갈려 있던 화면을 한 줄로 세운 것이다.
+  const stepIds = needsPick
+    ? (["targets", "amount", "bucket", "split", "shares"] as const)
+    : (["targets", "amount", "split", "shares"] as const);
+  const stepId = stepIds[stepIdx];
+
+  // 가정을 아직 안 넣은 개별주 수. `metric`(공시 이익 캐시 미스)은 뺀다 — 그건 넣어도
+  // PER 를 못 구해 기본값을 만들 수 없다(`applyDefaultAssumptions` 가 건너뛴다).
+  const unjudged = useMemo(
+    () =>
+      rows.filter(
+        (r) =>
+          valuationApplies(r.assetType) &&
+          (r.erGap === "none" || r.erGap === "incomplete"),
+      ).length,
+    [rows],
+  );
+
+  // ── 배분 ──
+  // 고른 묶음에만 돈이 가되, 목록은 전부 넘긴다(비중 분모 보존 — PlanOptions 주석).
+  const pickedKeys = useMemo(() => new Set(bucket?.members ?? []), [bucket]);
+  const plan = useMemo(
+    () =>
+      planAllocation(rows, amount, { eligible: (t) => pickedKeys.has(t.key) }),
+    [rows, amount, pickedKeys],
+  );
+
   const rowOf = useMemo(() => new Map(rows.map((r) => [r.key, r])), [rows]);
 
-  // 배분액이 있는 것 먼저, 그다음 금액 큰 순 → 살 것이 위로 온다.
-  const sorted = useMemo(
-    () =>
-      [...plan.legs].sort(
-        (a, b) => b.amount - a.amount || b.currentWeight - a.currentWeight,
-      ),
-    [plan.legs],
-  );
-  const buying = useMemo(() => sorted.filter((l) => l.amount > 0), [sorted]);
+  /**
+   * 고른 묶음을 **섹션별로** 세우고 금액을 붙인다.
+   *
+   * 번호는 섹션 안에서 1번부터다 — 기준이 다른 둘에 이어진 번호를 매기면 비교 가능한
+   * 척이 된다(`lib/allocateBuckets.ts`). 엔진이 다리를 안 만든 종목은 먼저 걸러낸 뒤
+   * 번호를 매긴다(빠진 자리에 번호가 비면 순위를 잘못 읽는다).
+   */
+  const sections = useMemo(() => {
+    const legOf = new Map(plan.legs.map((l) => [l.key, l]));
+    return (bucket?.sections ?? [])
+      .map((s) => ({
+        key: s.key,
+        basis: s.basis,
+        note: s.note,
+        items: s.rows
+          .map((r) => ({
+            row: r.row,
+            leg: legOf.get(r.row.key),
+            // 정렬과 **같은 함수**가 근거를 준다 — 화면이 따로 추측하면 목록 순서와
+            // 표시된 근거가 조용히 어긋난다.
+            basis: rankBasis(r, s.key),
+          }))
+          .filter(
+            (
+              x,
+            ): x is { row: AllocateRow; leg: AllocateLeg; basis: RankBasis } =>
+              Boolean(x.leg),
+          )
+          .map((x, i) => ({ rank: i + 1, ...x })),
+      }))
+      .filter((s) => s.items.length > 0)
+      .map((s) => ({
+        ...s,
+        // 가정 없는 종목이 섞여 있으면 목록이 두 규칙으로 세워진 셈이다 — 말해준다.
+        // 안 그러면 "기대수익률 순"이라 해놓고 기대수익률 없는 줄이 끼어 있어 보인다.
+        note: s.items.some((x) => x.basis.kind === "unjudged")
+          ? [
+              s.note,
+              "가정이 없는 종목은 아래로 내리고, 그 안에서는 목표 미달이 큰 순이에요",
+            ]
+              .filter(Boolean)
+              .join(" · ")
+          : s.note,
+      }));
+  }, [bucket, plan]);
+
+  const buying = sections
+    .flatMap((s) => s.items)
+    .filter((x) => x.leg.amount > 0);
 
   // 금액 → 주수. 소수점 주식을 만들지 않으려고 버림한다(모자란 만큼은 현금으로 남는다).
   // 시세를 모르는 종목(price 0)은 주수를 만들 수 없어 계획에서 빠진다.
   const shareLegs = useMemo(
     () =>
       buying
-        .map((leg) => {
+        .map(({ leg }) => {
           const price = rowOf.get(leg.key)?.price ?? 0;
           const shares = price > 0 ? Math.floor(leg.amount / price) : 0;
           return { leg, price, shares, cost: shares * price };
@@ -110,6 +281,7 @@ export function AllocateRail({
   );
 
   const shareTotal = shareLegs.reduce((s, x) => s + x.cost, 0);
+
 
   function savePlan() {
     startSave(async () => {
@@ -124,6 +296,12 @@ export function AllocateRail({
         toast.error(res.error);
         return;
       }
+      // 이번에 넣은 금액을 **다음 기본값**으로 기억한다(스펙 §16.4 의 투자 가능 현금).
+      // 별도 설정 카드를 지운 대신 여기서 배운다 — 생활비를 빼고 넣었다면 다음에도
+      // 그 금액에서 시작한다. 등기가 끝난 뒤라 화면이 다시 그려져도 흐름을 안 끊는다.
+      // 실패해도 배분 자체는 이미 저장됐으므로 조용히 넘어간다(기본값일 뿐이다).
+      if (Math.round(amount) !== Math.round(investableCash))
+        await setInvestableCash(amount, currency).catch(() => {});
       setDone({
         title: "자본배분이 등기되었습니다",
         sub: `${shareLegs.length}개 기업 · 매수할 때마다 진행률이 채워집니다`,
@@ -147,28 +325,69 @@ export function AllocateRail({
 
   /** 첫 단계에서 뒤로는 이탈이다 — 홈으로. 그 뒤로는 한 칸씩 되돌린다. */
   const onBack = () =>
-    step === 0 ? router.push("/dashboard") : setStep(step - 1);
+    stepIdx === 0 ? router.push("/dashboard") : setStepIdx(stepIdx - 1);
+  const next = () => setStepIdx(stepIdx + 1);
 
-  // ── 1단계 — 얼마를 넣을까 ──────────────────────────────────────────────
-  if (step === 0) {
+  const shell = {
+    kind: "자본배분",
+    total: stepIds.length,
+    current: stepIdx,
+    onBack,
+  };
+
+  // ── 1단계 — 얼마나 들고 갈까(목표) ────────────────────────────────────
+  if (stepId === "targets") {
     return (
       <>
-        {/* 탭바는 이 단계에만 둔다. 여기까지가 평시 화면이고, 다음 단계부터는
-            "여정 중"이라 이탈 경로를 두지 않는다(design-strategy §4 레일 원칙). */}
+        {/* 탭바는 첫 단계에만. 여기까지가 평시 화면이고 다음부터는 여정이다. */}
         <BottomTabBar />
         <StepShell
-          kind="자본배분"
-          total={3}
-          current={0}
-          onBack={onBack}
+          {...shell}
+          title="얼마나 들고 갈까요"
+          subtitle="투자자산을 어떻게 나눌지 먼저 정해요"
+          className="pb-28"
+        >
+          <TargetLensPanel
+            rows={lensRows}
+            currency={currency}
+            misfiled={misfiled}
+          />
+          <div className="mt-auto pt-6">
+            <button
+              type="button"
+              onClick={next}
+              className="h-13 w-full rounded-xl bg-primary text-base font-semibold text-primary-foreground transition active:scale-[0.98]"
+            >
+              다음
+            </button>
+          </div>
+        </StepShell>
+      </>
+    );
+  }
+
+  // ── 2단계 — 얼마를 넣을까 ──────────────────────────────────────────────
+  if (stepId === "amount") {
+    return (
+      <>
+        <StepShell
+          {...shell}
           title="얼마를 넣을까요"
           subtitle={
             investableCashSet
-              ? `투자 가능 현금 ${money(investableCash, currency)}`
-              : `보유 현금 전액 ${money(investableCash, currency)} · 설정에서 따로 정할 수 있어요`
+              ? `지난번 ${money(investableCash, currency)} · 보유 현금 ${money(cash, currency)}`
+              : `보유 현금 ${money(cash, currency)}`
           }
-          className="pb-28"
         >
+          {/* 투자 가능 현금 카드가 여기 있었다. 지웠다 —
+              *"얼마 넣을까요에 투자 가능 현금 없어도 되지 않아?"*
+
+              맞다. 이 단계가 묻는 게 정확히 그 금액이고, 칸에 이미 채워져 있다. 카드는
+              같은 질문을 자기 입력칸·저장 버튼까지 달고 한 번 더 물었다. 배분에 실제로
+              쓰이는 건 **여기 적힌 숫자**이므로 그것만 남긴다.
+
+              값은 사라지지 않는다 — 등기할 때 이 금액을 다음 기본값으로 기억한다
+              (`savePlan`). 생활비를 빼두고 싶으면 그만큼 적게 넣으면 그게 곧 기준이 된다. */}
           <NumberPadField
             value={raw}
             onChange={setRaw}
@@ -183,41 +402,85 @@ export function AllocateRail({
             label={stepLabel}
           />
 
-          <div className="mt-auto flex flex-col gap-3 pt-6">
+          <div className="mt-auto pt-6">
             <button
               type="button"
-              onClick={() => setStep(1)}
+              onClick={next}
               disabled={amount <= 0}
               className="h-13 w-full rounded-xl bg-primary text-base font-semibold text-primary-foreground transition active:scale-[0.98] disabled:opacity-40"
             >
               다음
             </button>
-            <div className="flex justify-center gap-4 text-xs font-medium text-muted-foreground">
-              <Link href="/allocate/settings" className="underline">
-                목표비중·설정
-              </Link>
-              <Link href="/allocate/ranking" className="underline">
-                살 곳 순위 보기
-              </Link>
-            </div>
           </div>
         </StepShell>
       </>
     );
   }
 
-  // ── 2단계 — 어디에 얼마씩 ──────────────────────────────────────────────
-  if (step === 1) {
+  // ── 3단계 — 어느 묶음에 넣을까 ────────────────────────────────────────
+  if (stepId === "bucket") {
     return (
       <StepShell
-        kind="자본배분"
-        total={3}
-        current={1}
-        onBack={onBack}
+        {...shell}
+        title="어디에 넣을까요"
+        subtitle="고른 묶음에만 넣습니다 — 카드를 누르면 그 묶음 전체, 안에서 더 좁힐 수도 있어요."
+      >
+        {/* 묶는 축을 고른다 — 1단계에서 국가·산업 비중을 보고 왔으니 배분도 같은 축으로
+            고를 수 있어야 한다. 축을 바꿔도 고른 묶음은 그대로 기억한다. */}
+        <nav className="mb-3 flex gap-1 rounded-xl bg-secondary p-1">
+          {BUCKET_LENSES.map((l) => (
+            <button
+              key={l.key}
+              type="button"
+              onClick={() => setLens(l.key)}
+              className={cn(
+                "flex-1 rounded-lg py-1.5 text-center text-sm font-semibold transition",
+                lens === l.key
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground",
+              )}
+            >
+              {l.label}
+            </button>
+          ))}
+        </nav>
+
+        {buckets.length === 0 ? (
+          <div className="rounded-2xl bg-card p-6 text-center shadow-card">
+            <p className="text-sm text-muted-foreground">
+              이 기준으로 묶을 게 없어요.
+            </p>
+          </div>
+        ) : (
+          <ul className="flex flex-col gap-3">
+            {buckets.map((b) => (
+              <li key={b.key}>
+                <BucketCard
+                  bucket={b}
+                  subs={buildSubBuckets(rankedAll, b, subLensOf(lens))}
+                  onPick={(sub) => {
+                    // 탭하면 자동 전진 — 확인 버튼을 또 누르게 하지 않는다(레일 §1-1).
+                    setPicked({ lens, key: b.key, sub });
+                    next();
+                  }}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+      </StepShell>
+    );
+  }
+
+  // ── 4단계 — 어디에 얼마씩(= 순위) ──────────────────────────────────────
+  if (stepId === "split") {
+    return (
+      <StepShell
+        {...shell}
         title="이렇게 나눕니다"
         subtitle={
           buying.length > 0
-            ? `${money(amount, currency)} 중 ${money(amount - plan.remainingCash, currency)}`
+            ? `${bucket?.label ?? ""} · ${money(amount - plan.remainingCash, currency)} 배분`
             : undefined
         }
       >
@@ -225,28 +488,52 @@ export function AllocateRail({
           <div className="rounded-2xl bg-card p-6 text-center shadow-card">
             <p className="text-sm font-semibold">지금은 살 곳이 없어요</p>
             <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-              전부 목표를 채웠거나 한도에 걸려 있습니다. 이럴 땐 현금으로 두는 게
-              맞습니다.
+              {bucket?.label ?? "고른 묶음"}은 전부 목표를 채웠거나 한도에 걸려
+              있습니다. 이럴 땐 현금으로 두는 게 맞습니다.
             </p>
-            <Link
-              href="/allocate/settings"
+            {/* 목표를 고칠 곳은 이 레일의 1단계다 — 화면 밖으로 내보내면 여기까지 온
+                맥락이 끊긴다. */}
+            <button
+              type="button"
+              onClick={() => setStepIdx(0)}
               className="mt-5 inline-flex h-11 items-center justify-center rounded-xl bg-secondary px-5 text-sm font-semibold transition active:scale-[0.98]"
             >
               목표비중 손보기
-            </Link>
+            </button>
           </div>
         ) : (
           <>
-            <ul className="flex flex-col gap-0.5">
-              {sorted.map((leg) => (
-                <PlanRow
-                  key={leg.key}
-                  leg={leg}
-                  row={rowOf.get(leg.key)}
-                  currency={currency}
-                />
-              ))}
-            </ul>
+            {/* 가정을 아직 안 넣은 개별주가 있으면 여기서 한 번에 깐다 — 순위가 왜
+                기대수익률로 안 갈리는지가 드러나는 자리가 바로 여기다. */}
+            {unjudged > 0 && <DefaultAssumptionsCard count={unjudged} />}
+
+            {/* 섹션마다 번호가 무슨 기준으로 매겨졌는지 밝힌다 — 기준 없는 순위는
+                거짓말이다. 섹션이 하나뿐이면 예전과 똑같이 보인다. */}
+            {sections.map((s) => (
+              <section key={s.key} className="mt-3 first:mt-0">
+                <p className="text-[11px] font-semibold text-muted-foreground">
+                  {s.basis}
+                </p>
+                {s.note && (
+                  <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                    {s.note}
+                  </p>
+                )}
+                <ul className="mt-2 flex flex-col gap-0.5">
+                  {s.items.map(({ rank, basis, row, leg }) => (
+                    <PlanRow
+                      key={leg.key}
+                      rank={rank}
+                      basis={basis}
+                      leg={leg}
+                      row={row}
+                      currency={currency}
+                    />
+                  ))}
+                </ul>
+              </section>
+            ))}
+
             {plan.remainingCash > 0 && (
               <p className="mt-3 px-2 text-xs text-muted-foreground">
                 현금으로 남김 {money(plan.remainingCash, currency)} — 기회가
@@ -257,10 +544,17 @@ export function AllocateRail({
               올라서 비중이 커진 종목은 팔라고 하지 않아요. 대신 새 돈을 넣지
               않습니다.
             </p>
+
+            {/* 허들 — 예전 "배분 설정" 화면의 내용. 이 값이 바로 이 순위를 만들므로
+                결과 옆에 둔다. 따로 화면을 두면 왜 순위가 그런지와 끊긴다. */}
+            <div className="mt-4">
+              <HurdleCard rate={house} passing={passing} total={judged} />
+            </div>
+
             <div className="mt-auto pt-6">
               <button
                 type="button"
-                onClick={() => setStep(2)}
+                onClick={next}
                 className="h-13 w-full rounded-xl bg-primary text-base font-semibold text-primary-foreground transition active:scale-[0.98]"
               >
                 이대로 진행
@@ -272,13 +566,10 @@ export function AllocateRail({
     );
   }
 
-  // ── 3단계 — 몇 주씩 ───────────────────────────────────────────────────
+  // ── 5단계 — 몇 주씩 ───────────────────────────────────────────────────
   return (
     <StepShell
-      kind="자본배분"
-      total={3}
-      current={2}
-      onBack={onBack}
+      {...shell}
       title="몇 주씩 살까요"
       subtitle="계획으로 등기하면 매수할 때마다 진행률이 채워져요"
     >
@@ -302,11 +593,7 @@ export function AllocateRail({
             {shareLegs.map(({ leg, shares, price, cost }) => (
               <li key={leg.key}>
                 <div className="flex items-center gap-3 rounded-xl px-2 py-2.5">
-                  <SymbolAvatar
-                    symbol={leg.key}
-                    name={leg.label}
-                    size="md"
-                  />
+                  <SymbolAvatar symbol={leg.key} name={leg.label} size="md" />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold">
                       {leg.label}
@@ -358,16 +645,24 @@ export function AllocateRail({
   );
 }
 
-/**
- * 한 줄 — 금액과 **왜 이 금액인지**를 같이 보여준다.
- * 재설계 전에는 이 설명이 화면 맨 아래 각주로 밀려 있어 어느 줄 이야기인지 알 수 없었다.
- */
+/** 목표 미달을 %p 로. 이미 넘겼으면 부호를 붙여 "초과"임을 드러낸다. */
+function gapLabel(gap: number): string {
+  if (Math.abs(gap) < 0.0001) return "목표 도달";
+  return `${gap > 0 ? "−" : "+"}${pct(Math.abs(gap))}`;
+}
+
 function PlanRow({
+  rank,
+  basis,
   leg,
   row,
   currency,
 }: {
+  rank: number;
+  /** 이 줄이 이 자리인 근거 — 섹션의 정렬 키. */
+  basis: RankBasis;
   leg: AllocateLeg;
+  /** 근거를 펼쳐 보여줄 때 쓰는 가정·중간값. */
   row?: AllocateRow;
   currency: Currency;
 }) {
@@ -383,14 +678,21 @@ function PlanRow({
     : meta.note;
 
   return (
-    <li>
+    <li
+      className={
+        "flex items-center gap-3 rounded-xl px-2 py-2.5 " +
+        (buying ? "" : "opacity-55")
+      }
+    >
+      {/* 근거 칩은 **버튼**이라 링크 안에 넣을 수 없다(anchor 안의 button 은 금지).
+          그래서 줄을 둘로 나눈다 — 왼쪽은 종목으로 가는 링크, 오른쪽은 근거·금액. */}
       <Link
         href={`/stocks/${leg.key}`}
-        className={
-          "flex items-center gap-3 rounded-xl px-2 py-2.5 transition active:scale-[0.99] " +
-          (buying ? "" : "opacity-55")
-        }
+        className="flex min-w-0 flex-1 items-center gap-3 transition active:scale-[0.99]"
       >
+        <span className="w-4 shrink-0 text-center text-xs font-bold tabular-nums text-muted-foreground">
+          {rank}
+        </span>
         <SymbolAvatar symbol={leg.key} name={leg.label} size="md" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
@@ -404,19 +706,223 @@ function PlanRow({
           <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
             {why}
           </p>
-          {buying && (
-            <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
-              {pct(leg.currentWeight)} → {pct(leg.weightAfter)}
-              {row?.expectedCagr != null && ` · 기대 ${pct(row.expectedCagr)}`}
-            </p>
-          )}
+          {/* 오른쪽 칩이 "얼마까지 사면 되나"를 말하므로 여기엔 **지금 얼마인가**를
+              붙인다 — 사용자 지적: *"지금 얼마고 얼마에 사야 하는지 말해줘야."*
+              둘이 한 줄 안에 같이 보여야 비교가 된다. 현재가를 모르면 비중만. */}
+          <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
+            {row?.nativePrice != null && (
+              <>
+                지금 {moneyShort(row.nativePrice, row.nativeCcy ?? "KRW")}
+                <span className="mx-1 opacity-40">·</span>
+              </>
+            )}
+            {pct(leg.currentWeight)}
+            {buying && ` → ${pct(leg.weightAfter)}`}
+          </p>
         </div>
+      </Link>
+
+      {/* 오른쪽 정렬 — 칩이 한 열로 서므로 내려읽으면 내림차순이 눈에 띈다. */}
+      <div className="flex shrink-0 flex-col items-end gap-1">
+        <RankBasisChip
+          basis={basis}
+          row={row}
+          label={leg.label}
+          symbol={leg.key}
+          requiredReturn={row?.requiredReturn ?? null}
+        />
         {buying && (
-          <p className="shrink-0 text-sm font-bold tabular-nums">
+          <p className="text-sm font-bold tabular-nums">
             {money(leg.amount, currency)}
           </p>
         )}
-      </Link>
+      </div>
     </li>
+  );
+}
+
+/**
+ * 3단계의 묶음 카드 한 장 — 누르면 이 묶음에만 넣는다.
+ *
+ * ## 안으로 한 겹 더 들어간다
+ *
+ * 예전엔 축 하나로만 골랐다. 그래서 *"주식만"* 도 *"미국만"* 도 되는데 **"미국 주식만"**
+ * 은 안 됐다 — 사용자 지적: *"비중조절은 들어가서 볼 수 있는데 그게 안 되는 거잖아?"*
+ * 비중조절은 `주식 → 국가별 → 미국` 으로 파고들 수 있으니, 본 것과 할 수 있는 것이
+ * 어긋나 있었다.
+ *
+ * 그래서 카드 안에 **좁히기** 줄을 뒀다. 흔한 경우(묶음 통째로)는 예전처럼 한 번만
+ * 누르면 되고, 더 좁힐 사람만 한 번 더 편다 — 기본 동선에 탭을 더하지 않는다.
+ *
+ * 좁힐 게 하나뿐이면 줄을 아예 안 보여준다(주식이 전부 미국이면 "미국 주식" = "주식").
+ */
+function BucketCard({
+  bucket,
+  subs,
+  onPick,
+}: {
+  bucket: AllocateBucket;
+  /** 이 묶음을 다른 축으로 다시 묶은 것. 둘 이상일 때만 좁히기가 뜬다. */
+  subs: AllocateBucket[];
+  /** `sub` 가 없으면 묶음 통째로. */
+  onPick: (sub?: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const canNarrow = subs.length > 1;
+
+  return (
+    <div className="rounded-2xl bg-card shadow-card">
+      <button
+        type="button"
+        onClick={() => onPick()}
+        className="w-full p-5 text-left transition active:scale-[0.99]"
+      >
+        <div className="flex items-baseline justify-between gap-3">
+          <p className="text-lg font-bold">
+            {bucket.label}{" "}
+            <span className="text-sm font-semibold text-muted-foreground">
+              {bucket.count}
+            </span>
+          </p>
+          <p className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+            {bucket.gap > 0.0001 ? `목표까지 ${pct(bucket.gap)}` : "목표 도달"}
+          </p>
+        </div>
+        {bucket.top && (
+          <div className="mt-3 flex items-center gap-3">
+            <SymbolAvatar
+              symbol={bucket.top.row.symbol}
+              name={bucket.top.row.label}
+              size="md"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold">
+                1순위 {bucket.top.row.label}
+              </p>
+              <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
+                {bucket.top.row.expectedCagr != null
+                  ? `기대 ${pct(bucket.top.row.expectedCagr)}`
+                  : `목표까지 ${gapLabel(targetGap(bucket.top))}`}
+              </p>
+            </div>
+          </div>
+        )}
+        {/* 섹션이 둘이면 안에서 기준이 갈린다는 걸 미리 알린다. */}
+        {bucket.sections.length > 1 && (
+          <p className="mt-3 text-[11px] text-muted-foreground">
+            {bucket.sections.map((s) => s.basis).join(" · ")} — 기준이 달라
+            나눠서 세워요
+          </p>
+        )}
+      </button>
+
+      {canNarrow && (
+        <div className="border-t border-border/60 px-5 pb-4 pt-3">
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            className="flex w-full items-center gap-2 text-xs font-semibold text-muted-foreground"
+          >
+            <span>
+              {bucket.label} 안에서 더 좁히기 ({subs.length})
+            </span>
+            <span className="text-foreground/40">{open ? "▾" : "›"}</span>
+          </button>
+
+          {open && (
+            <ul className="mt-3 flex flex-col gap-2">
+              {subs.map((sub) => (
+                <li key={sub.key}>
+                  <button
+                    type="button"
+                    onClick={() => onPick(sub.key)}
+                    className="flex w-full items-center gap-3 rounded-xl bg-secondary px-4 py-3 text-left transition active:scale-[0.98]"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold">
+                        {bucket.label} · {sub.label}
+                      </span>
+                      <span className="mt-0.5 block text-[11px] tabular-nums text-muted-foreground">
+                        {sub.count}종목 ·{" "}
+                        {sub.gap > 0.0001
+                          ? `목표까지 ${pct(sub.gap)}`
+                          : "목표 도달"}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-foreground/40">›</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 가정 일괄 채우기 — 4단계에 붙는 카드.
+ *
+ * 여기 두는 이유는 **순위가 왜 안 갈리는지 드러나는 자리**이기 때문이다. 가정이 없는
+ * 종목은 기대수익률 순위에서 빠져 목표 미달로만 판단되는데, 그 사실이 보이는 건 이
+ * 목록이다. 설정 화면으로 내보내면 여기까지 온 맥락이 끊긴다.
+ *
+ * **깔고 나면 전부 10% 로 같아진다는 걸 먼저 말한다.** 종료배수를 현재 PER 로 두면
+ * 식이 상쇄돼 기대수익률이 곧 성장률이 되기 때문이다(`lib/defaultAssumptions.ts`).
+ * 그걸 안 밝히면 균일한 순위를 의미 있는 판단으로 오해한다.
+ */
+function DefaultAssumptionsCard({ count }: { count: number }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+
+  return (
+    <section className="mb-3 flex flex-col gap-3 rounded-2xl border border-dashed border-primary/40 bg-primary/5 p-4">
+      <div>
+        <p className="text-sm font-semibold">
+          가정을 아직 안 넣은 종목이 {count}개 있어요
+        </p>
+        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+          <b>성장률은 과거 실적(최근 5년 EPS) · 종료배수는 지금 PER</b> 로 한 번에
+          깔아드려요. 깔고 나면 종목마다 <b>&#34;얼마까지 사면 되는지&#34;</b>(요구수익률을
+          채우는 매수가)가 나옵니다.
+        </p>
+        <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+          과거가 미래는 아니에요. <b>적자가 낀 종목·역성장은 재지 않고</b> 10%로 두고,
+          잰 값도 <b>15%에서 자릅니다</b> — 사이클 바닥에서 재면 튀거든요. 결국 사장님이
+          종목마다 고쳐야 하는 값이에요.
+        </p>
+      </div>
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() =>
+          start(async () => {
+            const res = await applyDefaultAssumptions();
+            if (!res.ok) {
+              toast.error(res.error);
+              return;
+            }
+            const skipped = res.skipped ?? 0;
+            const measured = res.measured ?? 0;
+            const clamped = res.clamped ?? 0;
+            // 무엇을 어떻게 넣었는지 그대로 말한다 — "채웠다"만 말하면 잰 것과 기본값을
+            // 쓴 것이 구분되지 않는다.
+            toast.success(
+              `${res.applied ?? 0}개에 가정을 넣었어요` +
+                (measured > 0 ? ` · ${measured}개는 과거 실적으로 계산` : "") +
+                (clamped > 0 ? `(${clamped}개는 15%로 자름)` : "") +
+                (skipped > 0
+                  ? ` · ${skipped}개는 공시 이익이 아직 없어 건너뛰었어요`
+                  : ""),
+            );
+            router.refresh();
+          })
+        }
+        className="h-11 rounded-xl bg-primary text-sm font-semibold text-primary-foreground transition active:scale-[0.98] disabled:opacity-50"
+      >
+        기본값으로 채우기
+      </button>
+    </section>
   );
 }

@@ -32,8 +32,10 @@ import { companyCashPools } from "@/lib/finance/valuation";
 import { loadAccountGroups, flattenHoldings, type AccountGroup } from "@/lib/accounts";
 import { filterIncludedAccountGroups } from "@/lib/members";
 import { loadWatchlist } from "@/lib/watchlist";
-import { loadSecurityNames, loadSecurityMeta } from "@/lib/securities";
+import { loadSecurityNames } from "@/lib/securities";
+import { loadClassifiedMeta } from "@/lib/classifiedMeta";
 import { groupByTag } from "@/lib/allocation";
+import { money, pct } from "@/lib/format";
 import { quarterBounds } from "@/lib/finance/quarterClose";
 import { resolveHomeSignals, loadDismissed, type HomeSignal } from "@/lib/finance/homeSignal";
 import { computeCelebrations, mergeCelebrations } from "@/lib/celebration";
@@ -167,7 +169,7 @@ async function DashboardContent({
   // 항상 병렬로 받아 둔다(둘 다 캐시됨). 계좌 그룹은 ₩으로 한 번만 적재해 $ 는 메모리 환산.
   // 투시(lookThrough)는 DART N+1 으로 가장 느려 → Promise.all 에서 빼고 Suspense 로 스트리밍.
   // 나머지 카드는 이걸 안 기다리고 먼저 그려진다(홈 첫 페인트 가속).
-  const secMetaPromise = loadSecurityMeta(
+  const secMetaPromise = loadClassifiedMeta(
     supabase,
     dataKRW.allocation.map((a) => a.symbol),
   );
@@ -343,33 +345,35 @@ async function DashboardContent({
           reconciliationsPromise={financingReconciliationsPromise}
           today={today}
           factorUSD={factorUSD}
+          financialKrw={dataKRW.valuation}
         />
       </Suspense>
     ),
     cash: dataKRW.priceAvailable ? (
-      <CurrencyView
+      <Suspense
         key="cash"
-        krw={
-          <CashCard
-            cash={dataKRW.cash}
-            cashWeight={dataKRW.cashWeight}
-            currency="KRW"
-            pools={pools}
-            fxInfo={fxInfo}
-            footer={<CardAction href="/dividends" scroll={false}>배당 — 언제 얼마 받나</CardAction>}
+        fallback={
+          <CurrencyView
+            krw={
+              <CashCard cash={dataKRW.cash} cashWeight={null} currency="KRW" />
+            }
+            usd={
+              <CashCard cash={dataUSD.cash} cashWeight={null} currency="USD" />
+            }
           />
         }
-        usd={
-          <CashCard
-            cash={dataUSD.cash}
-            cashWeight={dataKRW.cashWeight}
-            currency="USD"
-            pools={pools}
-            fxInfo={fxInfo}
-            footer={<CardAction href="/dividends" scroll={false}>배당 — 언제 얼마 받나</CardAction>}
-          />
-        }
-      />
+      >
+        <CashCardStreamed
+          cashKrw={dataKRW.cash}
+          cashUsd={dataUSD.cash}
+          financialKrw={dataKRW.valuation}
+          manualAssetsPromise={manualAssetsPromise}
+          manualAssetIncomePromise={manualAssetIncomePromise}
+          today={today}
+          pools={pools}
+          fxInfo={fxInfo}
+        />
+      </Suspense>
     ) : null,
     recent: <RecentActivityCard key="recent" recent={data.recent} />,
   };
@@ -704,6 +708,80 @@ async function HeroValuationStreamed({
   );
 }
 
+/**
+ * 현금 비중 — **전체 자산 대비**.
+ *
+ * `computeDashboard` 의 `cashWeight` 는 분모가 금융자산(증권 + 현금)이라 실물자산이 빠져
+ * 있다. 부동산을 크게 들고 있으면 실제보다 부풀려 보인다 — 사용자 지적: *"현금도 비중이
+ * 전체 자산에서가 아니라 금융자산에서만으로 나와. 전체비중에서 해줘."*
+ *
+ * 실물자산은 `computeDashboard` 밖에서 따로 적재되므로(수기 평가 + cap rate) 그 계산을
+ * 라이브러리 안으로 넣을 수 없다. 그래서 여기서 다시 나눈다 — 분모는 홈 히어로의
+ * "총자산"과 같다(빚은 빼지 않는다. 자산 구성 비중이지 순자산 배분이 아니다).
+ */
+async function CashCardStreamed({
+  cashKrw,
+  cashUsd,
+  financialKrw,
+  manualAssetsPromise,
+  manualAssetIncomePromise,
+  today,
+  pools,
+  fxInfo,
+}: {
+  cashKrw: number;
+  cashUsd: number;
+  /** 금융자산 평가액(₩) — 증권 + 현금. 시세 실패 시 null. */
+  financialKrw: number | null;
+  manualAssetsPromise: Promise<Awaited<ReturnType<typeof loadManualAssets>>>;
+  manualAssetIncomePromise: Promise<
+    Awaited<ReturnType<typeof loadManualAssetIncome>>
+  >;
+  today: string;
+  pools?: Record<string, number>;
+  fxInfo?: Record<string, import("@/lib/finance/fx").FxRateInfo>;
+}) {
+  const [manualAssetsRaw, manualIncome] = await Promise.all([
+    manualAssetsPromise,
+    manualAssetIncomePromise,
+  ]);
+  const manualKrw = totalManualAssets(
+    applyCapRateValuation(manualAssetsRaw, manualIncome, today),
+  );
+  const totalKrw = financialKrw === null ? null : financialKrw + manualKrw;
+  // 비율은 통화 무관 — ₩ 로 한 번만 계산해 두 카드가 같은 숫자를 쓴다.
+  const weight = totalKrw && totalKrw > 0 ? cashKrw / totalKrw : null;
+  const footer = (
+    <CardAction href="/dividends" scroll={false}>
+      배당 — 언제 얼마 받나
+    </CardAction>
+  );
+  return (
+    <CurrencyView
+      krw={
+        <CashCard
+          cash={cashKrw}
+          cashWeight={weight}
+          currency="KRW"
+          pools={pools}
+          fxInfo={fxInfo}
+          footer={footer}
+        />
+      }
+      usd={
+        <CashCard
+          cash={cashUsd}
+          cashWeight={weight}
+          currency="USD"
+          pools={pools}
+          fxInfo={fxInfo}
+          footer={footer}
+        />
+      }
+    />
+  );
+}
+
 /** 실물 사업부 — 부동산·대체·사업을 한 카드로 통합. 자산 있을 때만. 주식 유무와 무관하게 표시. */
 async function DivisionsStreamed({
   manualAssetsPromise,
@@ -712,6 +790,7 @@ async function DivisionsStreamed({
   reconciliationsPromise,
   today,
   factorUSD,
+  financialKrw,
 }: {
   manualAssetsPromise: Promise<Awaited<ReturnType<typeof loadManualAssets>>>;
   manualAssetIncomePromise: Promise<
@@ -723,6 +802,8 @@ async function DivisionsStreamed({
   >;
   today: string;
   factorUSD: number;
+  /** 금융자산 평가액(₩) — 비중의 분모를 만들 때 실물자산과 더한다. */
+  financialKrw: number | null;
 }) {
   const [manualAssetsRaw, manualIncome, liabilities, reconciliations] =
     await Promise.all([
@@ -740,14 +821,33 @@ async function DivisionsStreamed({
   });
   const divisions = computeDivisions(manualAssets, manualIncome, financing);
   if (divisions.length === 0) return null;
+
+  // 전체 자산 대비 비중 — 수익률만 있고 "내 자산에서 얼마나 큰가"가 없었다.
+  // 사용자 지적: *"메인화면에 부동산 수익률만 있고 전체 자산에서 비중이 없어."*
+  // 분모는 홈 히어로의 총자산과 같다(금융 + 실물, 빚은 빼지 않는다).
+  const manualKrw = totalManualAssets(manualAssets);
+  const totalKrw =
+    financialKrw === null ? null : financialKrw + manualKrw;
+  const weight = totalKrw && totalKrw > 0 ? manualKrw / totalKrw : null;
+
   return (
     <CurrencyView
-      krw={<RealDivisionsCard divisions={divisions} factor={1} currency="KRW" />}
+      krw={
+        <RealDivisionsCard
+          divisions={divisions}
+          factor={1}
+          currency="KRW"
+          weight={weight}
+          value={manualKrw}
+        />
+      }
       usd={
         <RealDivisionsCard
           divisions={divisions}
           factor={factorUSD}
           currency="USD"
+          weight={weight}
+          value={manualKrw * factorUSD}
         />
       }
     />
@@ -762,10 +862,16 @@ function RealDivisionsCard({
   divisions,
   factor,
   currency,
+  weight,
+  value,
 }: {
   divisions: ReturnType<typeof computeDivisions>;
   factor: number;
   currency: "KRW" | "USD";
+  /** 전체 자산(금융 + 실물) 대비 비중 0~1. 시세 실패 시 null. */
+  weight: number | null;
+  /** 실물자산 합계(표시통화). */
+  value: number;
 }) {
   return (
     <Link
@@ -779,6 +885,22 @@ function RealDivisionsCard({
       <p className="mt-0.5 text-xs text-muted-foreground">
         부동산·미술·비상장 등 직접 평가하는 자산
       </p>
+
+      {/* 수익률만 있으면 "잘 벌었나"만 알고 "내 자산에서 얼마나 큰가"를 모른다.
+          비중을 먼저 두고 금액을 옆에 붙인다 — 현금 카드와 같은 형식·같은 분모. */}
+      {weight !== null && (
+        <div className="mt-3 flex items-baseline justify-between border-t border-border pt-3">
+          <span className="flex items-baseline gap-1.5">
+            <span className="text-2xl font-bold tabular-nums">
+              {pct(weight)}
+            </span>
+            <span className="text-xs text-muted-foreground">전체 자산 대비</span>
+          </span>
+          <span className="text-sm tabular-nums text-muted-foreground">
+            {money(value, currency)}
+          </span>
+        </div>
+      )}
       <div className="mt-2 flex flex-col divide-y divide-border">
         {divisions.map((d) => (
           <div key={d.key} className="py-3 first:pt-1 last:pb-0">
@@ -807,7 +929,7 @@ async function HoldingsStreamed({
   supabase: SupabaseServer;
   dataKRW: DashboardData;
   factorUSD: number;
-  secMetaPromise: Promise<Awaited<ReturnType<typeof loadSecurityMeta>>>;
+  secMetaPromise: Promise<Awaited<ReturnType<typeof loadClassifiedMeta>>>;
   accountGroupsKRWPromise: Promise<Awaited<ReturnType<typeof loadAccountGroups>>>;
   memberNamesPromise: Promise<
     Record<string, { name: string; emoji: string | null }>
