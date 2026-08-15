@@ -174,6 +174,11 @@ export function computeDashboard(
     realized = profit === null ? null : profit - unrealized;
   }
 
+  // ⚠️ 분모가 **금융자산**(증권 + 현금)이라 실물자산이 빠져 있다. 부동산을 크게 들고
+  // 있으면 이 숫자가 실제보다 부풀려 보인다 — 사용자 지적: *"현금도 비중이 전체 자산에서가
+  // 아니라 금융자산에서만으로 나와."* 그래서 홈 카드는 이 값을 쓰지 않고 실물자산까지 합친
+  // 분모로 다시 계산한다(`app/dashboard/page.tsx:CashCardStreamed`). 여기서 못 고치는 건
+  // `computeDashboard` 가 실물자산(수기 평가)을 모르기 때문이다 — 따로 적재된다.
   const cashWeight =
     valuation && valuation > 0 ? cash / valuation : valuation === 0 ? 1 : null;
 

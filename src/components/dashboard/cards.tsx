@@ -489,8 +489,13 @@ export function CashCard({
   return (
     <CardShell title="현금 비중" href="/cash" scroll={false} footer={footerToUse}>
       <div className="flex items-baseline justify-between">
-        <span className="text-2xl font-bold tabular-nums">
-          {cashWeight !== null ? pct(cashWeight) : "—"}
+        {/* 분모를 밝힌다 — 예전엔 금융자산(증권+현금)만으로 나눠 부동산을 크게 들고
+            있으면 실제보다 부풀려 보였다. 실물 사업부 카드와 같은 분모·같은 형식. */}
+        <span className="flex items-baseline gap-1.5">
+          <span className="text-2xl font-bold tabular-nums">
+            {cashWeight !== null ? pct(cashWeight) : "—"}
+          </span>
+          <span className="text-xs text-muted-foreground">전체 자산 대비</span>
         </span>
         <span className="text-sm text-muted-foreground tabular-nums">
           {money(cash, currency)}
