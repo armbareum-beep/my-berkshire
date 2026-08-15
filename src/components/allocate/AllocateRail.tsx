@@ -20,7 +20,12 @@ import { SymbolAvatar } from "@/components/onboarding/SymbolPicker";
 import { cn } from "@/lib/utils";
 import { money, pct, type Currency } from "@/lib/format";
 import { planAllocation, type AllocateLeg } from "@/lib/allocate";
-import { rankRows, targetGap } from "@/lib/allocateRanking";
+import {
+  rankBasis,
+  rankRows,
+  targetGap,
+  type RankBasis,
+} from "@/lib/allocateRanking";
 import {
   buildBuckets,
   BUCKET_LENSES,
@@ -47,9 +52,9 @@ const USD_STEPS = [100, 1_000, 10_000];
  *
  * | 단계 | 묻는 것 | 왜 따로인가 |
  * |---|---|---|
- * | 1 | 얼마나 들고 갈까 | 목표비중. 유형은 여기서 정하고 국가·산업은 결과로 본다 |
+ * | 1 | 얼마나 들고 갈까 | 목표비중. 유형·국가 두 축을 여기서 정한다 |
  * | 2 | 얼마를 넣을까 | 사용자만 아는 값 |
- * | 3 | 어디에 넣을까 | 유형·국가·산업 중 한 묶음. 고른 쪽에만 돈이 간다 |
+ * | 3 | 어디에 넣을까 | 유형·국가 중 한 묶음. 고른 쪽에만 돈이 간다 |
  * | 4 | 어디에 얼마씩 | 고른 묶음의 순위 + 금액 |
  * | 5 | 몇 주씩 | 금액은 주가로 나눠떨어지지 않는다. 계획은 **주수**로 등기된다 |
  *
@@ -58,17 +63,23 @@ const USD_STEPS = [100, 1_000, 10_000];
  * ## 순위를 레일 안에서 보여준다
  *
  * 직전 버전은 순위 목록을 `/allocate/ranking` 조회 화면으로 빼고 1단계 하단 작은 링크로만
- * 걸었다 — 사실상 안 보였다. 지금은 4단계가 곧 순위다. 번호·정렬 기준·기대수익률이
- * 금액과 같은 줄에 있으므로 "왜 이 순서인지"가 배분과 분리되지 않는다.
+ * 걸었다 — 사실상 안 보였다. 지금은 4단계가 곧 순위다.
+ *
+ * 번호만 보여주면 순위는 주장일 뿐이라, **그 번호를 만든 값**을 줄마다 칩으로 붙인다
+ * (`rankBasis` — 정렬과 같은 함수). 목록을 내려읽으면 그 숫자가 내림차순이다.
+ * 사용자 지적: *"왜 그게 고순위인지 단서를 써줘야지. 지금은 랜덤인지 로직이 있는지
+ * 알 수 없잖아."*
  *
  * 주식과 ETF 를 **한 줄로 세우지 않는 이유**는 `lib/allocateRanking.ts` 에 있다 — 주식은
  * 기대수익률, ETF 는 목표 미달로 줄 세운다. 기대수익률 모형이 개별기업에만 성립하기
  * 때문이다. 기준이 다른 둘에 연속 번호를 매기면 비교 가능한 척이 된다.
  *
- * 그래서 묶음을 국가·산업으로도 고를 수 있게 넓히면서(*"어디에 넣을까요도 바꿔야지 않아?"*)
+ * 그래서 묶음을 국가로도 고를 수 있게 넓히면서(*"어디에 넣을까요도 바꿔야지 않아?"*)
  * **묶음 안을 두 섹션으로 갈라 각각 1번부터** 세게 했다(`lib/allocateBuckets.ts`). "미국"을
  * 고르면 미국 주식과 미국 ETF 가 각자의 기준으로 줄 선다. 유형으로 골랐으면 한쪽이 비어
  * 예전과 똑같이 한 목록만 보인다.
+ *
+ * 묶음(산업 "기타" vs 국가 "기타")이 헷갈리지 않게 고른 묶음은 렌즈까지 같이 기억한다.
  *
  * ## 고른 쪽에만 넣되, 비중은 전체 기준
  *
@@ -96,7 +107,7 @@ export function AllocateRail({
   house: number;
   passing: number;
   judged: number;
-  /** 1단계에서 보는 목표 — 유형(편집 가능)·국가·산업. 서버에서 계산해 넘긴다. */
+  /** 1단계에서 정할 목표 — 유형·국가. 서버에서 계산해 넘긴다. */
   lensRows: LensRows;
   /**
    * 2단계 금액 칸의 **기본값** — 지난번에 넣은 금액이다(스펙 §16.4 투자 가능 현금).
@@ -122,7 +133,7 @@ export function AllocateRail({
   const symbol = currency === "USD" ? "$" : "₩";
 
   // ── 묶음 ──
-  // 세 렌즈를 한 번에 만들어 둔다. 탭을 눌러도 다시 계산하지 않고, "어느 렌즈로 봐도
+  // 두 렌즈를 한 번에 만들어 둔다. 탭을 눌러도 다시 계산하지 않고, "어느 렌즈로 봐도
   // 고를 게 하나뿐인가"(= 이 단계를 건너뛸까)를 판단할 수 있다.
   const rankedAll = useMemo(() => rankRows(rows), [rows]);
   const bucketsByLens = useMemo(
@@ -135,7 +146,7 @@ export function AllocateRail({
 
   const [lens, setLens] = useState<BucketLens>("assetType");
   // 고른 묶음은 **렌즈까지 같이** 기억한다 — 라벨만 두면 탭을 옮겼을 때 같은 이름의 다른
-  // 묶음(예: 산업 "기타" vs 국가 "기타")이 조용히 선택된 것처럼 보인다.
+  // 묶음(예: 유형 "기타" vs 국가 "기타")이 조용히 선택된 것처럼 보인다.
   const [picked, setPicked] = useState<{ lens: BucketLens; key: string } | null>(
     null,
   );
@@ -184,13 +195,35 @@ export function AllocateRail({
         basis: s.basis,
         note: s.note,
         items: s.rows
-          .map((r) => ({ row: r.row, leg: legOf.get(r.row.key) }))
-          .filter((x): x is { row: AllocateRow; leg: AllocateLeg } =>
-            Boolean(x.leg),
+          .map((r) => ({
+            row: r.row,
+            leg: legOf.get(r.row.key),
+            // 정렬과 **같은 함수**가 근거를 준다 — 화면이 따로 추측하면 목록 순서와
+            // 표시된 근거가 조용히 어긋난다.
+            basis: rankBasis(r, s.key),
+          }))
+          .filter(
+            (
+              x,
+            ): x is { row: AllocateRow; leg: AllocateLeg; basis: RankBasis } =>
+              Boolean(x.leg),
           )
           .map((x, i) => ({ rank: i + 1, ...x })),
       }))
-      .filter((s) => s.items.length > 0);
+      .filter((s) => s.items.length > 0)
+      .map((s) => ({
+        ...s,
+        // 가정 없는 종목이 섞여 있으면 목록이 두 규칙으로 세워진 셈이다 — 말해준다.
+        // 안 그러면 "기대수익률 순"이라 해놓고 기대수익률 없는 줄이 끼어 있어 보인다.
+        note: s.items.some((x) => x.basis.kind === "unjudged")
+          ? [
+              s.note,
+              "가정이 없는 종목은 아래로 내리고, 그 안에서는 목표 미달이 큰 순이에요",
+            ]
+              .filter(Boolean)
+              .join(" · ")
+          : s.note,
+      }));
   }, [bucket, plan]);
 
   const buying = sections
@@ -481,12 +514,12 @@ export function AllocateRail({
                   </p>
                 )}
                 <ul className="mt-2 flex flex-col gap-0.5">
-                  {s.items.map(({ rank, row, leg }) => (
+                  {s.items.map(({ rank, basis, leg }) => (
                     <PlanRow
                       key={leg.key}
                       rank={rank}
+                      basis={basis}
                       leg={leg}
-                      row={row}
                       currency={currency}
                     />
                   ))}
@@ -611,19 +644,38 @@ function gapLabel(gap: number): string {
   return `${gap > 0 ? "−" : "+"}${pct(Math.abs(gap))}`;
 }
 
+/** 정렬 키를 사람 말로 — `rankBasis` 가 준 것만 쓴다(여기서 다시 계산하지 않는다). */
+function basisLabel(b: RankBasis): string {
+  if (b.kind === "cagr") return `기대 ${pct(b.cagr)}`;
+  if (b.kind === "unjudged") return "가정 없음";
+  return b.gap > 0.0001 ? `미달 ${pct(b.gap)}` : "목표 도달";
+}
+
 /**
- * 한 줄 — **순위 번호**와 금액과 **왜 이 금액인지**를 같이 보여준다.
- * 번호·정렬 기준을 다른 화면으로 빼면 "왜 이 순서인지"가 배분과 끊긴다.
+ * 한 줄 — **순위 번호**와 **그 번호를 만든 숫자**와 금액을 같이 보여준다.
+ *
+ * 예전엔 번호와 "왜 이 금액인가"만 있었다. 사용자 지적: *"왜 그게 고순위인지 말해주는
+ * 단서를 써줘야지. 지금은 그냥 순위 매기니까 랜덤인지 로직이 있는지 알 수 없잖아."*
+ *
+ * 맞다. 번호만 있고 그 번호를 만든 값이 안 보이면 순위는 주장일 뿐이다. 그래서 이름 옆에
+ * **정렬 키를 그대로** 붙인다(`lib/allocateRanking.ts:rankBasis` — 정렬과 같은 함수).
+ * 목록을 내려읽으면 그 숫자가 내림차순이라, 로직이 있다는 게 눈으로 증명된다.
+ *
+ * 세 겹이 각자 다른 자리에서 말한다.
+ *   · 상태 배지  — "살 수 있는가"(한도·목표 도달). 가장 위 겹
+ *   · 정렬 키 칩 — 그 안에서의 순서 근거
+ *   · 아래 한 줄 — "왜 이 금액인가"(목표까지의 부족분)
  */
 function PlanRow({
   rank,
+  basis,
   leg,
-  row,
   currency,
 }: {
   rank: number;
+  /** 이 줄이 이 자리인 근거 — 섹션의 정렬 키. */
+  basis: RankBasis;
   leg: AllocateLeg;
-  row?: AllocateRow;
   currency: Currency;
 }) {
   const meta = STATUS_META[leg.status];
@@ -653,6 +705,18 @@ function PlanRow({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <p className="truncate text-sm font-semibold">{leg.label}</p>
+            {/* 이 줄이 이 자리인 근거 — 섹션 머리말의 정렬 기준과 같은 값이다.
+                내려읽으면 내림차순이라 순위에 로직이 있다는 게 보인다. */}
+            <span
+              className={
+                "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums " +
+                (basis.kind === "unjudged"
+                  ? "bg-secondary text-muted-foreground"
+                  : "bg-primary/10 text-primary")
+              }
+            >
+              {basisLabel(basis)}
+            </span>
             <span
               className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${meta.tone}`}
             >
@@ -662,10 +726,10 @@ function PlanRow({
           <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
             {why}
           </p>
+          {/* 기대수익률은 위 칩으로 올라갔다 — 같은 값을 두 번 적지 않는다. */}
           <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
             {pct(leg.currentWeight)}
             {buying && ` → ${pct(leg.weightAfter)}`}
-            {row?.expectedCagr != null && ` · 기대 ${pct(row.expectedCagr)}`}
           </p>
         </div>
         {buying && (

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { groupRanked, rankRows, targetGap } from "./allocateRanking";
+import {
+  groupRanked,
+  rankBasis,
+  rankRows,
+  targetGap,
+} from "./allocateRanking";
 import type { AllocateRow } from "./allocateData";
 
 function row(
@@ -139,5 +144,47 @@ describe("groupRanked — 묶음마다 자기 기준으로 센다", () => {
       "HIGH",
       "LOW",
     ]);
+  });
+});
+
+describe("rankBasis — 왜 이 자리인지", () => {
+  it("개별주는 기대수익률이 근거다 — 정렬 키와 같은 값", () => {
+    const ranked = rankRows([
+      row("HIGH", 0, 0.3, { expectedCagr: 0.22, requiredReturn: 0.12 }),
+      row("LOW", 0, 0.3, { expectedCagr: 0.09, requiredReturn: 0.12 }),
+    ]);
+    const bases = ranked.map((r) => rankBasis(r, "stocks"));
+    expect(bases.map((b) => b.kind)).toEqual(["cagr", "cagr"]);
+    // 목록 순서대로 읽으면 내림차순 — 그게 "로직이 있다"의 증거다.
+    const values = bases.map((b) => (b.kind === "cagr" ? b.cagr : NaN));
+    expect(values[0]).toBeGreaterThan(values[1]);
+  });
+
+  it("가정이 없는 개별주는 그 사실 자체가 근거다", () => {
+    const ranked = rankRows([row("NONE", 100, 0.5)]);
+    const b = rankBasis(ranked[0], "stocks");
+    expect(b.kind).toBe("unjudged");
+    if (b.kind === "unjudged") expect(b.gap).toBeCloseTo(0.5 - 1);
+  });
+
+  it("ETF 묶음은 목표 미달이 근거다 — 기대수익률 모형을 못 쓴다", () => {
+    // 총 1000. A 는 목표 70%에 10%, B 는 30%에 20%.
+    const { others } = groupRanked(
+      rankRows([
+        row("A", 100, 0.7, { assetType: "ETF" }),
+        row("B", 200, 0.3, { assetType: "ETF" }),
+      ]),
+    );
+    const bases = others.map((r) => rankBasis(r, "others"));
+    expect(bases.every((b) => b.kind === "gap")).toBe(true);
+    const gaps = bases.map((b) => (b.kind === "gap" ? b.gap : NaN));
+    expect(gaps[0]).toBeGreaterThan(gaps[1]);
+  });
+
+  it("ETF 는 기대수익률이 있어도 목표 미달로 말한다 — 섹션 기준을 따른다", () => {
+    const ranked = rankRows([
+      row("SPY", 100, 0.4, { assetType: "ETF", expectedCagr: 0.2 }),
+    ]);
+    expect(rankBasis(ranked[0], "others").kind).toBe("gap");
   });
 });
