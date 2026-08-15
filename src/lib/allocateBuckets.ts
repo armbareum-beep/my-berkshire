@@ -139,3 +139,40 @@ export function buildBuckets(
       );
     });
 }
+
+/**
+ * 이 축의 **짝** — 유형으로 묶었으면 안은 국가로, 국가로 묶었으면 안은 유형으로.
+ *
+ * 축이 둘뿐이라 짝이 하나로 정해진다. 셋 이상이 되면 사용자가 고르게 해야 한다.
+ */
+export function subLensOf(lens: BucketLens): BucketLens {
+  return lens === "assetType" ? "country" : "assetType";
+}
+
+/**
+ * 한 묶음 **안**을 다른 축으로 다시 묶는다 — "주식 안의 미국".
+ *
+ * ## 왜 필요한가
+ *
+ * 3단계는 축 하나로만 골랐다. 그래서 *"주식만"* 도 *"미국만"* 도 되는데 **"미국 주식만"**
+ * 은 안 됐다. 비중조절은 `주식 → 국가별 → 미국` 으로 들어갈 수 있는데 배분은 못 하니
+ * 본 것과 할 수 있는 것이 어긋난다 — 사용자 지적: *"비중조절은 들어가서 볼 수 있는데
+ * 그게 안 되는 거잖아?"*
+ *
+ * 새로 세는 건 없다. 묶음의 구성원만 걸러 같은 `buildBuckets` 를 다시 돌린다 — 규칙을
+ * 두 벌 두면 겉묶음과 속묶음의 순서·섹션 기준이 갈린다.
+ *
+ * 결과가 하나뿐이면 **좁힐 게 없다**(주식이 전부 미국이면 "미국 주식" = "주식"). 그때는
+ * 화면이 이 목록을 아예 안 보여준다.
+ */
+export function buildSubBuckets(
+  ranked: RankedRow[],
+  bucket: AllocateBucket,
+  lens: BucketLens,
+): AllocateBucket[] {
+  const inside = new Set(bucket.members);
+  return buildBuckets(
+    ranked.filter((r) => inside.has(r.row.key)),
+    lens,
+  );
+}

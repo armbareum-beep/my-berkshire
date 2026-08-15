@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildBuckets } from "./allocateBuckets";
+import {
+  buildBuckets,
+  buildSubBuckets,
+  subLensOf,
+} from "./allocateBuckets";
 import { rankRows } from "./allocateRanking";
 import type { AllocateRow } from "./allocateData";
 
@@ -127,5 +131,49 @@ describe("buildBuckets — 돈을 받을 묶음", () => {
 
   it("빈 목록이면 묶음도 없다", () => {
     expect(buildBuckets([], "country")).toEqual([]);
+  });
+});
+
+describe("buildSubBuckets — 묶음 안을 다른 축으로 다시 묶는다", () => {
+  // 주식: META(미국) · 삼성(한국)   ETF: SPY(미국)
+  const ranked = rankRows([
+    row("META", 300, 0.3),
+    row("005930", 200, 0.3, { country: "한국" }),
+    row("SPY", 500, 0.4, { assetType: "ETF" }),
+  ]);
+  const stocks = buildBuckets(ranked, "assetType").find(
+    (b) => b.label === "주식",
+  )!;
+
+  it("겉묶음의 구성원만 다시 묶는다 — 미국 ETF 는 안 들어온다", () => {
+    const subs = buildSubBuckets(ranked, stocks, "country");
+    expect(labels(subs).sort()).toEqual(["미국", "한국"]);
+    const us = subs.find((b) => b.label === "미국")!;
+    expect(us.members).toEqual(["META"]); // SPY 는 주식 묶음 밖
+  });
+
+  it("두 축이 겹친 묶음이 나온다 — '미국 주식만'", () => {
+    const us = buildSubBuckets(ranked, stocks, "country").find(
+      (b) => b.label === "미국",
+    )!;
+    expect(us.count).toBe(1);
+    expect(us.members).not.toContain("SPY");
+  });
+
+  it("좁힐 게 없으면 하나만 나온다 — 화면이 그걸 보고 목록을 숨긴다", () => {
+    const etf = buildBuckets(ranked, "assetType").find(
+      (b) => b.label === "ETF",
+    )!;
+    expect(buildSubBuckets(ranked, etf, "country")).toHaveLength(1);
+  });
+
+  it("겉묶음 구성원 수가 보존된다 — 종목이 조용히 사라지지 않게", () => {
+    const subs = buildSubBuckets(ranked, stocks, "country");
+    expect(subs.reduce((s, b) => s + b.count, 0)).toBe(stocks.count);
+  });
+
+  it("축이 둘뿐이라 짝이 하나로 정해진다", () => {
+    expect(subLensOf("assetType")).toBe("country");
+    expect(subLensOf("country")).toBe("assetType");
   });
 });

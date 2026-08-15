@@ -28,7 +28,10 @@ import {
 } from "@/lib/allocateRanking";
 import {
   buildBuckets,
+  buildSubBuckets,
+  subLensOf,
   BUCKET_LENSES,
+  type AllocateBucket,
   type BucketLens,
 } from "@/lib/allocateBuckets";
 import type { AllocateRow } from "@/lib/allocateData";
@@ -151,18 +154,31 @@ export function AllocateRail({
   const [lens, setLens] = useState<BucketLens>("assetType");
   // 고른 묶음은 **렌즈까지 같이** 기억한다 — 라벨만 두면 탭을 옮겼을 때 같은 이름의 다른
   // 묶음(예: 유형 "기타" vs 국가 "기타")이 조용히 선택된 것처럼 보인다.
-  const [picked, setPicked] = useState<{ lens: BucketLens; key: string } | null>(
-    null,
-  );
+  // 고른 묶음. `sub` 가 있으면 **두 축이 겹친** 묶음이다 — "주식 안의 미국".
+  const [picked, setPicked] = useState<{
+    lens: BucketLens;
+    key: string;
+    sub?: string;
+  } | null>(null);
 
   const buckets = bucketsByLens.get(lens) ?? [];
   const bucket = useMemo(() => {
-    const chosen = picked
+    const outer = picked
       ? (bucketsByLens.get(picked.lens) ?? []).find((b) => b.key === picked.key)
       : undefined;
+    // 안쪽까지 골랐으면 겹친 묶음이 진짜 대상이다. 이름은 둘을 이어 붙인다 —
+    // "미국" 만 적으면 주식만 받는다는 사실이 4단계에서 사라진다.
+    if (outer && picked?.sub) {
+      const inner = buildSubBuckets(
+        rankedAll,
+        outer,
+        subLensOf(picked.lens),
+      ).find((b) => b.key === picked.sub);
+      if (inner) return { ...inner, label: `${outer.label} · ${inner.label}` };
+    }
     // 안 골랐으면 유형 렌즈의 첫 묶음 — 건너뛴 경우 그게 유일한 묶음이다.
-    return chosen ?? (bucketsByLens.get("assetType") ?? [])[0] ?? null;
-  }, [picked, bucketsByLens]);
+    return outer ?? (bucketsByLens.get("assetType") ?? [])[0] ?? null;
+  }, [picked, bucketsByLens, rankedAll]);
 
   const needsPick = BUCKET_LENSES.some(
     (l) => (bucketsByLens.get(l.key) ?? []).length > 1,
@@ -391,7 +407,7 @@ export function AllocateRail({
       <StepShell
         {...shell}
         title="어디에 넣을까요"
-        subtitle="고른 묶음에만 넣습니다. 나머지는 현금으로 남아요."
+        subtitle="고른 묶음에만 넣습니다 — 카드를 누르면 그 묶음 전체, 안에서 더 좁힐 수도 있어요."
       >
         {/* 묶는 축을 고른다 — 1단계에서 국가·산업 비중을 보고 왔으니 배분도 같은 축으로
             고를 수 있어야 한다. 축을 바꿔도 고른 묶음은 그대로 기억한다. */}
@@ -423,53 +439,15 @@ export function AllocateRail({
           <ul className="flex flex-col gap-3">
             {buckets.map((b) => (
               <li key={b.key}>
-                <button
-                  type="button"
-                  onClick={() => {
+                <BucketCard
+                  bucket={b}
+                  subs={buildSubBuckets(rankedAll, b, subLensOf(lens))}
+                  onPick={(sub) => {
                     // 탭하면 자동 전진 — 확인 버튼을 또 누르게 하지 않는다(레일 §1-1).
-                    setPicked({ lens, key: b.key });
+                    setPicked({ lens, key: b.key, sub });
                     next();
                   }}
-                  className="w-full rounded-2xl bg-card p-5 text-left shadow-card transition active:scale-[0.99]"
-                >
-                  <div className="flex items-baseline justify-between gap-3">
-                    <p className="text-lg font-bold">
-                      {b.label}{" "}
-                      <span className="text-sm font-semibold text-muted-foreground">
-                        {b.count}
-                      </span>
-                    </p>
-                    <p className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
-                      {b.gap > 0.0001 ? `목표까지 ${pct(b.gap)}` : "목표 도달"}
-                    </p>
-                  </div>
-                  {b.top && (
-                    <div className="mt-3 flex items-center gap-3">
-                      <SymbolAvatar
-                        symbol={b.top.row.symbol}
-                        name={b.top.row.label}
-                        size="md"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold">
-                          1순위 {b.top.row.label}
-                        </p>
-                        <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
-                          {b.top.row.expectedCagr != null
-                            ? `기대 ${pct(b.top.row.expectedCagr)}`
-                            : `목표까지 ${gapLabel(targetGap(b.top))}`}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                  {/* 섹션이 둘이면 안에서 기준이 갈린다는 걸 미리 알린다. */}
-                  {b.sections.length > 1 && (
-                    <p className="mt-3 text-[11px] text-muted-foreground">
-                      {b.sections.map((s) => s.basis).join(" · ")} — 기준이 달라
-                      나눠서 세워요
-                    </p>
-                  )}
-                </button>
+                />
               </li>
             ))}
           </ul>
@@ -732,5 +710,125 @@ function PlanRow({
         )}
       </div>
     </li>
+  );
+}
+
+/**
+ * 3단계의 묶음 카드 한 장 — 누르면 이 묶음에만 넣는다.
+ *
+ * ## 안으로 한 겹 더 들어간다
+ *
+ * 예전엔 축 하나로만 골랐다. 그래서 *"주식만"* 도 *"미국만"* 도 되는데 **"미국 주식만"**
+ * 은 안 됐다 — 사용자 지적: *"비중조절은 들어가서 볼 수 있는데 그게 안 되는 거잖아?"*
+ * 비중조절은 `주식 → 국가별 → 미국` 으로 파고들 수 있으니, 본 것과 할 수 있는 것이
+ * 어긋나 있었다.
+ *
+ * 그래서 카드 안에 **좁히기** 줄을 뒀다. 흔한 경우(묶음 통째로)는 예전처럼 한 번만
+ * 누르면 되고, 더 좁힐 사람만 한 번 더 편다 — 기본 동선에 탭을 더하지 않는다.
+ *
+ * 좁힐 게 하나뿐이면 줄을 아예 안 보여준다(주식이 전부 미국이면 "미국 주식" = "주식").
+ */
+function BucketCard({
+  bucket,
+  subs,
+  onPick,
+}: {
+  bucket: AllocateBucket;
+  /** 이 묶음을 다른 축으로 다시 묶은 것. 둘 이상일 때만 좁히기가 뜬다. */
+  subs: AllocateBucket[];
+  /** `sub` 가 없으면 묶음 통째로. */
+  onPick: (sub?: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const canNarrow = subs.length > 1;
+
+  return (
+    <div className="rounded-2xl bg-card shadow-card">
+      <button
+        type="button"
+        onClick={() => onPick()}
+        className="w-full p-5 text-left transition active:scale-[0.99]"
+      >
+        <div className="flex items-baseline justify-between gap-3">
+          <p className="text-lg font-bold">
+            {bucket.label}{" "}
+            <span className="text-sm font-semibold text-muted-foreground">
+              {bucket.count}
+            </span>
+          </p>
+          <p className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+            {bucket.gap > 0.0001 ? `목표까지 ${pct(bucket.gap)}` : "목표 도달"}
+          </p>
+        </div>
+        {bucket.top && (
+          <div className="mt-3 flex items-center gap-3">
+            <SymbolAvatar
+              symbol={bucket.top.row.symbol}
+              name={bucket.top.row.label}
+              size="md"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold">
+                1순위 {bucket.top.row.label}
+              </p>
+              <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
+                {bucket.top.row.expectedCagr != null
+                  ? `기대 ${pct(bucket.top.row.expectedCagr)}`
+                  : `목표까지 ${gapLabel(targetGap(bucket.top))}`}
+              </p>
+            </div>
+          </div>
+        )}
+        {/* 섹션이 둘이면 안에서 기준이 갈린다는 걸 미리 알린다. */}
+        {bucket.sections.length > 1 && (
+          <p className="mt-3 text-[11px] text-muted-foreground">
+            {bucket.sections.map((s) => s.basis).join(" · ")} — 기준이 달라
+            나눠서 세워요
+          </p>
+        )}
+      </button>
+
+      {canNarrow && (
+        <div className="border-t border-border/60 px-5 pb-4 pt-3">
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            className="flex w-full items-center gap-2 text-xs font-semibold text-muted-foreground"
+          >
+            <span>
+              {bucket.label} 안에서 더 좁히기 ({subs.length})
+            </span>
+            <span className="text-foreground/40">{open ? "▾" : "›"}</span>
+          </button>
+
+          {open && (
+            <ul className="mt-3 flex flex-col gap-2">
+              {subs.map((sub) => (
+                <li key={sub.key}>
+                  <button
+                    type="button"
+                    onClick={() => onPick(sub.key)}
+                    className="flex w-full items-center gap-3 rounded-xl bg-secondary px-4 py-3 text-left transition active:scale-[0.98]"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold">
+                        {bucket.label} · {sub.label}
+                      </span>
+                      <span className="mt-0.5 block text-[11px] tabular-nums text-muted-foreground">
+                        {sub.count}종목 ·{" "}
+                        {sub.gap > 0.0001
+                          ? `목표까지 ${pct(sub.gap)}`
+                          : "목표 도달"}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-foreground/40">›</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
