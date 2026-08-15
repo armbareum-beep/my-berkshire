@@ -18,10 +18,10 @@ import type { TypeTargetRow } from "@/components/allocate/TypeTargetList";
  * 이 화면 안에서 이어진다 — 목표 → 금액 → 묶음 → 배분 → 주수
  * (`components/allocate/AllocateRail.tsx`).
  *
- * 1단계에서 정할 목표는 **세 각도**로 만들어 넘긴다(유형·국가·산업). 셋 다 분모가 **배분
- * 대상 증권**이라 어느 탭을 봐도 합이 100% 다 — 축만 바뀌고 진실은 하나다
- * (`lib/targetLens.ts`). 세 축 모두 그 자리에서 밀 수 있고, 밀면 구성 종목의 평면 목표가
- * 비례로 따라간다. **현금은 목록에 없다** — 안 채운 만큼이 현금으로 남을 뿐이다.
+ * 1단계에서 정할 목표는 **두 각도**로 만들어 넘긴다(유형·국가). 둘 다 분모가 **배분 대상
+ * 증권**이라 어느 탭을 봐도 합이 100% 다 — 축만 바뀌고 진실은 하나다(`lib/targetLens.ts`).
+ * 둘 다 그 자리에서 밀 수 있고, 밀면 구성 종목의 평면 목표가 비례로 따라간다.
+ * **현금은 목록에 없다** — 안 채운 만큼이 현금으로 남을 뿐이다.
  *
  * 이 서버 컴포넌트가 하는 일은 데이터 적재와 **못 넘어가는 관문 두 개**뿐이다. 관문도
  * 카드를 늘어놓지 않고 "지금 할 일 하나 + 버튼 하나"로 낸다(`docs/user-rails-v1.md` §3
@@ -37,10 +37,10 @@ export default async function AllocatePage() {
   const cookieStore = await cookies();
   const displayCcy =
     cookieStore.get("display_ccy")?.value === "USD" ? "USD" : "KRW";
-  // 산업 렌즈를 1단계에서 쓰므로 태그를 채워 온다(멱등 — 처음 한 번만 실제로 일한다).
-  const data = await loadAllocateData(supabase, displayCcy, {
-    withSectors: true,
-  });
+  // 산업 태그(`withSectors`)는 안 채운다 — 자본배분에서 산업 축을 뺐기 때문이다
+  // (`components/allocate/TargetLensPanel.tsx`). 켜 두면 끝내 못 채우는 종목 때문에
+  // 이 화면을 열 때마다 공시 조회를 재시도한다.
+  const data = await loadAllocateData(supabase, displayCcy);
   if (!data) redirect("/onboarding");
 
   // ── 관문 1 — 시세가 없으면 비중을 계산할 수 없다 ──
@@ -121,10 +121,6 @@ export default async function AllocatePage() {
     country: lensRowsFor(
       (r) => r.country,
       (l) => `/allocation/group/country/${encodeURIComponent(l)}`,
-    ),
-    sector: lensRowsFor(
-      (r) => r.sector,
-      (l) => `/allocation/group/sector/${encodeURIComponent(l)}`,
     ),
   };
 

@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getPortfolio } from "@/lib/portfolio";
 import { computeDashboard } from "@/lib/dashboard";
-import { backfillSectors, loadSecurityMeta } from "@/lib/securities";
+import { loadSecurityMeta } from "@/lib/securities";
 import { readTargets } from "@/lib/targetWeights";
 import { isCashKey } from "@/lib/targetLens";
 import { tagLabel, type TagKey } from "@/lib/allocation";
@@ -16,7 +16,7 @@ import {
 } from "@/components/allocation/AllocationLevel";
 
 /**
- * `/allocation/group/[key]/[label]` — **유형을 가로지르는** 한 묶음. 예: 국가 "미국".
+ * `/allocation/group/[key]/[label]` — **유형을 가로지르는** 한 묶음. 지금은 국가만(`KEYS`).
  *
  * ## 왜 유형 아래가 아니라 따로인가
  *
@@ -40,9 +40,18 @@ import {
  * · 목록 비중 = **이 묶음 안에서**(이 화면의 100%)
  * · 목표비중 = **배분 대상 증권 대비**(현금 제외) — 저장·엔진이 쓰는 기준
  */
+/**
+ * 열려 있는 축.
+ *
+ * 산업은 닫았다 — 여기로 오는 유일한 길이 레일 1단계의 산업 탭이었는데 그 탭을 뺐다
+ * (ETF 가 전부 미분류라 쓸모가 없었다). **문이 없는 화면은 두지 않는다.** 산업 축을
+ * 되살릴 때 이 줄을 같이 되돌리면 된다.
+ *
+ * 유형은 자기 계층 화면(`/allocation/financial/[type]`)이 따로 있다 — 같은 목록을 두
+ * 주소로 열면 어느 쪽이 진짜인지 헷갈린다.
+ */
 const KEYS: Record<string, { key: TagKey; noun: string }> = {
   country: { key: "country", noun: "국가" },
-  sector: { key: "sector", noun: "산업" },
 };
 
 export default async function GroupAllocationPage({
@@ -52,8 +61,6 @@ export default async function GroupAllocationPage({
 }) {
   const { key: rawKey, label: rawLabel } = await params;
   const lens = KEYS[rawKey];
-  // 유형은 자기 계층 화면(`/allocation/financial/[type]`)이 따로 있다 — 같은 목록을 두
-  // 주소로 열면 어느 쪽이 진짜인지 헷갈린다.
   if (!lens) notFound();
   const label = decodeURIComponent(rawLabel);
 
@@ -76,10 +83,6 @@ export default async function GroupAllocationPage({
     supabase,
     data.allocation.map((a) => a.symbol),
   );
-  if (lens.key === "sector") {
-    const filled = await backfillSectors(supabase, meta);
-    for (const [s, sec] of Object.entries(filled)) if (meta[s]) meta[s].sector = sec;
-  }
 
   const targets = readTargets(
     portfolio.holding.target_weights,

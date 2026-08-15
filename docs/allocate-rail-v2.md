@@ -399,6 +399,30 @@ planAllocation(rows, amount, { eligible: (t) => pickedKeys.has(t.key) })
 
 자세한 근거는 `target-lens-spec-v1.md` §5.10.
 
+### 9.6.4 산업 축을 뺐다 — ETF 가 전부 미분류였다
+
+*"자본배분할 때는 유형별이랑 국가별만 있어도 될 것 같아. ETF 는 산업별이 다 미분류로
+되어 있으니까."*
+
+산업 태그는 공시(DART/EDGAR)에서 **개별 기업 단위로만** 채워진다. ETF·코인·원자재는
+애초에 조회 대상이 아니라, 그 비중이 큰 사람에게 산업 탭은 `미분류 70%` 한 덩어리다.
+게다가 미분류는 **묶음으로 밀 수도 없다**(`isUntaggedLabel` 이 막는다) — 볼 수도 정할
+수도 없는 탭이 자리만 차지했다.
+
+1단계 탭과 3단계 묶음 축 모두에서 뺐다. `buildBuckets` 는 여전히 `sector` 를 받고
+테스트도 남아 있어, 태그가 채워지는 날 `BUCKET_LENSES` 와 `TABS` 한 줄씩 되돌리면 켜진다.
+
+**곁다리로 두 가지가 딸려 나왔다.**
+
+- `/allocate` 의 산업 backfill 을 껐다. §9.8 에 "끝내 못 채우는 종목은 열 때마다
+  재시도한다"고 적어둔 비용이 통째로 사라졌다.
+- `/allocation/group/sector/[label]` 을 닫았다(`KEYS` 에서 제거). 여기로 오는 유일한 길이
+  1단계 산업 탭이었으므로, 안 닫으면 **문 없는 화면**이 된다 — §4 에서 크게 데인 실수다.
+
+산업으로 보는 건 **주식 안에서는 그대로 된다**(`/allocation/financial/주식?by=sector`).
+거기선 조회 대상이 전부 개별 기업이라 태그가 실제로 채워지고, 그 화면이 backfill 을
+자기 필요할 때만 켠다.
+
 ### 9.7 최종 화면 구조 (§6 갱신)
 
 ```text
@@ -406,7 +430,7 @@ planAllocation(rows, amount, { eligible: (t) => pickedKeys.has(t.key) })
                                         → 4 순위·배분 → 5 주수 → 도장 ✓   탭바: 1단계만
 /allocation                        조회 투자자산(유형 + 현금)
 /allocation/financial/[type]       조회 한 유형 안 — 종목/국가/산업 렌즈, 종목 줄에서 편집
-/allocation/group/[key]/[label]    조회 유형을 가로지르는 한 묶음(국가·산업), 종목 줄에서 편집
+/allocation/group/country/[label] 조회 유형을 가로지르는 한 국가(미국 주식+ETF), 종목 줄에서 편집
 /allocation/cash                   조회 통화별 현금
 /allocate/settings · /allocate/plan · /allocate/universe   → 리다이렉트(옛 링크 보존)
 ```
