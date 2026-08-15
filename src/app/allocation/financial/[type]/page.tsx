@@ -7,7 +7,7 @@ import { computeDashboard } from "@/lib/dashboard";
 import { backfillSectors } from "@/lib/securities";
 import { loadClassifiedMeta } from "@/lib/classifiedMeta";
 import { readTargets } from "@/lib/targetWeights";
-import { isCashKey, sumTargets } from "@/lib/targetLens";
+import { isCashKey, isUntaggedLabel, sumTargets } from "@/lib/targetLens";
 import { tagLabel, type TagKey } from "@/lib/allocation";
 import { pct } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -24,23 +24,27 @@ import {
  * 여기가 잎이라 **렌즈는 여기서만** 고른다 — 종목별(기본) / 국가별 / 산업별. 위 계층까지
  * 렌즈를 깔면 "어느 각도로 보는 중인지"를 매 화면 신경 써야 해서 복잡해진다.
  *
- * ## 여기서는 **종목 비중만** 고친다
+ * ## 보이는 줄은 **전부 여기서 민다**
  *
- * 묶음 목표(주식 45%, 미국 60% 같은 것)는 **전부 레일 1단계**에서 정한다 — 유형·국가·산업
- * 탭이 거기 있다. 여기에도 묶음 조정 카드를 두면 *"비중 바꾸는 곳이 너무 많다"* 가 된다 —
- * 같은 값을 두 화면에서 정하게 되고, 어느 쪽이 진짜인지 헷갈린다. 이 화면에 남는 조절은
- * **종목 줄의 입력칸 하나**뿐이다.
+ * 한동안 종목 줄만 고칠 수 있었다. 국가별·산업별 렌즈는 읽기 전용이었고, 이유는 "묶음
+ * 목표는 1단계에서 정한다" 였다. 그런데 그건 잘못된 유추였다 — 사용자 지적: *"주식이랑
+ * ETF 안에서 국가별·산업별은 왜 비중조절 못 하게 되어 있지?"*
  *
- * 아래 국가별·산업별 렌즈는 **이 유형 안에서의** 비중이라 1단계의 국가 탭(증권 전체
- * 기준)과 다른 질문에 답한다. 그래서 여기선 보기만 하고, 묶음을 밀려면 1단계로 간다.
+ * 1단계 국가 탭의 `미국` 은 **증권 전체의 미국**(미국 주식 + 미국 ETF)이고, 이 화면의
+ * `미국` 은 **주식 안의 미국**이다. 서로 다른 질문이라 같은 값을 두 곳에서 정하는 게
+ * 아니다. *"비중 바꾸는 곳이 너무 많다"* 가 막으려던 건 **같은 값**의 중복이었다.
  *
- * ## 두 개의 분모가 한 화면에 있다
+ * 못 미는 줄은 **기타·미분류**뿐이다 — 구성이 유동적이라 묶음으로 밀면 엉뚱한 종목이
+ * 딸려간다(`isUntaggedLabel`, 서버도 같은 판정).
  *
- * · 목록 비중 = **이 유형 안에서** (이 화면의 100%)
- * · 목표비중 = **배분 대상 증권 대비** — 저장·엔진이 쓰는 기준(`lib/targetLens.ts`).
- *   현금은 안 센다 — 그래야 화면의 45% 와 엔진의 45% 가 같은 금액을 가리킨다.
+ * ## 분모는 하나다 — **이 화면의 묶음**
  *
- * 섞이면 조용히 틀린 숫자가 되므로 화면에 둘 다 이름을 달아 표시한다.
+ * 목록 비중도 목표도 이 계층 안에서 100% 다. 한때 목표만 "증권 전체 대비"라 합이 48%
+ * 같은 숫자였는데, 사용자 지적대로(*"아직도 종목 내에서 100%가 아니잖아"*) 화면 하나에
+ * 분모가 둘이면 매 줄 어느 쪽 기준인지 헷갈린다.
+ *
+ * 저장은 여전히 평면 절대값 하나다 — 변환은 `lib/targetLens.ts:setWithinGroup`.
+ * 증권 전체 기준의 예산은 아래 `증권 목표 예산` 카드가 따로 말한다(두 기준을 잇는 다리).
  */
 const LENSES = [
   { key: "symbol", label: "종목별" },
@@ -140,6 +144,7 @@ export default async function TypeAllocationPage({
         target: targets[a.symbol]?.target ?? 0,
         href: `/stocks/${a.symbol}`,
         symbol: a.symbol,
+        pick: { symbol: a.symbol },
       })),
       ...orphansHere.map((sym) => ({
         key: sym,
@@ -149,6 +154,7 @@ export default async function TypeAllocationPage({
         target: targets[sym]?.target ?? 0,
         href: `/stocks/${sym}`,
         symbol: sym,
+        pick: { symbol: sym },
         badge: "미보유",
       })),
     ].sort((a, b) => b.value - a.value || (b.target ?? 0) - (a.target ?? 0));
@@ -169,6 +175,7 @@ export default async function TypeAllocationPage({
         target: targets[a.symbol]?.target ?? 0,
         href: `/stocks/${a.symbol}`,
         symbol: a.symbol,
+        pick: { symbol: a.symbol },
       })),
       ...orphansInPick.map((sym) => ({
         key: sym,
@@ -178,6 +185,7 @@ export default async function TypeAllocationPage({
         target: targets[sym]?.target ?? 0,
         href: `/stocks/${sym}`,
         symbol: sym,
+        pick: { symbol: sym },
         badge: "미보유",
       })),
     ].sort((a, b) => b.value - a.value || (b.target ?? 0) - (a.target ?? 0));
@@ -210,6 +218,15 @@ export default async function TypeAllocationPage({
         weight: typeValue > 0 ? g.value / typeValue : 0,
         target: g.target,
         href: `/allocation/financial/${encodeURIComponent(type)}?by=${by}&pick=${encodeURIComponent(label)}`,
+        // 이 묶음을 **여기서 바로 민다** — "주식 안에서 미국 60%". 1단계 국가 탭의
+        // 미국(증권 전체, ETF 포함)과는 다른 질문이라 같은 값을 두 곳에서 정하는 게
+        // 아니다. 기타·미분류만 못 민다 — 구성이 유동적이라 엉뚱한 종목이 딸려간다.
+        pick: isUntaggedLabel(label)
+          ? undefined
+          : { key: key as TagKey, label },
+        note: isUntaggedLabel(label)
+          ? "구성이 자주 바뀌어 묶음으로는 못 정해요 — 줄을 눌러 종목별로 정해주세요."
+          : undefined,
         badge: g.n > 0 ? `${g.n}종목` : "미보유",
       }))
       .sort((a, b) => b.value - a.value || (b.target ?? 0) - (a.target ?? 0));
@@ -286,9 +303,16 @@ export default async function TypeAllocationPage({
       </section>
 
       <p className="px-2 text-xs leading-relaxed text-muted-foreground">
-        비중도 목표도 <b>{subjectTitle} 안에서 100%</b>예요. 종목 목표를 올리면 그만큼{" "}
-        <b>같은 묶음의 다른 종목에서</b> 가져오므로 {subjectTitle} 전체 몫({pct(typeTargets)})은
-        안 움직여요 — 그 몫 자체는 <b>자본배분 1단계</b>에서 정합니다.
+        비중도 목표도 <b>{subjectTitle} 안에서 100%</b>예요. 어느 줄을 올리든 그만큼{" "}
+        <b>같은 목록의 다른 줄에서</b> 가져오므로 {subjectTitle} 전체 몫(
+        {pct(typeTargets)})은 안 움직여요 — 그 몫 자체는 <b>자본배분 1단계</b>에서 정합니다.
+        {by !== "symbol" && !pick && (
+          <>
+            {" "}
+            여기서 정하는 건 <b>{type} 안에서의 {by === "country" ? "국가" : "산업"}</b>{" "}
+            비중이에요 — 1단계의 국가 탭은 ETF까지 포함한 증권 전체 기준이라 다릅니다.
+          </>
+        )}
       </p>
     </main>
   );

@@ -5,7 +5,11 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { pct } from "@/lib/format";
 import { PercentPad } from "@/components/ui/PercentPad";
-import { setTargetWithinGroup, type GroupScope } from "@/app/allocate/actions";
+import {
+  setTargetWithinGroup,
+  type GroupPick,
+  type GroupScope,
+} from "@/app/allocate/actions";
 
 /**
  * 종목 한 줄의 목표비중 입력 — **이 화면의 묶음 안에서** 몇 %인가.
@@ -34,13 +38,14 @@ import { setTargetWithinGroup, type GroupScope } from "@/app/allocate/actions";
  * 커져 화면의 100% 가 깨졌다.
  */
 export function RowTargetInput({
-  symbol,
+  pick,
   label,
   target,
   scope,
   hint,
 }: {
-  symbol: string;
+  /** 이 줄이 가리키는 것 — 종목 하나이거나 그 안의 묶음(주식 안의 "미국"). */
+  pick: GroupPick;
   label: string;
   /** **이 묶음 안에서의** 목표 0~1. */
   target: number;
@@ -54,7 +59,7 @@ export function RowTargetInput({
 
   function save(next: number) {
     start(async () => {
-      const res = await setTargetWithinGroup(symbol, next, scope);
+      const res = await setTargetWithinGroup(pick, next, scope);
       if (!res.ok) {
         toast.error(res.error);
         return;

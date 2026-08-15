@@ -458,12 +458,12 @@ describe("setWithinGroup — 묶음 안에서 100%를 나눈다", () => {
   };
 
   it("묶음 합은 그대로다 — 그게 이 함수의 존재 이유다", () => {
-    const out = setWithinGroup(targets, members, "META", 0.8);
+    const out = setWithinGroup(targets, members, ["META"], 0.8);
     expect(groupBudget(out, members)).toBeCloseTo(0.75);
   });
 
   it("들어온 비율이 묶음 안에서 그대로 나온다", () => {
-    const out = setWithinGroup(targets, members, "META", 0.8);
+    const out = setWithinGroup(targets, members, ["META"], 0.8);
     expect(out.META.target / groupBudget(out, members)).toBeCloseTo(0.8);
     expect(out.META.target).toBeCloseTo(0.6); // 75% × 0.8
     expect(out["005930"].target).toBeCloseTo(0.15);
@@ -472,7 +472,7 @@ describe("setWithinGroup — 묶음 안에서 100%를 나눈다", () => {
   it("나머지가 여럿이면 자기들끼리 비율을 지키며 줄어든다", () => {
     const three = [...members, { symbol: "NVDA", value: 200 }];
     const t: FlatTargets = { ...targets, NVDA: { target: 0.15 } }; // 예산 90%
-    const out = setWithinGroup(t, three, "META", 0.5);
+    const out = setWithinGroup(t, three, ["META"], 0.5);
     expect(out.META.target).toBeCloseTo(0.45);
     // 남는 45% 를 삼성:NVDA = 30:15 로 → 30% / 15%
     expect(out["005930"].target).toBeCloseTo(0.3);
@@ -481,51 +481,100 @@ describe("setWithinGroup — 묶음 안에서 100%를 나눈다", () => {
   });
 
   it("0%로 정하면 그 종목을 빼고 나머지가 예산을 다 갖는다", () => {
-    const out = setWithinGroup(targets, members, "META", 0);
+    const out = setWithinGroup(targets, members, ["META"], 0);
     expect(out.META).toBeUndefined();
     expect(out["005930"].target).toBeCloseTo(0.75);
   });
 
   it("100%로 정하면 나머지 목표가 지워진다 — 묶음을 혼자 다 갖는다", () => {
-    const out = setWithinGroup(targets, members, "META", 1);
+    const out = setWithinGroup(targets, members, ["META"], 1);
     expect(out.META.target).toBeCloseTo(0.75);
     expect(out["005930"]).toBeUndefined();
   });
 
   it("합이 100%를 넘을 수 없다 — 예산이 안 커지므로 구조적으로 불가능", () => {
     const full: FlatTargets = { META: { target: 0.6 }, "005930": { target: 0.4 } };
-    const out = setWithinGroup(full, members, "META", 0.9);
+    const out = setWithinGroup(full, members, ["META"], 0.9);
     expect(sumTargets(out)).toBeCloseTo(1);
   });
 
   it("예산이 없으면 아무것도 안 한다 — 나눌 게 없다", () => {
     const empty: FlatTargets = {};
-    expect(setWithinGroup(empty, members, "META", 0.5)).toBe(empty);
+    expect(setWithinGroup(empty, members, ["META"], 0.5)).toBe(empty);
   });
 
   it("구성원이 하나뿐이면 아무것도 안 한다 — 주고받을 상대가 없다", () => {
     const one = [{ symbol: "META", value: 600 }];
     const t: FlatTargets = { META: { target: 0.45 } };
-    expect(setWithinGroup(t, one, "META", 0.5)).toBe(t);
+    expect(setWithinGroup(t, one, ["META"], 0.5)).toBe(t);
   });
 
   it("목표가 없던 종목도 나머지 몫을 받는다 — 평가액 비율로", () => {
     // 예산 전부를 META 가 쥐고 있고 삼성은 목표가 없다.
     const t: FlatTargets = { META: { target: 0.5 } };
-    const out = setWithinGroup(t, members, "META", 0.6);
+    const out = setWithinGroup(t, members, ["META"], 0.6);
     expect(out.META.target).toBeCloseTo(0.3);
     expect(out["005930"].target).toBeCloseTo(0.2);
     expect(groupBudget(out, members)).toBeCloseTo(0.5);
   });
 
   it("범위 밖 값은 무시한다", () => {
-    expect(setWithinGroup(targets, members, "META", 1.5)).toBe(targets);
-    expect(setWithinGroup(targets, members, "META", -0.1)).toBe(targets);
-    expect(setWithinGroup(targets, members, "META", NaN)).toBe(targets);
+    expect(setWithinGroup(targets, members, ["META"], 1.5)).toBe(targets);
+    expect(setWithinGroup(targets, members, ["META"], -0.1)).toBe(targets);
+    expect(setWithinGroup(targets, members, ["META"], NaN)).toBe(targets);
   });
 
   it("원본을 건드리지 않는다", () => {
-    setWithinGroup(targets, members, "META", 0.8);
+    setWithinGroup(targets, members, ["META"], 0.8);
     expect(targets.META.target).toBeCloseTo(0.45);
+  });
+});
+
+describe("setWithinGroup — 묶음째 밀기(주식 안의 국가·산업)", () => {
+  // 주식 예산 80% — 미국 60%(META 40 + NVDA 20) · 한국 20%(삼성 20)
+  const members = [
+    { symbol: "META", value: 400 },
+    { symbol: "NVDA", value: 200 },
+    { symbol: "005930", value: 400 },
+  ];
+  const targets: FlatTargets = {
+    META: { target: 0.4 },
+    NVDA: { target: 0.2 },
+    "005930": { target: 0.2 },
+  };
+  const us = ["META", "NVDA"];
+
+  it("묶음을 밀어도 상위 예산은 그대로다", () => {
+    const out = setWithinGroup(targets, members, us, 0.5);
+    expect(groupBudget(out, members)).toBeCloseTo(0.8);
+  });
+
+  it("묶음 안 종목끼리의 비율은 보존된다 — META:NVDA = 2:1", () => {
+    const out = setWithinGroup(targets, members, us, 0.5);
+    expect(out.META.target).toBeCloseTo(0.8 * 0.5 * (2 / 3));
+    expect(out.NVDA.target).toBeCloseTo(0.8 * 0.5 * (1 / 3));
+    expect(out.META.target / out.NVDA.target).toBeCloseTo(2);
+  });
+
+  it("나머지 묶음이 그 몫을 받는다", () => {
+    const out = setWithinGroup(targets, members, us, 0.5);
+    expect(out["005930"].target).toBeCloseTo(0.4);
+  });
+
+  it("종목 하나 미는 것과 같은 함수다 — pick 길이만 다르다", () => {
+    const one = setWithinGroup(targets, members, ["META"], 0.5);
+    expect(groupBudget(one, members)).toBeCloseTo(0.8);
+    expect(one.META.target).toBeCloseTo(0.4);
+  });
+
+  it("고른 부분이 비면 아무것도 안 한다", () => {
+    expect(setWithinGroup(targets, members, [], 0.5)).toBe(targets);
+    expect(setWithinGroup(targets, members, ["없는종목"], 0.5)).toBe(targets);
+  });
+
+  it("묶음이 전부면 나머지가 없어 아무것도 안 한다", () => {
+    expect(
+      setWithinGroup(targets, members, ["META", "NVDA", "005930"], 0.5),
+    ).toBe(targets);
   });
 });

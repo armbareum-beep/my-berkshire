@@ -238,7 +238,10 @@ export function groupBudget(
 }
 
 /**
- * 묶음 **안에서의** 비중으로 한 종목을 정한다 — 묶음 예산은 그대로 둔다.
+ * 묶음 **안에서의** 비중으로 한 부분을 정한다 — 묶음 예산은 그대로 둔다.
+ *
+ * 부분은 **종목 하나일 수도, 그 안의 또 다른 묶음일 수도** 있다(주식 안의 "미국",
+ * "반도체"). 규칙이 같으므로 함수도 하나다 — 둘로 나누면 언젠가 갈라진다.
  *
  * ## 왜 이 함수가 생겼나
  *
@@ -257,6 +260,8 @@ export function groupBudget(
  * ```text
  *   주식 예산 75% = META 45% + 삼성 30%      (묶음 안에서 60% / 40%)
  *   META 를 "묶음의 80%" 로 → META 60% + 삼성 15%   (주식 합 75% 그대로)
+ *
+ *   같은 규칙으로 묶음도 민다 — "주식 안에서 미국 80%" 면 pick 이 미국 종목 전부다.
  * ```
  *
  * ## 묶음 합은 안 움직인다
@@ -266,16 +271,19 @@ export function groupBudget(
  * 축 고정(`scaleGroupLocked`)과 같은 성질을 갖는다. 합이 안 변하니 **100% 초과가
  * 구조적으로 불가능**하고, 그래서 `roomFor` 검사도 필요 없다.
  *
- * 못 하는 두 경우는 **바꾸지 않고 그대로 돌려준다** — 호출부가 먼저 확인해 이유를 말한다:
+ * 못 하는 세 경우는 **바꾸지 않고 그대로 돌려준다** — 호출부가 먼저 확인해 이유를 말한다:
  *  · 예산이 0 — 나눌 게 없다(먼저 1단계에서 묶음 목표를 정해야 한다)
- *  · 구성원이 하나뿐 — 가져오고 줄 상대가 없다
+ *  · 고른 부분이 비었다 — 밀 대상이 없다
+ *  · 나머지가 비었다 — 가져오고 줄 상대가 없다(그 부분이 곧 100%다)
  *
- * 나머지 종목 사이의 분배는 `scaleGroupTarget` 이 한다 — 규칙을 두 벌 두면 갈라진다.
+ * 안쪽 분배는 양쪽 다 `scaleGroupTarget` 이 한다 — 규칙을 두 벌 두면 갈라진다.
+ * 0% 로 정하면 그 부분의 목표가 지워진다(0% = 안 정함, `toStored` 와 같은 규칙).
  */
 export function setWithinGroup(
   targets: FlatTargets,
   members: { symbol: string; value: number }[],
-  symbol: string,
+  /** 밀 대상 — 종목 하나면 길이 1, 묶음이면 그 구성원 전부. */
+  pick: string[],
   /** 묶음 안에서의 비중 0~1. */
   fraction: number,
 ): FlatTargets {
@@ -284,16 +292,17 @@ export function setWithinGroup(
   const budget = groupBudget(targets, members);
   if (budget <= 0) return targets;
 
-  const others = members.filter((m) => m.symbol !== symbol);
-  if (others.length === 0) return targets;
+  const picked = new Set(pick);
+  const mine = members.filter((m) => picked.has(m.symbol));
+  const rest = members.filter((m) => !picked.has(m.symbol));
+  if (mine.length === 0 || rest.length === 0) return targets;
 
-  const mine = budget * fraction;
-  const out: FlatTargets = { ...targets };
-  // 0% 는 "안 정함"과 같은 뜻이다(`toStored` 와 같은 규칙) — 키를 지운다.
-  if (mine > 0) out[symbol] = { ...out[symbol], target: mine };
-  else delete out[symbol];
-
-  return scaleGroupTarget(out, others, budget - mine);
+  const share = budget * fraction;
+  return scaleGroupTarget(
+    scaleGroupTarget(targets, mine, share),
+    rest,
+    budget - share,
+  );
 }
 
 /**

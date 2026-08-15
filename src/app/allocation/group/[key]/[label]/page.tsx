@@ -121,6 +121,7 @@ export default async function GroupAllocationPage({
       target: targets[a.symbol]?.target ?? 0,
       href: `/stocks/${a.symbol}`,
       symbol: a.symbol,
+      pick: { symbol: a.symbol },
       // 유형을 가로지르는 목록이라 유형을 꼬리표로 붙인다 — 안 그러면 미국 주식과
       // 미국 ETF 가 구분 없이 섞여 보인다.
       badge: meta[a.symbol]?.assetType ?? "주식",
@@ -133,6 +134,7 @@ export default async function GroupAllocationPage({
       target: targets[sym]?.target ?? 0,
       href: `/stocks/${sym}`,
       symbol: sym,
+      pick: { symbol: sym },
       badge: "미보유",
     })),
   ].sort((a, b) => b.value - a.value || (b.target ?? 0) - (a.target ?? 0));

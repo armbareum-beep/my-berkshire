@@ -3,7 +3,7 @@ import { Donut } from "@/components/dashboard/Donut";
 import { donutColor } from "@/components/dashboard/donutPalette";
 import { money, pct, type Currency } from "@/lib/format";
 import { RowTargetInput } from "./RowTargetInput";
-import type { GroupScope } from "@/app/allocate/actions";
+import type { GroupPick, GroupScope } from "@/app/allocate/actions";
 
 /**
  * 자산배분 **한 계층** — 드릴다운의 화면 한 장.
@@ -49,10 +49,23 @@ export interface LevelRow {
   /** 라벨 옆 작은 꼬리표(미보유 등). */
   badge?: string;
   /**
-   * 종목 줄이면 심볼. 있으면 **그 자리에서 목표를 고칠 수 있다** — 기존 보유를
-   * 리밸런싱하는 게 이 화면의 일이라 편집이 줄 밖으로 나가면 안 된다.
+   * 종목 줄이면 심볼. 있으면 그 줄에서 종목 페이지로 갈 수 있다.
    */
   symbol?: string;
+  /**
+   * 이 줄이 가리키는 것 — 있으면 **그 자리에서 목표를 고칠 수 있다.** 기존 보유를
+   * 리밸런싱하는 게 이 화면의 일이라 편집이 줄 밖으로 나가면 안 된다.
+   *
+   * 종목 줄뿐 아니라 **묶음 줄도** 민다(주식 안의 "미국"·"반도체"). 그건 1단계 국가
+   * 탭의 "미국"(증권 전체)과 다른 질문이라 여기서 못 밀 이유가 없다 — 사용자 지적:
+   * *"주식이랑 ETF 안에서 국가별·산업별은 왜 비중조절 못 하게 되어 있지?"*
+   *
+   * 못 미는 줄은 **기타·미분류**뿐이다(`isUntaggedLabel`) — 구성이 유동적이라 묶음으로
+   * 밀면 엉뚱한 종목이 딸려간다. 그런 줄은 `pick` 을 안 준다.
+   */
+  pick?: GroupPick;
+  /** 못 미는 줄에 이유를 한 줄로 — 칸이 없는데 설명도 없으면 고장으로 읽힌다. */
+  note?: string;
 }
 
 export function AllocationLevel({
@@ -154,16 +167,20 @@ export function AllocationLevel({
           )}
 
           <ul className="flex flex-col gap-2">
-            {rows.map((r, i) => (
+            {rows.map((r, i) => {
+              // 고칠 수 있는 줄은 **줄 전체를 링크로 감싸지 않는다** — 키패드를 누를 때마다
+              // 화면이 넘어간다. 대신 이름만 링크가 되고 오른쪽 알약이 편집을 맡는다.
+              const editable = Boolean(r.pick && scope);
+              return (
               <li key={r.key}>
-                <RowShell href={r.symbol ? undefined : r.href}>
+                <RowShell href={editable ? undefined : r.href}>
                   <span
                     className="h-3 w-3 shrink-0 rounded-full"
                     style={{ backgroundColor: donutColor(i) }}
                   />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-1.5">
-                      {r.symbol && r.href ? (
+                      {editable && r.href ? (
                         <Link
                           href={r.href}
                           className="flex min-w-0 items-center gap-1 text-sm font-semibold"
@@ -188,13 +205,18 @@ export function AllocationLevel({
                         <span className="ml-1.5">· 목표 {pct(r.target)}</span>
                       )}
                     </span>
+                    {r.note && (
+                      <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">
+                        {r.note}
+                      </span>
+                    )}
                   </span>
                   <span className="shrink-0 text-sm font-bold tabular-nums">
                     {money(r.value, currency)}
                   </span>
-                  {r.symbol && scope ? (
+                  {editable && r.pick && scope ? (
                     <RowTargetInput
-                      symbol={r.symbol}
+                      pick={r.pick}
                       label={r.label}
                       target={r.target ?? 0}
                       scope={scope}
@@ -207,7 +229,8 @@ export function AllocationLevel({
                   )}
                 </RowShell>
               </li>
-            ))}
+              );
+            })}
           </ul>
         </>
       )}

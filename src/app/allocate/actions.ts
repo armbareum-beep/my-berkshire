@@ -15,6 +15,7 @@ import {
   buildLens,
   groupBudget,
   isCashKey,
+  isUntaggedLabel,
   normalizeTargets,
   roomFor,
   scaleGroupLocked,
@@ -164,7 +165,17 @@ export interface GroupScope {
 }
 
 /**
- * 묶음 **안에서의** 비중으로 종목 목표를 정한다 — 묶음 합은 그대로 둔다.
+ * 이 화면에서 **밀 대상**. 종목 한 줄이거나, 그 안의 또 다른 묶음이다.
+ *
+ * 주식 안의 `미국`·`반도체` 는 1단계 국가 탭의 `미국`(증권 전체)과 **다른 질문**이다 —
+ * 미국 ETF 가 들어가느냐 아니냐가 다르다. 그래서 같은 값을 두 곳에서 정하는 게 아니고,
+ * 여기서 못 밀 이유가 없었다. 사용자 지적: *"주식이랑 ETF 안에서 국가별·산업별은 왜
+ * 비중조절 못 하게 되어 있지?"*
+ */
+export type GroupPick = { symbol: string } | { key: TagKey; label: string };
+
+/**
+ * 묶음 **안에서의** 비중으로 목표를 정한다 — 묶음 합은 그대로 둔다.
  *
  * ## 왜 별도 액션인가
  *
@@ -181,14 +192,22 @@ export interface GroupScope {
  * 대신 **나눌 수 없는 두 경우**를 먼저 막는다(예산 0 · 구성원 하나).
  */
 export async function setTargetWithinGroup(
-  symbol: string,
+  pick: GroupPick,
   /** 묶음 안에서의 비중 0~1. */
   fraction: number,
   scope: GroupScope,
 ): Promise<Result> {
-  if (!symbol) return { ok: false, error: "종목이 올바르지 않습니다." };
   if (!Number.isFinite(fraction) || fraction < 0 || fraction > 1)
     return { ok: false, error: "비중은 0~100% 사이여야 합니다." };
+  if ("symbol" in pick && !pick.symbol)
+    return { ok: false, error: "종목이 올바르지 않습니다." };
+  // 기타·미분류는 구성이 유동적이라 묶음으로 밀면 엉뚱한 종목이 딸려간다
+  // (`isUntaggedLabel` — 화면·서버가 같은 판정을 쓴다).
+  if ("label" in pick && isUntaggedLabel(pick.label))
+    return {
+      ok: false,
+      error: `${pick.label}는 구성이 자주 바뀌어 묶음으로는 못 정해요 — 종목별로 정해주세요.`,
+    };
 
   const supabase = await createClient();
   const {
@@ -212,7 +231,8 @@ export async function setTargetWithinGroup(
     ]),
   ];
   const meta = await loadClassifiedMeta(supabase, symbols);
-  if (scope.key === "sector") {
+  // 산업 태그는 공시에서 채워 온다 — 축으로 쓰기 전에 한 번 채워야 라벨이 맞는다.
+  if (scope.key === "sector" || ("key" in pick && pick.key === "sector")) {
     const filled = await backfillSectors(supabase, meta);
     for (const [s, sec] of Object.entries(filled)) if (meta[s]) meta[s].sector = sec;
   }
@@ -236,24 +256,33 @@ export async function setTargetWithinGroup(
     })
     .map((s) => ({ symbol: s, value: valueOf.get(s) ?? 0 }));
 
-  if (!members.some((m) => m.symbol === symbol))
-    return { ok: false, error: "이 묶음에 없는 종목입니다." };
-  if (members.length < 2)
+  // 밀 대상도 서버에서 다시 고른다 — 묶음이면 그 라벨에 속한 종목 전부다.
+  const picked =
+    "symbol" in pick
+      ? members.filter((m) => m.symbol === pick.symbol)
+      : members.filter((m) => tagLabel(meta[m.symbol], pick.key) === pick.label);
+  const noun = "symbol" in pick ? "종목" : pick.label;
+
+  if (picked.length === 0)
+    return { ok: false, error: `이 묶음에 ${noun}이(가) 없습니다.` };
+  if (picked.length === members.length)
     return {
       ok: false,
-      error: "이 묶음에 종목이 하나뿐이라 나눌 수 없어요 — 그 종목이 곧 100%예요.",
+      error: `여기엔 ${noun}뿐이라 나눌 수 없어요 — 그게 곧 100%예요.`,
     };
 
   const budget = groupBudget(current, members);
   if (budget <= 0) {
-    const noun = scope.label ?? scope.assetType ?? "이 묶음";
+    const where = scope.label ?? scope.assetType ?? "이 묶음";
     return {
       ok: false,
-      error: `${noun}에 배정된 목표가 없어요 — 자본배분 1단계에서 ${noun} 목표를 먼저 정해주세요.`,
+      error: `${where}에 배정된 목표가 없어요 — 자본배분 1단계에서 ${where} 목표를 먼저 정해주세요.`,
     };
   }
 
-  const next = toStored(setWithinGroup(current, members, symbol, fraction));
+  const next = toStored(
+    setWithinGroup(current, members, picked.map((m) => m.symbol), fraction),
+  );
 
   const { error } = await supabase
     .from("holdings")
