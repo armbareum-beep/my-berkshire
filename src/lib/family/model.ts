@@ -4,7 +4,8 @@ export type Product = { name: string; price: number | null; exposure: number[]; 
 export type Position = { account: string; code: string; quantity: number; cost: number };
 export type Flow = { id: string; account: string; date: string; amount: number; transfer?: string };
 export type Valuation = { account: string; date: string; value: number; estimated: boolean; note?: string };
-export type Portfolio = { version: 1; asOf: string; owners: Owner[]; accounts: Account[]; products: Record<string, Product>; holdings: Position[]; flows: Flow[]; targets: number[]; checkedAt?: string; pricedAt?: string; valuations?: Valuation[] };
+export type Performance = { start: string; end: string; method: "daily-eod-estimate"; daily?: { date: string; values: Record<string, number> }[]; benchmarks: { id: string; name: string; return: number; source?: string }[]; note: string };
+export type Portfolio = { version: 1; asOf: string; owners: Owner[]; accounts: Account[]; products: Record<string, Product>; holdings: Position[]; flows: Flow[]; targets: number[]; checkedAt?: string; pricedAt?: string; valuations?: Valuation[]; performance?: Performance };
 export const countries = ["한국", "중국", "미국", "기타"];
 export const colors = ["#4165e8", "#26a69a", "#a67bdd", "#a3aec2"];
 export function emptyPortfolio(): Portfolio {
@@ -40,6 +41,16 @@ export function validatePortfolio(input: unknown): Portfolio {
     check(Array.isArray(p.valuations)&&p.valuations.length<=10000, "연말 자산 자료를 확인해 주세요.");
     check(p.valuations.every(v=>p.accounts.some(a=>a.id===v.account)&&validDate(v.date)&&v.date<=p.asOf&&num(v.value)&&v.value>=0&&typeof v.estimated==="boolean"&&(!v.note||(typeof v.note==="string"&&v.note.length<=1000))), "연말 자산의 계좌·날짜·금액을 확인해 주세요.");
     check(new Set(p.valuations.map(v=>v.account+":"+v.date)).size===p.valuations.length, "연말 자산 자료가 중복됩니다.");
+  }
+  if(p.performance!==undefined) {
+    const q=p.performance;
+    check(q&&q.method==="daily-eod-estimate"&&validDate(q.start)&&validDate(q.end)&&q.start<q.end&&q.end<=p.asOf,"운용성과 기간을 확인해 주세요.");
+    if(q.daily!==undefined) {
+      const daily=q.daily;
+      check(Array.isArray(daily)&&daily.length>=2&&daily.length<=10000&&daily[0].date===q.start&&daily[daily.length-1].date===q.end,"일별 평가자료의 범위를 확인해 주세요.");
+      check(daily.every((d,i)=>validDate(d.date)&&(!i||Date.parse(d.date)-Date.parse(daily[i-1].date)===86400000)&&d.values&&typeof d.values==="object"&&!Array.isArray(d.values)&&Object.entries(d.values).every(([id,v])=>p.accounts.some(a=>a.id===id)&&num(v)&&v>=0)),"일별 평가자료의 날짜·계좌·금액을 확인해 주세요.");
+    }
+    check(Array.isArray(q.benchmarks)&&q.benchmarks.length<=10&&q.benchmarks.every(b=>str(b.id)&&str(b.name)&&num(b.return)&&b.return>=-1)&&new Set(q.benchmarks.map(b=>b.id)).size===q.benchmarks.length&&typeof q.note==="string"&&q.note.length<=2000,"비교 기준 자료를 확인해 주세요.");
   }
   check(!p.pricedAt||validDate(p.pricedAt),"시세 평가일을 확인해 주세요.");
   return p;
