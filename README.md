@@ -1,67 +1,40 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 우리집 자산
 
-## Getting Started
+가족·증권사·계좌별 투자자산, 현금흐름 기반 XIRR, 주식의 국가별 비중을 관리하는 가족용 앱입니다.
 
-First, run the development server:
+기존 ENUF 로그인·대시보드·메뉴·API와 예약 작업을 종료하고 이 앱으로 교체했습니다. 이전 데이터베이스를 삭제하거나 공개하지 않습니다.
 
-```bash
+## 사용
+
+1. 앱에서 **자료 가져오기**를 누릅니다.
+2. 가족자산 대시보드 엑셀(.xlsx), 앱 백업(.json), 표준 CSV를 선택합니다.
+3. 가져오기 미리보기에서 계좌·기준일을 확인합니다.
+4. 가족·계좌 관리에서 구성원, 계좌, 보유상품, 입출금을 추가하거나 수정합니다.
+
+자료는 해당 브라우저의 localStorage에만 저장됩니다. 회원가입이 필요하지 않으며 금융자료를 서버에 업로드하지 않습니다. 브라우저 데이터 삭제 시 지워지므로 JSON 백업을 보관하고 다른 기기에서 불러오세요. 기기 간 자동 동기화와 증권계좌 자동 연결은 없습니다. 공용 기기 사용에 주의하세요.
+
+개인 금융자료는 공개 저장소와 정적 배포 파일에 절대로 추가하지 않습니다. 실데이터 백업은 사용자에게 비공개 파일로 제공합니다.
+
+## 계산과 자료 범위
+
+- 기준일의 보유수량 × 원화가격 + 현금으로 평가합니다. 가격 누락은 0원으로 간주하지 않고 표시합니다.
+- XIRR은 실제 날짜별 입금(-), 출금(+), 기말 평가액(+)으로 계산합니다. 계좌 수익률을 평균하지 않습니다. 입력 이력이 완전하다고 확인한 계좌만 수익률을 표시합니다.
+- 시작 전부터 자산이 있었다면 시작일 평가액을 음수 현금흐름으로 입력해야 합니다.
+- 내부이체는 두 계좌 모두를 조회할 때 제외하고 한쪽만 조회할 때 포함합니다. 같은 날짜·같은 금액으로 연결된 두 건을 검증합니다.
+- 국가 비중은 주식 노출만 분모로 하며 현금·채권을 제외합니다. 혼합상품은 입력한 비중으로 나눕니다.
+- 시세 갱신은 종목코드만 서버에 전달합니다. Yahoo 가격과 환율을 원화로 환산하며, 일부 누락 시 기존 평가 전체를 유지합니다. 지연 가격일 수 있습니다.
+- 시세 갱신은 수량·현금·입출금 내역을 갱신하지 않습니다. 기준일 이후 매매가 있으면 먼저 잔고와 이력을 반영해야 합니다.
+- 계좌 추가는 자료 기준일이 같고 ID가 중복되지 않을 때만 허용됩니다. 다른 기준일이나 동일 계좌 자료는 전체 복원으로 교체합니다.
+- 엑셀 리더는 알려진 가족자산 대시보드 양식의 저장된 값을 읽습니다. 수식·매크로·외부 링크를 실행하지 않습니다. 증권사별 원본, 암호화 엑셀은 별도 변환이 필요합니다.
+
+## 개발
+
+```sh
+npm ci
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm test
+npm run typecheck
+npm run build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-## KRX ETF TER sync
-
-The KRX session currently redirects new browsers to sign-in. On the first run, open an
-interactive browser and sign in when prompted:
-
-```powershell
-$env:KRX_INTERACTIVE="1"
-npm run sync:krx-ter
-Remove-Item Env:KRX_INTERACTIVE
-```
-
-The session is stored in the ignored `.krx-storage-state.json` file. Later monthly runs are
-headless and only need:
-
-```powershell
-npm run sync:krx-ter
-```
-
-To automate it locally, register the Windows scheduled task once:
-
-```powershell
-npm run register:krx-ter-task
-```
-
-It runs at 09:00 on day 2 of every month and appends output to
-`logs/krx-ter-sync.log`. The computer must be on and the Windows user must be signed in.
-
-The script loads Supabase credentials from `.env.local` and writes with
-`SUPABASE_SERVICE_ROLE_KEY`. Set `KRX_TRADE_DATE=YYYYMMDD` only when a specific trading date
-is needed.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+API 키와 Supabase 로그인이 필요하지 않습니다. `/api/family-quotes`만 공개 시세 조회를 수행합니다. 현재 Vercel 프로젝트의 Production 배포를 계속 사용합니다.

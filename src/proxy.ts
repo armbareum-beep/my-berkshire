@@ -1,13 +1,9 @@
-import { type NextRequest } from "next/server";
-import { updateSession } from "@/lib/supabase/session";
-
-export async function proxy(request: NextRequest) {
-  return await updateSession(request);
+import { NextResponse, type NextRequest } from "next/server";
+/** Family app is local-first. Legacy ENUF routes are retired; no old account is required. */
+export function proxy(request:NextRequest){
+ const p=request.nextUrl.pathname;
+ if(p==="/"||p==="/api/family-quotes"||p==="/manifest.webmanifest"||p==="/family-icon.svg"||p.startsWith("/_next/")||p==="/favicon.ico")return NextResponse.next();
+ if(p.startsWith("/api/"))return NextResponse.json({error:"이전 API는 종료되었습니다."},{status:404});
+ return NextResponse.redirect(new URL("/",request.url));
 }
-
-export const config = {
-  matcher: [
-    // 정적 파일·이미지·favicon, 공개 로고 프록시(/api/logo, 사용자 데이터 없음), cron 라우트(/api/cron, Bearer CRON_SECRET 자체 인증) 제외한 모든 경로
-    "/((?!api/logo|api/cron|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
-  ],
-};
+export const config={matcher:["/((?!_next/static|_next/image).*)"]};
