@@ -1,5 +1,5 @@
 export type Owner = { id: string; name: string };
-export type Account = { id: string; owner: string; broker: string; name: string; type: string; mask: string; cash: number; complete: boolean; div: number; interest: number; realized: number };
+export type Account = { id: string; owner: string; broker: string; name: string; type: string; mask: string; cash: number; complete: boolean; div: number; interest: number; realized: number; valuationDate?: string; cashLabel?: string; interestKnown?: boolean };
 export type Product = { name: string; price: number | null; exposure: number[]; source?: string };
 export type Position = { account: string; code: string; quantity: number; cost: number };
 export type Flow = { id: string; account: string; date: string; amount: number; transfer?: string };
@@ -21,6 +21,7 @@ export function validatePortfolio(input: unknown): Portfolio {
   check(p.owners.length <= 100 && p.accounts.length <= 500 && p.holdings.length <= 10000 && p.flows.length <= 50000, "가져올 수 있는 자료 크기를 초과했습니다.");
   check(p.owners.every(o=>str(o.id)&&str(o.name)) && new Set(p.owners.map(o=>o.id)).size === p.owners.length, "가족 ID가 중복되거나 이름이 비어 있습니다.");
   check(p.accounts.every(a=>str(a.id)&&str(a.name)&&str(a.broker)&&p.owners.some(o=>o.id===a.owner)&&num(a.cash)&&typeof a.complete==="boolean"&&[a.div,a.interest,a.realized].every(num)), "계좌주·계좌명·금액을 확인해 주세요.");
+  check(p.accounts.every(a=>(!a.valuationDate||(validDate(a.valuationDate)&&a.valuationDate<=p.asOf))&&(a.interestKnown===undefined||typeof a.interestKnown==="boolean")&&(!a.cashLabel||str(a.cashLabel))), "계좌 잔고 기준일을 확인해 주세요.");
   check(new Set(p.accounts.map(a=>a.id)).size===p.accounts.length, "계좌 ID가 중복되었습니다.");
   check(p.products && typeof p.products === "object" && !Array.isArray(p.products), "상품 정보가 필요합니다.");
   check(Object.entries(p.products).every(([code,v])=>/^[A-Za-z0-9.^=-]{1,20}$/.test(code)&&str(v.name)&&(v.price===null||(num(v.price)&&v.price>0))&&Array.isArray(v.exposure)&&v.exposure.length===5&&v.exposure.every(n=>num(n)&&n>=0&&n<=1)&&Math.abs(v.exposure.reduce((a,b)=>a+b,0)-1)<1e-6), "상품 가격과 국가·채권 비중 합계(100%)를 확인해 주세요.");
