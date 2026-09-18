@@ -37,12 +37,12 @@ async function unzip(buffer:ArrayBuffer):Promise<Map<string,string>>{
 function xml(text:string|undefined){if(!text)throw Error("엑셀의 필수 시트가 없습니다.");const d=new DOMParser().parseFromString(text,"application/xml");if(d.querySelector("parsererror"))throw Error("엑셀 XML을 읽지 못했습니다.");return d;}
 export async function readXlsx(buffer:ArrayBuffer):Promise<Portfolio>{
  const files=await unzip(buffer),book=xml(files.get("xl/workbook.xml")),rels=xml(files.get("xl/_rels/workbook.xml.rels"));
- if(book.querySelector("workbookPr")?.getAttribute("date1904")==="1")throw Error("1904 날짜 체계는 지원하지 않습니다.");
- const ss=files.get("xl/sharedStrings.xml"),strings=ss?[...xml(ss).getElementsByTagName("si")].map(s=>s.textContent||""):[];
+ if(book.getElementsByTagNameNS("*","workbookPr")[0]?.getAttribute("date1904")==="1")throw Error("1904 날짜 체계는 지원하지 않습니다.");
+ const ss=files.get("xl/sharedStrings.xml"),strings=ss?[...xml(ss).getElementsByTagNameNS("*","si")].map(s=>s.textContent||""):[];
  const sheets:Record<string,Row[]>={};
- for(const sheet of book.getElementsByTagName("sheet")){
-  const id=sheet.getAttribute("r:id"),rel=[...rels.getElementsByTagName("Relationship")].find(r=>r.getAttribute("Id")===id),target=rel?.getAttribute("Target")||"",path=target.startsWith("/")?target.slice(1):"xl/"+target;
-  sheets[sheet.getAttribute("name")||""]=[...xml(files.get(path)).getElementsByTagName("row")].map(row=>Object.fromEntries([...row.getElementsByTagName("c")].map(c=>{const type=c.getAttribute("t"),raw=c.getElementsByTagName("v")[0]?.textContent||"",value=type==="s"?strings[Number(raw)]:type==="inlineStr"?c.getElementsByTagName("is")[0]?.textContent||"":raw;return [(c.getAttribute("r")||"").replace(/\d/g,""),value];})));
+ for(const sheet of book.getElementsByTagNameNS("*","sheet")){
+  const id=sheet.getAttribute("r:id"),rel=[...rels.getElementsByTagNameNS("*","Relationship")].find(r=>r.getAttribute("Id")===id),target=rel?.getAttribute("Target")||"",path=target.startsWith("/")?target.slice(1):"xl/"+target;
+  sheets[sheet.getAttribute("name")||""]=[...xml(files.get(path)).getElementsByTagNameNS("*","row")].map(row=>Object.fromEntries([...row.getElementsByTagNameNS("*","c")].map(c=>{const type=c.getAttribute("t"),raw=c.getElementsByTagNameNS("*","v")[0]?.textContent||"",value=type==="s"?strings[Number(raw)]:type==="inlineStr"?c.getElementsByTagNameNS("*","is")[0]?.textContent||"":raw;return [(c.getAttribute("r")||"").replace(/\d/g,""),value];})));
  }
  return fromWorkbookRows(sheets);
 }
