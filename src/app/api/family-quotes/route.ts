@@ -1,6 +1,9 @@
 import { getFamilyPrices } from "@/lib/family/quotes";
+import { authorized, json, sameOrigin } from "@/lib/family/server";
 export const maxDuration=60;
 export async function POST(request:Request){
+ if(!sameOrigin(request))return json({error:"요청 출처를 확인해 주세요."},403);
+ if(!await authorized())return json({error:"비밀번호를 입력해 주세요."},401);
  try{
   if(Number(request.headers.get("content-length")||0)>4096)return Response.json({error:"요청이 너무 큽니다."},{status:413});
   const body=await request.json();
