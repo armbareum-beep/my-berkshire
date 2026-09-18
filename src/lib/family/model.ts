@@ -1,9 +1,10 @@
 export type Owner = { id: string; name: string };
-export type Account = { id: string; owner: string; broker: string; name: string; type: string; mask: string; cash: number; complete: boolean; div: number; interest: number; realized: number; valuationDate?: string; cashLabel?: string; interestKnown?: boolean };
+export type Account = { id: string; owner: string; broker: string; name: string; type: string; mask: string; cash: number; complete: boolean; div: number; interest: number; realized: number; valuationDate?: string; cashLabel?: string; interestKnown?: boolean; inceptionDate?: string };
 export type Product = { name: string; price: number | null; exposure: number[]; source?: string };
 export type Position = { account: string; code: string; quantity: number; cost: number };
 export type Flow = { id: string; account: string; date: string; amount: number; transfer?: string };
-export type Portfolio = { version: 1; asOf: string; owners: Owner[]; accounts: Account[]; products: Record<string, Product>; holdings: Position[]; flows: Flow[]; targets: number[]; checkedAt?: string; pricedAt?: string };
+export type Valuation = { account: string; date: string; value: number; estimated: boolean; note?: string };
+export type Portfolio = { version: 1; asOf: string; owners: Owner[]; accounts: Account[]; products: Record<string, Product>; holdings: Position[]; flows: Flow[]; targets: number[]; checkedAt?: string; pricedAt?: string; valuations?: Valuation[] };
 export const countries = ["한국", "중국", "미국", "기타"];
 export const colors = ["#4165e8", "#26a69a", "#a67bdd", "#a3aec2"];
 export function emptyPortfolio(): Portfolio {
@@ -22,6 +23,7 @@ export function validatePortfolio(input: unknown): Portfolio {
   check(p.owners.every(o=>str(o.id)&&str(o.name)) && new Set(p.owners.map(o=>o.id)).size === p.owners.length, "가족 ID가 중복되거나 이름이 비어 있습니다.");
   check(p.accounts.every(a=>str(a.id)&&str(a.name)&&str(a.broker)&&p.owners.some(o=>o.id===a.owner)&&num(a.cash)&&typeof a.complete==="boolean"&&[a.div,a.interest,a.realized].every(num)), "계좌주·계좌명·금액을 확인해 주세요.");
   check(p.accounts.every(a=>(!a.valuationDate||(validDate(a.valuationDate)&&a.valuationDate<=p.asOf))&&(a.interestKnown===undefined||typeof a.interestKnown==="boolean")&&(!a.cashLabel||str(a.cashLabel))), "계좌 잔고 기준일을 확인해 주세요.");
+  check(p.accounts.every(a=>!a.inceptionDate||(validDate(a.inceptionDate)&&a.inceptionDate<=p.asOf)), "계좌 시작일을 확인해 주세요.");
   check(new Set(p.accounts.map(a=>a.id)).size===p.accounts.length, "계좌 ID가 중복되었습니다.");
   check(p.products && typeof p.products === "object" && !Array.isArray(p.products), "상품 정보가 필요합니다.");
   check(Object.entries(p.products).every(([code,v])=>/^[A-Za-z0-9.^=-]{1,20}$/.test(code)&&str(v.name)&&(v.price===null||(num(v.price)&&v.price>0))&&Array.isArray(v.exposure)&&v.exposure.length===5&&v.exposure.every(n=>num(n)&&n>=0&&n<=1)&&Math.abs(v.exposure.reduce((a,b)=>a+b,0)-1)<1e-6), "상품 가격과 국가·채권 비중 합계(100%)를 확인해 주세요.");
@@ -34,6 +36,11 @@ export function validatePortfolio(input: unknown): Portfolio {
     check(pair.length===2&&pair[0].account!==pair[1].account&&pair[0].date===pair[1].date&&Math.abs(pair[0].amount+pair[1].amount)<.01, "내부이체는 같은 날짜의 출금·입금 두 건이 일치해야 합니다.");
   }
   check(Array.isArray(p.targets)&&p.targets.length===4&&p.targets.every(n=>num(n)&&n>=0&&n<=100)&&Math.abs(p.targets.reduce((a,b)=>a+b,0)-100)<.001,"국가 목표비중 합계를 100%로 맞춰 주세요.");
+  if(p.valuations!==undefined) {
+    check(Array.isArray(p.valuations)&&p.valuations.length<=10000, "연말 자산 자료를 확인해 주세요.");
+    check(p.valuations.every(v=>p.accounts.some(a=>a.id===v.account)&&validDate(v.date)&&v.date<=p.asOf&&num(v.value)&&v.value>=0&&typeof v.estimated==="boolean"&&(!v.note||(typeof v.note==="string"&&v.note.length<=1000))), "연말 자산의 계좌·날짜·금액을 확인해 주세요.");
+    check(new Set(p.valuations.map(v=>v.account+":"+v.date)).size===p.valuations.length, "연말 자산 자료가 중복됩니다.");
+  }
   check(!p.pricedAt||validDate(p.pricedAt),"시세 평가일을 확인해 주세요.");
   return p;
 }
