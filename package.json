@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "check:prices": "node --import tsx scripts/checkMarketPrices.ts",
     "sync:krx-ter": "tsx scripts/syncKrxTer.ts",
     "sync:krx-holdings": "tsx scripts/syncKrxEtfHoldings.ts",
     "sync:krx-index": "tsx scripts/syncKrxIndexStats.ts",

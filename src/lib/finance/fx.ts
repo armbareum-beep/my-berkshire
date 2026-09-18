@@ -17,12 +17,17 @@ async function fetchRate(currency: string): Promise<number | null> {
   try {
     const res = await fetch(
       `https://query1.finance.yahoo.com/v8/finance/chart/${currency}KRW=X?interval=1d&range=1d`,
-      { headers: { "User-Agent": "Mozilla/5.0" }, next: { revalidate: 10 } },
+      {
+        headers: { "User-Agent": "Mozilla/5.0" },
+        next: { revalidate: 10 },
+        signal: AbortSignal.timeout(10_000),
+      },
     );
     if (!res.ok) return null;
     const json = await res.json();
+    if (json?.chart?.error) return null;
     const rate = json?.chart?.result?.[0]?.meta?.regularMarketPrice;
-    return typeof rate === "number" && rate > 0 ? rate : null;
+    return typeof rate === "number" && Number.isFinite(rate) && rate > 0 ? rate : null;
   } catch {
     return null;
   }

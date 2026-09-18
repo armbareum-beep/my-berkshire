@@ -47,21 +47,26 @@ async function fetchChart(y: string): Promise<{
     {
       headers: { "User-Agent": "Mozilla/5.0" },
       next: { revalidate: 10 },
+      signal: AbortSignal.timeout(20_000),
     },
   );
   if (!res.ok) return null;
   const json = await res.json();
+  if (json?.chart?.error) return null;
   const meta = json?.chart?.result?.[0]?.meta;
   const price = meta?.regularMarketPrice;
-  if (typeof price !== "number") return null;
+  if (typeof price !== "number" || !Number.isFinite(price) || price <= 0) return null;
   const prev = meta?.previousClose ?? meta?.chartPreviousClose;
-  const currency = typeof meta?.currency === "string" ? meta.currency : "KRW";
+  // 통화가 없으면 해외 시세를 원화로 오인할 수 있으므로 조회 실패로 처리한다.
+  const currency = meta?.currency;
+  if (typeof currency !== "string" || !/^[A-Z]{3}$/.test(currency)) return null;
   const instrumentType =
     typeof meta?.instrumentType === "string" ? meta.instrumentType : "EQUITY";
-  const marketTime = typeof meta?.regularMarketTime === "number" ? meta.regularMarketTime : 0;
+  const marketTime = Number.isFinite(meta?.regularMarketTime) && meta.regularMarketTime > 0
+    ? meta.regularMarketTime : 0;
   return {
     price,
-    prevClose: typeof prev === "number" ? prev : null,
+    prevClose: typeof prev === "number" && Number.isFinite(prev) && prev > 0 ? prev : null,
     currency,
     instrumentType,
     marketTime,
@@ -270,7 +275,10 @@ export async function getKrwPrices(symbols: string[]): Promise<KrwPriceResult> {
     prices[sym] = px * rate;
     if (prev[sym] != null) previousCloses[sym] = prev[sym] * rate;
   }
-  return { prices, previousCloses, currencies, usdKrw: fx.USD ?? null, available };
+  return {
+    prices, previousCloses, currencies, usdKrw: fx.USD ?? null,
+    available: available && (symbols.length === 0 || Object.keys(prices).length > 0),
+  };
 }
 
 /** 일별 종가 한 점(₩ 환산). 시·고·저·거래량은 선택(시세차트 OHLCV 표시용). */
