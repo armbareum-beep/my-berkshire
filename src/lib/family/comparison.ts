@@ -1,5 +1,7 @@
 import { summarize, type Portfolio } from "./model";
 
+const isStandaloneCma = (type: string) => type === "CMA" || type.startsWith("CMA(");
+
 /** Daily linked TWR approximation: external flows occur at the end of each day. */
 export function performanceComparison(p: Portfolio, owner = "all", account = "all", broker = "all") {
   const history = p.performance;
@@ -8,11 +10,16 @@ export function performanceComparison(p: Portfolio, owner = "all", account = "al
   if (!history) return unavailable("일별 평가자료를 준비하면 운용성과를 비교할 수 있어요.");
   if (!history.daily) return unavailable("내 계좌의 일별 평가자료 확인 후 비교 수익률을 표시해요. XIRR을 TWR 대신 사용하지 않습니다.");
   if (!selected.selected.length) return unavailable("선택한 가족의 계좌 자료가 아직 없어요.");
-  if (selected.selected.some(a => !a.complete)) return unavailable("입출금 내역이 완전한 계좌만 비교할 수 있어요.");
-  if (history.daily.some(d => selected.selected.some(a => d.values[a.id] === undefined))) return unavailable("선택한 계좌의 일별 평가자료가 필요해요.");
+  const invested = selected.selected.filter(a => !isStandaloneCma(a.type));
+  if (!invested.length) return unavailable("독립 CMA는 운용성과 비교에서 제외해요.");
+  if (invested.some(a => !a.complete)) return unavailable("입출금 내역이 완전한 계좌만 비교할 수 있어요.");
+  if (history.daily.some(d => invested.some(a => d.values[a.id] === undefined))) return unavailable("선택한 계좌의 일별 평가자료가 필요해요.");
+  const ids = new Set(invested.map(a => a.id));
+  const movements = p.flows.filter(f => ids.has(f.account));
+  const external = movements.filter(f => !f.transfer || !p.flows.some(g => g.id !== f.id && g.transfer === f.transfer && ids.has(g.account)));
   const flows = new Map<string, number>();
-  for (const f of selected.external) flows.set(f.date, (flows.get(f.date) || 0) - f.amount);
-  const values = history.daily.map(d => selected.selected.reduce((n, a) => n + d.values[a.id], 0));
+  for (const f of external) flows.set(f.date, (flows.get(f.date) || 0) - f.amount);
+  const values = history.daily.map(d => invested.reduce((n, a) => n + d.values[a.id], 0));
   let growth = 1;
   for (let i = 1; i < values.length; i++) {
     const prior = values[i - 1], adjusted = values[i] - (flows.get(history.daily[i].date) || 0);
