@@ -1,10 +1,11 @@
 export type Owner = { id: string; name: string };
-export type Account = { id: string; owner: string; broker: string; name: string; type: string; mask: string; cash: number; complete: boolean; div: number; interest: number; realized: number; valuationDate?: string; cashLabel?: string; interestKnown?: boolean; inceptionDate?: string };
+export type Account = { id: string; owner: string; broker: string; name: string; type: string; mask: string; cash: number; complete: boolean; div: number; interest: number; realized: number; divGross?: number; divTax?: number; interestGross?: number; interestTax?: number; valuationDate?: string; cashLabel?: string; interestKnown?: boolean; inceptionDate?: string };
 export type Product = { name: string; price: number | null; exposure: number[]; source?: string };
 export type Position = { account: string; code: string; quantity: number; cost: number };
 export type Flow = { id: string; account: string; date: string; amount: number; transfer?: string };
 export type Valuation = { account: string; date: string; value: number; estimated: boolean; note?: string };
-export type Performance = { start: string; end: string; method: "daily-eod-estimate"; daily?: { date: string; values: Record<string, number> }[]; benchmarks: { id: string; name: string; return: number; source?: string }[]; note: string };
+export type Income = { account: string; date: string; dividend: number; interest: number };
+export type Performance = { start: string; end: string; method: "daily-eod-estimate"; daily?: { date: string; values: Record<string, number> }[]; income?: Income[]; benchmarks: { id: string; name: string; return: number; source?: string }[]; note: string };
 export type Portfolio = { version: 1; asOf: string; owners: Owner[]; accounts: Account[]; products: Record<string, Product>; holdings: Position[]; flows: Flow[]; targets: number[]; checkedAt?: string; pricedAt?: string; valuations?: Valuation[]; performance?: Performance };
 export const countries = ["한국", "중국", "미국", "기타"];
 export const colors = ["#4165e8", "#26a69a", "#a67bdd", "#a3aec2"];
@@ -23,7 +24,7 @@ export function validatePortfolio(input: unknown): Portfolio {
   check(p.owners.length <= 100 && p.accounts.length <= 500 && p.holdings.length <= 10000 && p.flows.length <= 50000, "가져올 수 있는 자료 크기를 초과했습니다.");
   check(p.owners.every(o=>str(o.id)&&str(o.name)) && new Set(p.owners.map(o=>o.id)).size === p.owners.length, "가족 ID가 중복되거나 이름이 비어 있습니다.");
   check(p.accounts.every(a=>str(a.id)&&str(a.name)&&str(a.broker)&&p.owners.some(o=>o.id===a.owner)&&num(a.cash)&&typeof a.complete==="boolean"&&[a.div,a.interest,a.realized].every(num)), "계좌주·계좌명·금액을 확인해 주세요.");
-  check(p.accounts.every(a=>(!a.valuationDate||(validDate(a.valuationDate)&&a.valuationDate<=p.asOf))&&(a.interestKnown===undefined||typeof a.interestKnown==="boolean")&&(!a.cashLabel||str(a.cashLabel))), "계좌 잔고 기준일을 확인해 주세요.");
+  check(p.accounts.every(a=>(!a.valuationDate||(validDate(a.valuationDate)&&a.valuationDate<=p.asOf))&&(a.interestKnown===undefined||typeof a.interestKnown==="boolean")&&(!a.cashLabel||str(a.cashLabel))&&[a.divGross,a.divTax,a.interestGross,a.interestTax].every(v=>v===undefined||(num(v)&&v>=0))), "계좌 잔고 기준일과 세전·세금 금액을 확인해 주세요.");
   check(p.accounts.every(a=>!a.inceptionDate||(validDate(a.inceptionDate)&&a.inceptionDate<=p.asOf)), "계좌 시작일을 확인해 주세요.");
   check(new Set(p.accounts.map(a=>a.id)).size===p.accounts.length, "계좌 ID가 중복되었습니다.");
   check(p.products && typeof p.products === "object" && !Array.isArray(p.products), "상품 정보가 필요합니다.");
@@ -50,6 +51,7 @@ export function validatePortfolio(input: unknown): Portfolio {
       check(Array.isArray(daily)&&daily.length>=2&&daily.length<=10000&&daily[0].date===q.start&&daily[daily.length-1].date===q.end,"일별 평가자료의 범위를 확인해 주세요.");
       check(daily.every((d,i)=>validDate(d.date)&&(!i||Date.parse(d.date)-Date.parse(daily[i-1].date)===86400000)&&d.values&&typeof d.values==="object"&&!Array.isArray(d.values)&&Object.entries(d.values).every(([id,v])=>p.accounts.some(a=>a.id===id)&&num(v)&&v>=0)),"일별 평가자료의 날짜·계좌·금액을 확인해 주세요.");
     }
+    if(q.income!==undefined) check(Array.isArray(q.income)&&q.income.length<=50000&&q.income.every(v=>p.accounts.some(a=>a.id===v.account)&&validDate(v.date)&&v.date>q.start&&v.date<=q.end&&num(v.dividend)&&v.dividend>=0&&num(v.interest)&&v.interest>=0),"배당·이자 자료의 계좌·날짜·금액을 확인해 주세요.");
     check(Array.isArray(q.benchmarks)&&q.benchmarks.length<=10&&q.benchmarks.every(b=>str(b.id)&&str(b.name)&&num(b.return)&&b.return>=-1)&&new Set(q.benchmarks.map(b=>b.id)).size===q.benchmarks.length&&typeof q.note==="string"&&q.note.length<=2000,"비교 기준 자료를 확인해 주세요.");
   }
   check(!p.pricedAt||validDate(p.pricedAt),"시세 평가일을 확인해 주세요.");

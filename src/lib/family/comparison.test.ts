@@ -13,6 +13,13 @@ describe("운용성과 비교", () => {
   it("입금 자체를 이익으로 계산하지 않으며 연환산하지 않음", () => {
     expect(performanceComparison(validatePortfolio(sample())).rate).toBeCloseTo(.1, 10);
   });
+  it("세후 배당·이자를 중복 과세하지 않고 제외 수익률을 계산", () => {
+    const p = sample(); p.performance!.income = [{ account: "a", date: "2026-01-02", dividend: 10, interest: 0 }];
+    const result = performanceComparison(validatePortfolio(p));
+    expect(result.rate).toBeCloseTo(.1, 10);
+    expect(result.exIncomeRate).toBeCloseTo(.05, 10);
+    expect(result.incomeContribution).toBeCloseTo(.05, 10);
+  });
   it("출금과 두 계좌의 내부이체를 선택 범위에 맞춰 처리", () => {
     const p = sample(); p.accounts.push({ ...p.accounts[0], id: "b", owner: "P02", broker: "B" });
     p.performance!.daily = [{ date: "2025-12-31", values: { a: 100, b: 100 } }, { date: "2026-01-01", values: { a: 50, b: 150 } }, { date: "2026-01-02", values: { a: 55, b: 165 } }];
