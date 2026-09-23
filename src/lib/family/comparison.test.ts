@@ -22,6 +22,22 @@ describe("운용성과 비교", () => {
     expect(performanceComparison(p, "all", "b").rate).toBeCloseTo(.1, 10);
     expect(performanceComparison(p, "all", "all", "B").rate).toBeCloseTo(.1, 10);
   });
+  it("독립 CMA는 제외하고 CMA에서 투자계좌로 옮긴 돈은 외부 입금으로 처리", () => {
+    const p = sample();
+    p.accounts.push({ ...p.accounts[0], id: "cma", name: "CMA", type: "CMA" });
+    p.performance!.daily = [
+      { date: "2025-12-31", values: { a: 100, cma: 100 } },
+      { date: "2026-01-01", values: { a: 150, cma: 50 } },
+      { date: "2026-01-02", values: { a: 165, cma: 50 } },
+    ];
+    p.flows = [
+      { id: "cma-out", account: "cma", date: "2026-01-01", amount: 50, transfer: "t" },
+      { id: "investment-in", account: "a", date: "2026-01-01", amount: -50, transfer: "t" },
+    ];
+    expect(performanceComparison(p).rate).toBeCloseTo(.1, 10);
+    expect(performanceComparison(p, "all", "cma").rate).toBeNull();
+    expect(performanceComparison(p, "all", "cma").reason).toMatch(/CMA/);
+  });
   it("누락된 평가자료와 0원 구간을 임의의 0%로 표시하지 않음", () => {
     const p = sample(); p.performance!.daily![1].values = {};
     expect(performanceComparison(p).rate).toBeNull();
