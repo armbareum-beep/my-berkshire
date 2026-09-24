@@ -4,8 +4,8 @@ import { type Portfolio } from "@/lib/family/model";
 const won = (n: number | null) => n === null ? "자료 필요" : Math.round(n).toLocaleString("ko-KR") + "원";
 const percent = (n: number | null) => n === null ? "계산 불가" : (n > 0 ? "+" : "") + (n * 100).toFixed(2) + "%";
 
-export default function AnnualPerformance({ data, owner, account, broker }: { data: Portfolio; owner: string; account: string; broker: string }) {
-  const years = annualPerformance(data, owner, account, broker);
+export default function AnnualPerformance({ data, owner, account, broker, group }: { data: Portfolio; owner: string; account: string; broker: string; group: string }) {
+  const years = annualPerformance(data, owner, account, broker, group);
   const max = Math.max(.01, ...years.map(y => Math.abs(y.rate ?? 0)));
   return <>
     <section className="surface annual-intro">

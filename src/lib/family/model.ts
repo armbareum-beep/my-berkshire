@@ -1,14 +1,32 @@
 export type Owner = { id: string; name: string };
-export type Account = { id: string; owner: string; broker: string; name: string; type: string; mask: string; cash: number; complete: boolean; div: number; interest: number; realized: number; divGross?: number; divTax?: number; interestGross?: number; interestTax?: number; valuationDate?: string; cashLabel?: string; interestKnown?: boolean; inceptionDate?: string };
-export type Product = { name: string; price: number | null; exposure: number[]; source?: string };
+export type Account = { id: string; owner: string; broker: string; name: string; type: string; mask: string; cash: number; complete: boolean; div: number; interest: number; realized: number; divGross?: number; divTax?: number; interestGross?: number; interestTax?: number; valuationDate?: string; cashLabel?: string; interestKnown?: boolean; inceptionDate?: string; cashByCurrency?: Record<string, number> };
+export type ProductKind = "stock" | "etf" | "deposit" | "bond" | "cash";
+/** exposure: [한국, 중국, 미국, 기타 주식, 채권]. bondCountry splits the bond part by 한국·중국·미국·기타. */
+export type Product = { name: string; price: number | null; exposure: number[]; source?: string; kind?: ProductKind; bondCountry?: number[]; currency?: string };
 export type Position = { account: string; code: string; quantity: number; cost: number };
 export type Flow = { id: string; account: string; date: string; amount: number; transfer?: string };
 export type Valuation = { account: string; date: string; value: number; estimated: boolean; note?: string };
 export type Income = { account: string; date: string; dividend: number; interest: number };
 export type Performance = { start: string; end: string; method: "daily-eod-estimate"; daily?: { date: string; values: Record<string, number> }[]; income?: Income[]; incomeAccounts?: string[]; benchmarks: { id: string; name: string; return: number; source?: string }[]; note: string };
-export type Portfolio = { version: 1; asOf: string; owners: Owner[]; accounts: Account[]; products: Record<string, Product>; holdings: Position[]; flows: Flow[]; targets: number[]; checkedAt?: string; pricedAt?: string; valuations?: Valuation[]; performance?: Performance };
+export type Portfolio = { version: 1; asOf: string; owners: Owner[]; accounts: Account[]; products: Record<string, Product>; holdings: Position[]; flows: Flow[]; targets: number[]; targetsBasis?: "nav"; checkedAt?: string; pricedAt?: string; valuations?: Valuation[]; performance?: Performance };
 export const countries = ["한국", "중국", "미국", "기타"];
 export const colors = ["#4165e8", "#26a69a", "#a67bdd", "#a3aec2"];
+/** Targets: 한국·중국·미국 주식, 기타(현금·현금성 자산·채권·그 밖의 나라 주식). */
+export const targetLabels = ["한국 주식", "중국 주식", "미국 주식", "기타·현금성"];
+export const accountGroups = [["basic","기본계좌"],["isa","ISA"],["irp","IRP"],["pension","연금저축"],["cma","CMA"],["fx","외화"]] as const;
+export type AccountGroup = typeof accountGroups[number][0];
+export function accountGroup(type: string): AccountGroup {
+  const t = type.replace(/\s/g, "");
+  if (/ISA|개인종합자산관리/i.test(t)) return "isa";
+  if (/IRP|퇴직연금/i.test(t)) return "irp";
+  if (/연금저축|연금/.test(t)) return "pension";
+  if (/CMA/i.test(t)) return "cma";
+  if (/외화/.test(t)) return "fx";
+  return "basic";
+}
+export const accountGroupName = (type: string) => accountGroups.find(([id]) => id === accountGroup(type))![1];
+const shares = (v: unknown, n: number) => Array.isArray(v) && v.length === n && v.every(x => num(x) && x >= 0 && x <= 1) && Math.abs(v.reduce((a, b) => a + b, 0) - 1) < 1e-6;
+export function validTargets(v: unknown): v is number[] { return Array.isArray(v) && v.length === 4 && v.every(n => num(n) && n >= 0 && n <= 100) && Math.abs(v.reduce((a, b) => a + b, 0) - 100) < .001; }
 export function emptyPortfolio(): Portfolio {
   return { version: 1, asOf: new Date().toISOString().slice(0, 10), owners: [{id:"P01",name:"본인"},{id:"P02",name:"아내"},{id:"P03",name:"첫째 딸"},{id:"P04",name:"둘째 딸"}], accounts: [], products: {}, holdings: [], flows: [], targets: [50,50,0,0] };
 }
@@ -33,6 +51,8 @@ export function validatePortfolio(input: unknown): Portfolio {
   check(new Set(p.accounts.map(a=>a.id)).size===p.accounts.length, "계좌 ID가 중복되었습니다.");
   check(p.products && typeof p.products === "object" && !Array.isArray(p.products), "상품 정보가 필요합니다.");
   check(Object.entries(p.products).every(([code,v])=>/^[A-Za-z0-9.^=-]{1,20}$/.test(code)&&str(v.name)&&(v.price===null||(num(v.price)&&v.price>0))&&Array.isArray(v.exposure)&&v.exposure.length===5&&v.exposure.every(n=>num(n)&&n>=0&&n<=1)&&Math.abs(v.exposure.reduce((a,b)=>a+b,0)-1)<1e-6), "상품 가격과 국가·채권 비중 합계(100%)를 확인해 주세요.");
+  check(Object.values(p.products).every(v=>(v.kind===undefined||["stock","etf","deposit","bond","cash"].includes(v.kind))&&(v.bondCountry===undefined||shares(v.bondCountry,4))&&(v.currency===undefined||/^[A-Z]{3}$/.test(v.currency))&&(v.kind!=="cash"||(!!v.currency&&v.exposure[4]===1))), "상품 유형·통화와 채권 국가 비중(100%)을 확인해 주세요.");
+  check(p.accounts.every(a=>a.cashByCurrency===undefined||(a.cashByCurrency&&typeof a.cashByCurrency==="object"&&!Array.isArray(a.cashByCurrency)&&Object.entries(a.cashByCurrency).every(([c,v])=>/^[A-Z]{3}$/.test(c)&&num(v)&&v>=0)&&Math.abs(Object.values(a.cashByCurrency).reduce((x,y)=>x+y,0)-a.cash)<=1)), "통화별 현금 금액과 합계를 확인해 주세요.");
   check(p.holdings.every(h=>p.accounts.some(a=>a.id===h.account)&&Object.hasOwn(p.products,h.code)&&num(h.quantity)&&h.quantity>0&&num(h.cost)&&h.cost>=0), "보유상품의 계좌·코드·수량·원가를 확인해 주세요.");
   check(new Set(p.holdings.map(h=>h.account+":"+h.code)).size===p.holdings.length, "같은 계좌에 동일한 보유상품이 중복되었습니다.");
   check(p.flows.every(f=>str(f.id)&&p.accounts.some(a=>a.id===f.account)&&validDate(f.date)&&f.date<=p.asOf&&num(f.amount)&&f.amount!==0&&(!f.transfer||str(f.transfer))), "입출금 날짜·금액을 확인해 주세요. 기준일 이후 거래는 포함할 수 없습니다.");
@@ -41,7 +61,7 @@ export function validatePortfolio(input: unknown): Portfolio {
     const pair=p.flows.filter(f=>f.transfer===id);
     check(pair.length===2&&pair[0].account!==pair[1].account&&pair[0].date===pair[1].date&&Math.abs(pair[0].amount+pair[1].amount)<.01, "내부이체는 같은 날짜의 출금·입금 두 건이 일치해야 합니다.");
   }
-  check(Array.isArray(p.targets)&&p.targets.length===4&&p.targets.every(n=>num(n)&&n>=0&&n<=100)&&Math.abs(p.targets.reduce((a,b)=>a+b,0)-100)<.001,"국가 목표비중 합계를 100%로 맞춰 주세요.");
+  check(validTargets(p.targets)&&(p.targetsBasis===undefined||p.targetsBasis==="nav"),"국가 목표비중 합계를 100%로 맞춰 주세요.");
   if(p.valuations!==undefined) {
     check(Array.isArray(p.valuations)&&p.valuations.length<=10000, "연말 자산 자료를 확인해 주세요.");
     check(p.valuations.every(v=>p.accounts.some(a=>a.id===v.account)&&validDate(v.date)&&v.date<=p.asOf&&num(v.value)&&v.value>=0&&typeof v.estimated==="boolean"&&(!v.note||(typeof v.note==="string"&&v.note.length<=1000))), "연말 자산의 계좌·날짜·금액을 확인해 주세요.");
@@ -81,8 +101,8 @@ export function xirr(entries: {date:string;amount:number}[]): number | null {
   const unique=roots.filter((r,i)=>i===0||Math.abs(r-roots[i-1])>1e-6);
   return unique.length===1?Math.expm1(unique[0]):null;
 }
-export function summarize(p:Portfolio,owner="all",account="all",broker="all") {
-  const selected=p.accounts.filter(a=>(owner==="all"||a.owner===owner)&&(account==="all"||a.id===account)&&(broker==="all"||a.broker===broker));
+export function summarize(p:Portfolio,owner="all",account="all",broker="all",group="all") {
+  const selected=p.accounts.filter(a=>(owner==="all"||a.owner===owner)&&(account==="all"||a.id===account)&&(broker==="all"||a.broker===broker)&&(group==="all"||accountGroup(a.type)===group));
   const ids=new Set(selected.map(a=>a.id));
   const positions=p.holdings.filter(h=>ids.has(h.account)).map(h=>({...h,...p.products[h.code],value:p.products[h.code].price===null?null:h.quantity*p.products[h.code].price!,profit:p.products[h.code].price===null?null:h.quantity*p.products[h.code].price!-h.cost})).sort((a,b)=>(b.value??0)-(a.value??0));
   const movements=p.flows.filter(f=>ids.has(f.account));

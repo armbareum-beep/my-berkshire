@@ -7,8 +7,8 @@ export type AnnualResult = {
 };
 
 /** Calendar-year money-weighted returns; partial periods are not annualized in the headline. */
-export function annualPerformance(p: Portfolio, owner = "all", account = "all", broker = "all"): AnnualResult[] {
-  const s = summarize(p, owner, account, broker);
+export function annualPerformance(p: Portfolio, owner = "all", account = "all", broker = "all", group = "all"): AnnualResult[] {
+  const s = summarize(p, owner, account, broker, group);
   if (!s.selected.length) return [];
   const terminal = p.pricedAt || p.asOf;
   const knownDates = [...s.movements.map(f => f.date), ...s.selected.flatMap(a => a.inceptionDate ? [a.inceptionDate] : [])].sort();
