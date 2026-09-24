@@ -96,6 +96,8 @@ describe("유형별 국가 비중", () => {
   it("통화별 현금 합계와 채권 국가 비중을 검증", () => {
     const p = sample(); p.accounts[0].cashByCurrency = { KRW: 900, USD: 50, JPY: 30 };
     expect(() => validatePortfolio(p)).toThrow(/통화별 현금/);
+    const negative = sample(); negative.accounts[0].cash = 1000; negative.accounts[0].cashByCurrency = { KRW: 1010, JPY: -10 };
+    expect(() => validatePortfolio(negative)).toThrow(/통화별 현금/);
     const q = sample(); q.products["284430"].bondCountry = [0, 0, .5, 0];
     expect(() => validatePortfolio(q)).toThrow(/채권 국가/);
     const r = sample(); delete r.products["JPYKRW=X"].currency;
