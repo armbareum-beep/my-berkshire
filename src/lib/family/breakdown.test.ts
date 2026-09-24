@@ -27,13 +27,14 @@ function sample(): Portfolio {
 }
 
 describe("계좌 유형 필터", () => {
-  it("계좌 유형을 기본·ISA·연금저축·IRP로 나눔", () => {
+  it("계좌 유형을 기본·ISA·IRP·연금저축·CMA로 나눔", () => {
     expect(["위탁종합", "종합위탁", "CMA", "CMA(RP형)", "개인종합자산관리계좌", "연금저축", "퇴직연금운용", "IRP"].map(accountGroup))
-      .toEqual(["basic", "basic", "basic", "basic", "isa", "pension", "irp", "irp"]);
+      .toEqual(["basic", "basic", "cma", "cma", "isa", "pension", "irp", "irp"]);
   });
   it("선택한 유형의 계좌만 집계", () => {
     const p = sample();
-    expect(summarize(p, "all", "all", "all", "basic").selected.map(a => a.id)).toEqual(["general", "cma"]);
+    expect(summarize(p, "all", "all", "all", "basic").selected.map(a => a.id)).toEqual(["general"]);
+    expect(summarize(p, "all", "all", "all", "cma").nav).toBe(500);
     expect(summarize(p, "all", "all", "all", "irp").nav).toBe(2000);
     expect(summarize(p, "all", "all", "all", "all").selected).toHaveLength(5);
   });

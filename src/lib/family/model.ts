@@ -13,13 +13,14 @@ export const countries = ["한국", "중국", "미국", "기타"];
 export const colors = ["#4165e8", "#26a69a", "#a67bdd", "#a3aec2"];
 /** Targets: 한국·중국·미국 주식, 기타(현금·현금성 자산·채권·그 밖의 나라 주식). */
 export const targetLabels = ["한국 주식", "중국 주식", "미국 주식", "기타·현금성"];
-export const accountGroups = [["basic","기본계좌"],["isa","ISA"],["pension","연금저축"],["irp","IRP"]] as const;
+export const accountGroups = [["basic","기본계좌"],["isa","ISA"],["irp","IRP"],["pension","연금저축"],["cma","CMA"]] as const;
 export type AccountGroup = typeof accountGroups[number][0];
 export function accountGroup(type: string): AccountGroup {
   const t = type.replace(/\s/g, "");
   if (/ISA|개인종합자산관리/i.test(t)) return "isa";
   if (/IRP|퇴직연금/i.test(t)) return "irp";
   if (/연금저축|연금/.test(t)) return "pension";
+  if (/CMA/i.test(t)) return "cma";
   return "basic";
 }
 export const accountGroupName = (type: string) => accountGroups.find(([id]) => id === accountGroup(type))![1];
