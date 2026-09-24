@@ -24,7 +24,9 @@ describe("운용성과 비교", () => {
     const p = sample(); p.accounts.push({ ...p.accounts[0], id: "b", owner: "P02", broker: "B" });
     p.performance!.daily = p.performance!.daily!.map(d => ({ ...d, values: { ...d.values, b: d.values.a } }));
     p.performance!.income = [{ account: "a", date: "2026-01-02", dividend: 10, interest: 0 }]; p.performance!.incomeAccounts = ["a"];
-    expect(performanceComparison(validatePortfolio(p)).exIncomeRate).toBeNull();
+    const result = performanceComparison(validatePortfolio(p));
+    expect(result.exIncomeRate).toBeNull();
+    expect(result.exIncomeReason).toContain("B 계좌");
     expect(performanceComparison(p, "P01").exIncomeRate).toBeCloseTo(.05, 10);
   });
   it("소득 차감 계산만 실패해도 총수익 TWR은 유지", () => {
