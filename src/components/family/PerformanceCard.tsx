@@ -2,8 +2,8 @@ import { performanceComparison } from "@/lib/family/comparison";
 import { type Portfolio } from "@/lib/family/model";
 
 const percent = (n: number) => (n > 0 ? "+" : "") + (n * 100).toFixed(2) + "%";
-export default function PerformanceCard({ data, owner, account, broker }: { data: Portfolio; owner: string; account: string; broker: string }) {
-  const result = performanceComparison(data, owner, account, broker), h = result.history;
+export default function PerformanceCard({ data, owner, account, broker, group }: { data: Portfolio; owner: string; account: string; broker: string; group: string }) {
+  const result = performanceComparison(data, owner, account, broker, group), h = result.history;
   return <section className="surface performance-card">
     <div className="section-title"><h2>운용성과 비교</h2><span>{h ? `${h.start} ~ ${h.end}` : "자료 준비 중"}</span></div>
     <p className="performance-caption">같은 기간, 독립 CMA를 제외하고 입출금 영향을 조정한 성과를 비교해요.</p>

@@ -3,9 +3,9 @@ import { summarize, type Portfolio } from "./model";
 const isStandaloneCma = (type: string) => type === "CMA" || type.startsWith("CMA(");
 
 /** Daily linked TWR approximation: external flows occur at the end of each day. */
-export function performanceComparison(p: Portfolio, owner = "all", account = "all", broker = "all") {
+export function performanceComparison(p: Portfolio, owner = "all", account = "all", broker = "all", group = "all") {
   const history = p.performance;
-  const selected = summarize(p, owner, account, broker);
+  const selected = summarize(p, owner, account, broker, group);
   const unavailable = (reason: string) => ({ rate: null as number | null, exIncomeRate: null as number | null, incomeContribution: null as number | null, exIncomeReason: reason, reason, history });
   if (!history) return unavailable("일별 평가자료를 준비하면 운용성과를 비교할 수 있어요.");
   if (!history.daily) return unavailable("내 계좌의 일별 평가자료 확인 후 비교 수익률을 표시해요. XIRR을 TWR 대신 사용하지 않습니다.");
