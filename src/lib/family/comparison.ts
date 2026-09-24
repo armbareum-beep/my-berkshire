@@ -25,7 +25,10 @@ export function performanceComparison(p: Portfolio, owner = "all", account = "al
   const values = history.daily.map(d => invested.reduce((n, a) => n + d.values[a.id], 0));
   let growth = 1, exIncomeGrowth = 1;
   const incomeAccounts = new Set(history.incomeAccounts || []);
-  let exIncomeReason = invested.every(a => incomeAccounts.has(a.id)) ? "" : "선택 계좌의 세후 입금 내역이 모두 필요해요.";
+  const missingIncomeAccounts = invested.filter(a => !incomeAccounts.has(a.id));
+  let exIncomeReason = missingIncomeAccounts.length
+    ? `세후 배당·이자 입금 내역 필요: ${missingIncomeAccounts.map(a => `${a.broker} ${a.name}`).join(", ")}`
+    : "";
   for (let i = 1; i < values.length; i++) {
     const prior = values[i - 1], adjusted = values[i] - (flows.get(history.daily[i].date) || 0);
     if (prior <= 0 || adjusted < 0) return unavailable("잔고가 0이거나 입출금 시점의 영향이 커서 이 기간의 TWR을 확정할 수 없어요.");
