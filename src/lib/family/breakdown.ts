@@ -24,8 +24,8 @@ export function bondCountry(product: Product): number[] {
 
 const currencyOrder = ["KRW", "USD", "JPY", "CNY", "HKD", "EUR"];
 /** Cash in KRW by currency, 원화·달러·엔화… order; accounts without a split are all KRW. */
-function cashByCurrency(s: Summary) {
-  const cash: Record<string, number> = {};
+function cashByCurrency(s: Summary, held: Record<string, number>) {
+  const cash: Record<string, number> = { ...held };
   for (const a of s.selected) for (const [currency, amount] of Object.entries(a.cashByCurrency ?? { KRW: a.cash })) cash[currency] = (cash[currency] || 0) + amount;
   const rank = (c: string) => currencyOrder.includes(c) ? currencyOrder.indexOf(c) : currencyOrder.length;
   return Object.entries(cash).sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b));
@@ -37,21 +37,23 @@ const add = (to: number[], from: number[], scale = 1) => from.forEach((v, i) => 
 /**
  * Splits the selection by what is held. ETF equity, individual stock equity and
  * bonds/deposits (including the bond part of mixed ETFs) are [한국, 중국, 미국, 기타] in KRW;
- * cash is kept per currency.
+ * cash — account cash and foreign-currency holdings such as a yen deposit — is kept per currency.
  */
 export function allocationBreakdown(p: Portfolio, s: Summary) {
   const etf = zero(), stock = zero(), fixed = zero();
+  const held: Record<string, number> = {};
   let bond = 0, deposit = 0;
   for (const h of s.positions) {
     if (h.value === null) continue;
     const product = p.products[h.code], kind = productKind(product);
+    if (kind === "cash") { held[product.currency!] = (held[product.currency!] || 0) + h.value; continue; }
     add(kind === "etf" ? etf : stock, product.exposure.slice(0, 4), h.value);
     const amount = h.value * product.exposure[4];
     if (!amount) continue;
     add(fixed, bondCountry(product), amount);
     if (kind === "deposit") deposit += amount; else bond += amount;
   }
-  return { etf, stock, fixed, cash: cashByCurrency(s), bond, deposit };
+  return { etf, stock, fixed, cash: cashByCurrency(s, held), bond, deposit };
 }
 
 /** Current weights for the targets: 한국·중국·미국 equity, and everything else (cash, bonds, other equity). */

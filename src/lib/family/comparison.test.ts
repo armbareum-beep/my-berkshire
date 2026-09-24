@@ -65,6 +65,13 @@ describe("운용성과 비교", () => {
     expect(performanceComparison(p, "all", "cma").rate).toBeNull();
     expect(performanceComparison(p, "all", "cma").reason).toMatch(/CMA/);
   });
+  it("일별 평가자료가 없는 외화 계좌는 비교에서 제외", () => {
+    const p = sample();
+    p.accounts.push({ ...p.accounts[0], id: "yen", name: "엔화", type: "외화예금" });
+    const alone = performanceComparison(p).rate;
+    expect(alone).not.toBeNull();
+    expect(performanceComparison(p, "all", "yen").reason).toMatch(/외화/);
+  });
   it("누락된 평가자료와 0원 구간을 임의의 0%로 표시하지 않음", () => {
     const p = sample(); p.performance!.daily![1].values = {};
     expect(performanceComparison(p).rate).toBeNull();

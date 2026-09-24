@@ -1,6 +1,7 @@
-import { summarize, type Portfolio } from "./model";
+import { accountGroup, summarize, type Portfolio } from "./model";
 
-const isStandaloneCma = (type: string) => type === "CMA" || type.startsWith("CMA(");
+/** Standalone cash accounts (CMA, foreign-currency deposits) are not invested portfolios. */
+const isStandaloneCma = (type: string) => accountGroup(type) === "cma" || accountGroup(type) === "fx";
 
 /** Daily linked TWR approximation: external flows occur at the end of each day. */
 export function performanceComparison(p: Portfolio, owner = "all", account = "all", broker = "all", group = "all") {
@@ -11,7 +12,7 @@ export function performanceComparison(p: Portfolio, owner = "all", account = "al
   if (!history.daily) return unavailable("내 계좌의 일별 평가자료 확인 후 비교 수익률을 표시해요. XIRR을 TWR 대신 사용하지 않습니다.");
   if (!selected.selected.length) return unavailable("선택한 가족의 계좌 자료가 아직 없어요.");
   const invested = selected.selected.filter(a => !isStandaloneCma(a.type));
-  if (!invested.length) return unavailable("독립 CMA는 운용성과 비교에서 제외해요.");
+  if (!invested.length) return unavailable("독립 CMA·외화 계좌는 운용성과 비교에서 제외해요.");
   if (invested.some(a => !a.complete)) return unavailable("입출금 내역이 완전한 계좌만 비교할 수 있어요.");
   if (history.daily.some(d => invested.some(a => d.values[a.id] === undefined))) return unavailable("선택한 계좌의 일별 평가자료가 필요해요.");
   const ids = new Set(invested.map(a => a.id));
