@@ -14,11 +14,31 @@ describe("운용성과 비교", () => {
     expect(performanceComparison(validatePortfolio(sample())).rate).toBeCloseTo(.1, 10);
   });
   it("세후 배당·이자를 중복 과세하지 않고 제외 수익률을 계산", () => {
-    const p = sample(); p.performance!.income = [{ account: "a", date: "2026-01-02", dividend: 10, interest: 0 }];
+    const p = sample(); p.performance!.income = [{ account: "a", date: "2026-01-02", dividend: 10, interest: 0 }]; p.performance!.incomeAccounts = ["a"];
     const result = performanceComparison(validatePortfolio(p));
     expect(result.rate).toBeCloseTo(.1, 10);
     expect(result.exIncomeRate).toBeCloseTo(.05, 10);
     expect(result.incomeContribution).toBeCloseTo(.05, 10);
+  });
+  it("선택 계좌 일부의 소득내역만 확인됐으면 제외 수익률을 표시하지 않음", () => {
+    const p = sample(); p.accounts.push({ ...p.accounts[0], id: "b", owner: "P02", broker: "B" });
+    p.performance!.daily = p.performance!.daily!.map(d => ({ ...d, values: { ...d.values, b: d.values.a } }));
+    p.performance!.income = [{ account: "a", date: "2026-01-02", dividend: 10, interest: 0 }]; p.performance!.incomeAccounts = ["a"];
+    expect(performanceComparison(validatePortfolio(p)).exIncomeRate).toBeNull();
+    expect(performanceComparison(p, "P01").exIncomeRate).toBeCloseTo(.05, 10);
+  });
+  it("소득 차감 계산만 실패해도 총수익 TWR은 유지", () => {
+    const p = sample(); p.performance!.income = [{ account: "a", date: "2026-01-02", dividend: 300, interest: 0 }]; p.performance!.incomeAccounts = ["a"];
+    const result = performanceComparison(validatePortfolio(p));
+    expect(result.rate).toBeCloseTo(.1, 10);
+    expect(result.exIncomeRate).toBeNull();
+    expect(result.exIncomeReason).toMatch(/잔고/);
+  });
+  it("세전 금액에서 세금을 뺀 값이 세후 합계와 맞아야 함", () => {
+    const p = sample(); Object.assign(p.accounts[0], { div: 10, divGross: 12, divTax: 2 });
+    expect(validatePortfolio(p).accounts[0].div).toBe(10);
+    p.accounts[0].divTax = 0;
+    expect(() => validatePortfolio(p)).toThrow(/세후/);
   });
   it("출금과 두 계좌의 내부이체를 선택 범위에 맞춰 처리", () => {
     const p = sample(); p.accounts.push({ ...p.accounts[0], id: "b", owner: "P02", broker: "B" });

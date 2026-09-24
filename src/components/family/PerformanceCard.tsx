@@ -8,7 +8,7 @@ export default function PerformanceCard({ data, owner, account, broker }: { data
     <div className="section-title"><h2>운용성과 비교</h2><span>{h ? `${h.start} ~ ${h.end}` : "자료 준비 중"}</span></div>
     <p className="performance-caption">같은 기간, 독립 CMA를 제외하고 입출금 영향을 조정한 성과를 비교해요.</p>
     <div className="performance-grid"><div className="performance-own"><span>투자계좌 · 총수익 TWR</span><strong className={result.rate !== null && result.rate < 0 ? "negative" : "positive"}>{result.rate === null ? "자료 확인 필요" : percent(result.rate)}</strong><small>세후 배당·이자 포함</small></div>
-      <div><span>배당·이자 제외 TWR</span><strong className={result.exIncomeRate !== null && result.exIncomeRate < 0 ? "negative" : "positive"}>{result.exIncomeRate === null ? "자료 확인 필요" : percent(result.exIncomeRate)}</strong><small>{result.incomeContribution === null ? "세후 입금 내역 필요" : `배당·이자 기여 ${Math.abs(result.incomeContribution * 100).toFixed(2)}%p`}</small></div>
+      <div><span>배당·이자 제외 TWR</span><strong className={result.exIncomeRate !== null && result.exIncomeRate < 0 ? "negative" : "positive"}>{result.exIncomeRate === null ? "자료 확인 필요" : percent(result.exIncomeRate)}</strong><small>{result.incomeContribution === null ? result.exIncomeReason : `배당·이자 기여 ${(result.incomeContribution * 100).toFixed(2)}%p`}</small></div>
       {h?.benchmarks.map(b => <div key={b.id}><span>{b.name}</span><strong>{percent(b.return)}</strong><small>{result.rate === null ? "동일 기간 비교 ETF" : <>내 계좌가 <b className={result.rate >= b.return ? "positive" : "negative"}>{Math.abs((result.rate - b.return) * 100).toFixed(2)}%p {result.rate >= b.return ? "높음" : "낮음"}</b></>}</small></div>)}
     </div>
     {result.reason && <p className="fine">{result.reason}</p>}
