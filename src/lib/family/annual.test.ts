@@ -19,7 +19,7 @@ function sample() {
   return p;
 }
 
-describe("연도별 TWR", () => {
+describe("연도별 수익률", () => {
   it("운용성과 카드와 같은 기간에는 같은 TWR을 표시", () => {
     const p = validatePortfolio(sample());
     const annual = annualPerformance(p)[0];
@@ -29,6 +29,7 @@ describe("연도별 TWR", () => {
     expect(annual.start).toBe("2025-12-31");
     expect(annual.end).toBe("2026-01-02");
     expect(annual.partial).toBe(true);
+    expect(annual.method).toBe("twr");
   });
 
   it("입금 자체를 수익이나 투자손익으로 집계하지 않음", () => {
@@ -69,11 +70,27 @@ describe("연도별 TWR", () => {
     expect(cma.missing.join(" ")).toMatch(/CMA/);
   });
 
+  it("일별 평가자료 이전 연도는 수정 디츠로 계산", () => {
+    const p = sample();
+    p.accounts[0].inceptionDate = "2025-01-01";
+    p.valuations = [{ account: "a", date: "2025-12-31", value: 120, estimated: true }];
+    p.flows.unshift({ id: "old-deposit", account: "a", date: "2025-01-01", amount: -100 });
+    const years = annualPerformance(p);
+    const historical = years.find(y => y.year === 2025)!;
+    expect(historical.method).toBe("modified-dietz");
+    expect(historical.start).toBe("2025-01-01");
+    expect(historical.net).toBe(100);
+    expect(historical.profit).toBe(20);
+    expect(historical.rate).toBeCloseTo(.2, 10);
+    expect(historical.estimated).toBe(true);
+  });
+
   it("불완전 이력과 없는 일별 자료를 0%로 표시하지 않음", () => {
     const p = sample(); p.accounts[0].complete = false;
     expect(annualPerformance(p)[0].rate).toBeNull();
     expect(annualPerformance(p)[0].profit).toBeNull();
     p.performance!.daily = undefined;
-    expect(annualPerformance(p)).toEqual([]);
+    expect(annualPerformance(p)[0].rate).toBeNull();
+    expect(annualPerformance(p)[0].missing.length).toBeGreaterThan(0);
   });
 });
