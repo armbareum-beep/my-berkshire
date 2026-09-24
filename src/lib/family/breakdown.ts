@@ -12,39 +12,46 @@ export function productKind(product: Product): ProductKind {
   return product.exposure[4] === 1 ? "bond" : "stock";
 }
 
-/** 한국·중국·미국·기타 index for a cash currency. */
-export function currencyCountry(currency: string) {
-  return currency === "KRW" ? 0 : currency === "CNY" || currency === "HKD" ? 1 : currency === "USD" ? 2 : 3;
+/** Stored split first; otherwise read the issuer country from the name (e.g. 미국채 → 미국). */
+export function bondCountry(product: Product): number[] {
+  if (product.bondCountry) return product.bondCountry;
+  const name = product.name.replace(/\s/g, "");
+  if (/미국|달러|USD|US채|^US/.test(name)) return [0, 0, 1, 0];
+  if (/중국|차이나|China/i.test(name)) return [0, 1, 0, 0];
+  if (/일본|유로|독일|신흥국|글로벌|선진국/i.test(name)) return [0, 0, 0, 1];
+  return [1, 0, 0, 0];
+}
+
+const currencyOrder = ["KRW", "USD", "JPY", "CNY", "HKD", "EUR"];
+/** Cash in KRW by currency, 원화·달러·엔화… order; accounts without a split are all KRW. */
+function cashByCurrency(s: Summary) {
+  const cash: Record<string, number> = {};
+  for (const a of s.selected) for (const [currency, amount] of Object.entries(a.cashByCurrency ?? { KRW: a.cash })) cash[currency] = (cash[currency] || 0) + amount;
+  const rank = (c: string) => currencyOrder.includes(c) ? currencyOrder.indexOf(c) : currencyOrder.length;
+  return Object.entries(cash).sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b));
 }
 
 const zero = () => [0, 0, 0, 0];
 const add = (to: number[], from: number[], scale = 1) => from.forEach((v, i) => { to[i] += v * scale; });
 
 /**
- * Splits the selection by what is held: ETF equity, individual stock equity and
- * cash-like assets (cash by currency, bonds including the bond part of mixed ETFs, deposits).
- * Each row is [한국, 중국, 미국, 기타] in KRW.
+ * Splits the selection by what is held. ETF equity, individual stock equity and
+ * bonds/deposits (including the bond part of mixed ETFs) are [한국, 중국, 미국, 기타] in KRW;
+ * cash is kept per currency.
  */
 export function allocationBreakdown(p: Portfolio, s: Summary) {
-  const etf = zero(), stock = zero(), cashLike = zero();
-  const cash: Record<string, number> = {};
+  const etf = zero(), stock = zero(), fixed = zero();
   let bond = 0, deposit = 0;
   for (const h of s.positions) {
     if (h.value === null) continue;
     const product = p.products[h.code], kind = productKind(product);
     add(kind === "etf" ? etf : stock, product.exposure.slice(0, 4), h.value);
-    const fixed = h.value * product.exposure[4];
-    if (!fixed) continue;
-    add(cashLike, product.bondCountry ?? (kind === "deposit" ? [1, 0, 0, 0] : [0, 0, 0, 1]), fixed);
-    if (kind === "deposit") deposit += fixed; else bond += fixed;
+    const amount = h.value * product.exposure[4];
+    if (!amount) continue;
+    add(fixed, bondCountry(product), amount);
+    if (kind === "deposit") deposit += amount; else bond += amount;
   }
-  for (const a of s.selected) {
-    for (const [currency, amount] of Object.entries(a.cashByCurrency ?? { KRW: a.cash })) {
-      cash[currency] = (cash[currency] || 0) + amount;
-      cashLike[currencyCountry(currency)] += amount;
-    }
-  }
-  return { etf, stock, cashLike, cash, bond, deposit };
+  return { etf, stock, fixed, cash: cashByCurrency(s), bond, deposit };
 }
 
 /** Current weights for the targets: 한국·중국·미국 equity, and everything else (cash, bonds, other equity). */

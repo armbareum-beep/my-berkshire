@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { accountGroup, emptyPortfolio, summarize, validatePortfolio, type Portfolio } from "./model";
-import { allocationBreakdown, consolidateHoldings, productKind, sortHoldings, targetActuals } from "./breakdown";
+import { allocationBreakdown, bondCountry, consolidateHoldings, productKind, sortHoldings, targetActuals } from "./breakdown";
 
 function sample(): Portfolio {
   const p = emptyPortfolio(); p.asOf = "2025-01-01";
   const account = (id: string, type: string, cash: number) => ({ id, owner: "P01", broker: "KB", name: id, type, mask: "", cash, complete: true, div: 0, interest: 0, realized: 0 });
   p.accounts = [account("general", "위탁종합", 1000), account("cma", "CMA(RP형)", 500), account("isa", "개인종합자산관리계좌", 0), account("pension", "연금저축", 0), account("irp", "퇴직연금운용", 0)];
-  p.accounts[0].cashByCurrency = { KRW: 900, USD: 100 };
+  p.accounts[0].cashByCurrency = { JPY: 30, KRW: 900, USD: 70 };
   p.products = {
     "005930": { name: "삼성전자", price: 100, exposure: [1, 0, 0, 0, 0] },
     META: { name: "메타", price: 1000, exposure: [0, 0, 1, 0, 0] },
     "283580": { name: "KODEX차이나CSI300", price: 10, exposure: [0, 1, 0, 0, 0] },
-    "284430": { name: "KODEX200미국채혼합50", price: 10, exposure: [.5, 0, 0, 0, .5], bondCountry: [0, 0, 1, 0] },
+    "284430": { name: "KODEX200미국채혼합50", price: 10, exposure: [.5, 0, 0, 0, .5] },
     FD: { name: "퇴직연금정기예금", price: 1, exposure: [0, 0, 0, 0, 1] },
     NOPRICE: { name: "가격없음", price: null, exposure: [1, 0, 0, 0, 0] },
   };
@@ -65,15 +65,23 @@ describe("유형별 국가 비중", () => {
     expect(productKind(p.products.META)).toBe("stock");
     expect(productKind({ ...p.products.META, kind: "etf" })).toBe("etf");
   });
-  it("ETF·개별주식·현금성을 국가별로 나누고 합계가 총자산과 같음", () => {
+  it("채권 국가는 저장값 우선, 없으면 이름으로 판단", () => {
+    const bond = (name: string) => bondCountry({ name, price: 1, exposure: [0, 0, 0, 0, 1] });
+    expect(bond("KODEX200미국채혼합50")).toEqual([0, 0, 1, 0]);
+    expect(bond("TIGER 미국채10년선물")).toEqual([0, 0, 1, 0]);
+    expect(bond("KODEX 국고채3년")).toEqual([1, 0, 0, 0]);
+    expect(bond("NH퇴직연금정기예금(5년)")).toEqual([1, 0, 0, 0]);
+    expect(bondCountry({ name: "미국채", price: 1, exposure: [0, 0, 0, 0, 1], bondCountry: [0, 0, 0, 1] })).toEqual([0, 0, 0, 1]);
+  });
+  it("ETF·개별주식·채권은 국가별, 현금은 통화별로 나누고 합계가 총자산과 같음", () => {
     const p = validatePortfolio(sample()), s = summarize(p), b = allocationBreakdown(p, s);
     expect(b.etf).toEqual([500, 1000, 0, 0]);
     expect(b.stock).toEqual([1500, 0, 1000, 0]);
-    expect(b.cashLike).toEqual([900 + 500 + 2000, 0, 100 + 500, 0]);
-    expect(b.cash).toEqual({ KRW: 1400, USD: 100 });
+    expect(b.fixed).toEqual([2000, 0, 500, 0]);
+    expect(b.cash).toEqual([["KRW", 1400], ["USD", 70], ["JPY", 30]]);
     expect(b.bond).toBe(500);
     expect(b.deposit).toBe(2000);
-    const total = [...b.etf, ...b.stock, ...b.cashLike].reduce((x, y) => x + y, 0);
+    const total = [...b.etf, ...b.stock, ...b.fixed, ...b.cash.map(([, v]) => v)].reduce((x, y) => x + y, 0);
     expect(total).toBeCloseTo(s.nav, 8);
   });
   it("목표 비교의 기타에는 현금·채권이 들어감", () => {
@@ -82,7 +90,7 @@ describe("유형별 국가 비중", () => {
     expect(actual[3]).toBe(1500 + 500 + 2000);
   });
   it("통화별 현금 합계와 채권 국가 비중을 검증", () => {
-    const p = sample(); p.accounts[0].cashByCurrency = { KRW: 900, USD: 50 };
+    const p = sample(); p.accounts[0].cashByCurrency = { KRW: 900, USD: 50, JPY: 30 };
     expect(() => validatePortfolio(p)).toThrow(/통화별 현금/);
     const q = sample(); q.products["284430"].bondCountry = [0, 0, .5, 0];
     expect(() => validatePortfolio(q)).toThrow(/채권 국가/);
