@@ -12,6 +12,13 @@ export function productKind(product: Product): ProductKind {
   return product.exposure[4] === 1 ? "bond" : "stock";
 }
 
+/** Deposits have no exchange quote; with a stored price they keep their book value on refresh. */
+export function quoteCodes(p: Portfolio) {
+  const codes = [...new Set(p.holdings.map(h => h.code))];
+  const held = codes.filter(c => productKind(p.products[c]) === "deposit" && p.products[c].price !== null);
+  return { quoted: codes.filter(c => !held.includes(c)), held };
+}
+
 /** Stored split first; otherwise read the issuer country from the name (e.g. 미국채 → 미국). */
 export function bondCountry(product: Product): number[] {
   if (product.bondCountry) return product.bondCountry;
