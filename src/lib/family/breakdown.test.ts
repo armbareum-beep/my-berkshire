@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { accountGroup, emptyPortfolio, summarize, validatePortfolio, type Portfolio } from "./model";
-import { allocationBreakdown, bondCountry, consolidateHoldings, productKind, sortHoldings, targetActuals } from "./breakdown";
+import { allocationBreakdown, bondCountry, consolidateHoldings, productKind, quoteCodes, sortHoldings, targetActuals } from "./breakdown";
 
 function sample(): Portfolio {
   const p = emptyPortfolio(); p.asOf = "2025-01-01";
@@ -68,6 +68,12 @@ describe("유형별 국가 비중", () => {
     expect(productKind(p.products.FD)).toBe("deposit");
     expect(productKind(p.products.META)).toBe("stock");
     expect(productKind({ ...p.products.META, kind: "etf" })).toBe("etf");
+  });
+  it("가격이 있는 예금은 시세 조회에서 빼고 나머지는 모두 조회", () => {
+    const p = sample();
+    expect(quoteCodes(p)).toEqual({ quoted: ["005930", "META", "283580", "284430", "JPYKRW=X"], held: ["FD"] });
+    p.products.FD.price = null;
+    expect(quoteCodes(p).held).toEqual([]);
   });
   it("채권 국가는 저장값 우선, 없으면 이름으로 판단", () => {
     const bond = (name: string) => bondCountry({ name, price: 1, exposure: [0, 0, 0, 0, 1] });
