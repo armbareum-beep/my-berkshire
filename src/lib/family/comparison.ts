@@ -12,6 +12,13 @@ export function liveEnd(p: Portfolio) {
   return h?.daily && p.pricedAt && p.pricedAt > h.end && p.asOf >= h.end ? p.pricedAt : null;
 }
 
+/** Benchmarks through `liveEnd`: stored total return to the last daily close, then today's price move. Null unless every benchmark moved. */
+export function liveBenchmarks(p: Portfolio) {
+  const h = p.performance, moves = p.benchmarkMoves;
+  if (!h || !liveEnd(p) || !moves || !h.benchmarks.length || h.benchmarks.some(b => !(moves[b.id] > 0))) return null;
+  return h.benchmarks.map(b => ({ ...b, return: (1 + b.return) * moves[b.id] - 1, confirmed: b.return }));
+}
+
 /** Daily linked TWR approximation: external flows occur at the end of each day. */
 export function performanceComparison(
   p: Portfolio,
