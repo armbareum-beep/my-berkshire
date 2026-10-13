@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptyPortfolio, validatePortfolio } from "./model";
-import { performanceComparison } from "./comparison";
+import { liveEnd, performanceComparison } from "./comparison";
 
 function sample() {
   const p = emptyPortfolio(); p.asOf = "2026-01-02";
@@ -81,6 +81,23 @@ describe("운용성과 비교", () => {
     expect(performanceComparison(validatePortfolio(p)).rate).toBeNull();
     const q = sample(); q.performance!.daily![0].values.a = 0;
     expect(performanceComparison(q).rate).toBeNull();
+  });
+  it("오늘 시세가 있으면 마지막 일별 자료 이후를 한 구간으로 추정하고 그 사이 입금을 조정", () => {
+    const p = sample(); p.asOf = "2026-01-04"; p.accounts[0].cash = 300;
+    p.products = { X: { name: "주식", price: 21, exposure: [1, 0, 0, 0, 0] } };
+    p.holdings = [{ account: "a", code: "X", quantity: 2, cost: 20 }];
+    p.flows.push({ id: "later", account: "a", date: "2026-01-04", amount: -100 });
+    expect(liveEnd(p)).toBeNull();
+    expect(performanceComparison(p, "all", "all", "all", "all", { start: "2025-12-31", end: "2026-01-05" }).rate).toBeNull();
+    p.pricedAt = "2026-01-05";
+    expect(liveEnd(p)).toBe("2026-01-05");
+    const today = performanceComparison(validatePortfolio(p), "all", "all", "all", "all", { start: "2025-12-31", end: "2026-01-05" });
+    expect(today.rate).toBeCloseTo(1.1 * 1.1 - 1, 10);
+    expect(today.live).toBe(true);
+    expect(today.net).toBe(200);
+    expect(performanceComparison(p).rate).toBeCloseTo(.1, 10);
+    p.products.X.price = null;
+    expect(performanceComparison(p, "all", "all", "all", "all", { start: "2025-12-31", end: "2026-01-05" }).reason).toMatch(/오늘 시세/);
   });
   it("일별 자료의 날짜 누락과 미래 기준일 거부", () => {
     const p = sample(); p.performance!.daily!.splice(1, 1);

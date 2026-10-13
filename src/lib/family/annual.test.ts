@@ -32,6 +32,16 @@ describe("연도별 수익률", () => {
     expect(annual.method).toBe("twr");
   });
 
+  it("오늘 시세를 불러오면 올해 TWR을 오늘까지 추정", () => {
+    const p = sample(); p.accounts[0].cash = 200; p.pricedAt = "2026-01-05";
+    p.products = { X: { name: "주식", price: 11, exposure: [1, 0, 0, 0, 0] } };
+    p.holdings = [{ account: "a", code: "X", quantity: 2, cost: 20 }];
+    const y = annualPerformance(validatePortfolio(p))[0];
+    expect(y.end).toBe("2026-01-05");
+    expect(y.rate).toBeCloseTo(1.1 * (222 / 220) - 1, 10);
+    expect(y.notes.join(" ")).toMatch(/오늘 시세로 추정/);
+  });
+
   it("입금 자체를 수익이나 투자손익으로 집계하지 않음", () => {
     const y = annualPerformance(sample())[0];
     expect(y.opening).toBe(100);
