@@ -1,4 +1,4 @@
-import { performanceComparison } from "./comparison";
+import { liveEnd, performanceComparison } from "./comparison";
 import { accountGroup, summarize, type Portfolio } from "./model";
 
 export type AnnualResult = {
@@ -14,6 +14,7 @@ const day = (date: string) => Date.parse(date) / 86400000;
 /** Daily TWR where available; older years use a clearly labelled Modified Dietz estimate. */
 export function annualPerformance(p: Portfolio, owner = "all", account = "all", broker = "all", group = "all"): AnnualResult[] {
   const history = p.performance;
+  const last = history ? liveEnd(p) ?? history.end : null;
   const selected = summarize(p, owner, account, broker, group).selected;
   const invested = selected.filter(a => !isStandaloneCashAccount(a.type));
   const ids = new Set(invested.map(a => a.id));
@@ -28,15 +29,15 @@ export function annualPerformance(p: Portfolio, owner = "all", account = "all", 
   if (!knownDates.length && !history?.daily?.length) return [];
 
   const firstYear = Number((knownDates[0] || history!.start).slice(0, 4));
-  const lastYear = Number((history?.end || knownDates[knownDates.length - 1]).slice(0, 4));
+  const lastYear = Number((last || knownDates[knownDates.length - 1]).slice(0, 4));
   const results: AnnualResult[] = [];
 
   for (let year = firstYear; year <= lastYear; year++) {
     const boundary = `${year - 1}-12-31`;
     const yearEnd = `${year}-12-31`;
     const twrStart = history && history.start > boundary ? history.start : boundary;
-    const twrEnd = history && history.end < yearEnd ? history.end : yearEnd;
-    if (history?.daily && twrStart < twrEnd && twrStart >= history.start && twrEnd <= history.end) {
+    const twrEnd = last && last < yearEnd ? last : yearEnd;
+    if (history?.daily && last && twrStart < twrEnd && twrStart >= history.start && twrEnd <= last) {
       const result = performanceComparison(p, owner, account, broker, group, { start: twrStart, end: twrEnd });
       results.push({
         year,
@@ -51,7 +52,7 @@ export function annualPerformance(p: Portfolio, owner = "all", account = "all", 
         partial: twrStart !== boundary || twrEnd !== yearEnd,
         estimated: history.method === "daily-eod-estimate",
         method: "twr",
-        notes: history.note ? [history.note] : [],
+        notes: [...(history.note ? [history.note] : []), ...(result.live ? [`${history.end} 이후는 오늘 시세로 추정한 값이에요.`] : [])],
         missing: result.reason ? [result.reason] : [],
       });
       continue;

@@ -3,6 +3,15 @@ import { accountGroup, summarize, type Portfolio } from "./model";
 /** Standalone cash accounts (CMA, foreign-currency deposits) are not invested portfolios. */
 const isStandaloneCashAccount = (type: string) => accountGroup(type) === "cma" || accountGroup(type) === "fx";
 
+/**
+ * Today's quotes add one estimated step after the last daily close. Holdings and cash stay as of `asOf`,
+ * so trades after that date must be recorded first.
+ */
+export function liveEnd(p: Portfolio) {
+  const h = p.performance;
+  return h?.daily && p.pricedAt && p.pricedAt > h.end && p.asOf >= h.end ? p.pricedAt : null;
+}
+
 /** Daily linked TWR approximation: external flows occur at the end of each day. */
 export function performanceComparison(
   p: Portfolio,
@@ -29,14 +38,17 @@ export function performanceComparison(
     closing: null as number | null,
     net: null as number | null,
     profit: null as number | null,
+    live: false,
   });
   if (!history) return unavailable("일별 평가자료를 준비하면 운용성과를 비교할 수 있어요.");
   if (!history.daily) return unavailable("내 계좌의 일별 평가자료 확인 후 비교 수익률을 표시해요. XIRR을 TWR 대신 사용하지 않습니다.");
-  if (!periodStart || !periodEnd || periodStart < history.start || periodEnd > history.end || periodStart >= periodEnd) {
+  const live = !!periodEnd && periodEnd === liveEnd(p);
+  const lastDaily = live ? history.end : periodEnd;
+  if (!periodStart || !periodEnd || !lastDaily || periodStart < history.start || lastDaily > history.end || periodStart >= periodEnd) {
     return unavailable("선택한 기간의 일별 평가자료가 필요해요.");
   }
-  const daily = history.daily.filter(d => d.date >= periodStart && d.date <= periodEnd);
-  if (daily.length < 2 || daily[0].date !== periodStart || daily[daily.length - 1].date !== periodEnd) {
+  const daily = history.daily.filter(d => d.date >= periodStart && d.date <= lastDaily);
+  if (daily.length < (live ? 1 : 2) || daily[0].date !== periodStart || daily[daily.length - 1].date !== lastDaily) {
     return unavailable("선택한 기간의 일별 평가자료가 필요해요.");
   }
   if (!selected.selected.length) return unavailable("선택한 가족의 계좌 자료가 아직 없어요.");
@@ -52,6 +64,14 @@ export function performanceComparison(
   const income = new Map<string, number>();
   for (const row of history.income || []) if (ids.has(row.account)) income.set(row.date, (income.get(row.date) || 0) + row.dividend + row.interest);
   const values = daily.map(d => invested.reduce((n, a) => n + d.values[a.id], 0));
+  const dates = daily.map(d => d.date);
+  if (live) {
+    const today = invested.reduce((n, a) => n + a.cash + selected.positions.filter(h => h.account === a.id).reduce((m, h) => m + (h.value ?? NaN), 0), 0);
+    if (!Number.isFinite(today)) return unavailable("오늘 시세가 없는 상품이 있어 오늘까지의 TWR을 계산할 수 없어요.");
+    values.push(today); dates.push(periodEnd);
+  }
+  /** Daily steps are consecutive dates; the live step covers every date after the last daily close. */
+  const step = (map: Map<string, number>, i: number) => i < daily.length ? map.get(dates[i]) || 0 : [...map].reduce((n, [date, v]) => date > dates[i - 1] && date <= dates[i] ? n + v : n, 0);
   let growth = 1, exIncomeGrowth = 1;
   const incomeAccounts = new Set(history.incomeAccounts || []);
   const missingIncomeAccounts = invested.filter(a => !incomeAccounts.has(a.id));
@@ -59,12 +79,12 @@ export function performanceComparison(
     ? `세후 배당·이자 입금 내역 필요: ${missingIncomeAccounts.map(a => `${a.broker} ${a.name}`).join(", ")}`
     : "";
   for (let i = 1; i < values.length; i++) {
-    const prior = values[i - 1], adjusted = values[i] - (flows.get(daily[i].date) || 0);
+    const prior = values[i - 1], adjusted = values[i] - step(flows, i);
     if (prior <= 0 || adjusted < 0) return unavailable("잔고가 0이거나 입출금 시점의 영향이 커서 이 기간의 TWR을 확정할 수 없어요.");
     growth *= adjusted / prior;
     if (!Number.isFinite(growth)) return unavailable("이 기간의 운용성과를 계산할 수 없어요.");
     if (!exIncomeReason) {
-      const exIncomeAdjusted = adjusted - (income.get(daily[i].date) || 0);
+      const exIncomeAdjusted = adjusted - step(income, i);
       if (exIncomeAdjusted < 0) exIncomeReason = "배당·이자 입금일의 잔고를 확인해 주세요.";
       else {
         exIncomeGrowth *= exIncomeAdjusted / prior;
@@ -88,5 +108,6 @@ export function performanceComparison(
     closing,
     net,
     profit: closing - opening - net,
+    live,
   };
 }
