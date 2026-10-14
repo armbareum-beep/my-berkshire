@@ -8,7 +8,7 @@ export type Flow = { id: string; account: string; date: string; amount: number; 
 export type Valuation = { account: string; date: string; value: number; estimated: boolean; note?: string };
 export type Income = { account: string; date: string; dividend: number; interest: number };
 export type Performance = { start: string; end: string; method: "daily-eod-estimate"; daily?: { date: string; values: Record<string, number> }[]; income?: Income[]; incomeAccounts?: string[]; benchmarks: { id: string; name: string; return: number; source?: string }[]; note: string };
-export type Portfolio = { version: 1; asOf: string; owners: Owner[]; accounts: Account[]; products: Record<string, Product>; holdings: Position[]; flows: Flow[]; targets: number[]; targetsBasis?: "nav"; checkedAt?: string; pricedAt?: string; valuations?: Valuation[]; performance?: Performance };
+export type Portfolio = { version: 1; asOf: string; owners: Owner[]; accounts: Account[]; products: Record<string, Product>; holdings: Position[]; flows: Flow[]; targets: number[]; targetsBasis?: "nav"; checkedAt?: string; pricedAt?: string; /** Screen-only: benchmark growth since `performance.end`, from the same quote request as `pricedAt`. */ benchmarkMoves?: Record<string, number>; valuations?: Valuation[]; performance?: Performance };
 export const countries = ["한국", "중국", "미국", "기타"];
 export const colors = ["#4165e8", "#26a69a", "#a67bdd", "#a3aec2"];
 /** Targets: 한국·중국·미국 주식, 기타(현금·현금성 자산·채권·그 밖의 나라 주식). */

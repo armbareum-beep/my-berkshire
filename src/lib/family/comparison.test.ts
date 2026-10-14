@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptyPortfolio, validatePortfolio } from "./model";
-import { liveEnd, performanceComparison } from "./comparison";
+import { liveBenchmarks, liveEnd, performanceComparison } from "./comparison";
 
 function sample() {
   const p = emptyPortfolio(); p.asOf = "2026-01-02";
@@ -98,6 +98,17 @@ describe("운용성과 비교", () => {
     expect(performanceComparison(p).rate).toBeCloseTo(.1, 10);
     p.products.X.price = null;
     expect(performanceComparison(p, "all", "all", "all", "all", { start: "2025-12-31", end: "2026-01-05" }).reason).toMatch(/오늘 시세/);
+  });
+  it("비교 ETF는 모든 종목의 오늘 변동이 있을 때만 확정 수익률에 이어 붙임", () => {
+    const p = sample(); p.pricedAt = "2026-01-05";
+    expect(liveBenchmarks(p)).toBeNull();
+    p.benchmarkMoves = { index: 1.1 };
+    expect(liveBenchmarks(p)![0].return).toBeCloseTo(1.08 * 1.1 - 1, 10);
+    expect(liveBenchmarks(p)![0].confirmed).toBe(.08);
+    p.performance!.benchmarks.push({ id: "sp", name: "S&P", return: .02 });
+    expect(liveBenchmarks(p)).toBeNull();
+    p.pricedAt = undefined; p.benchmarkMoves = { index: 1.1, sp: 1 };
+    expect(liveBenchmarks(p)).toBeNull();
   });
   it("일별 자료의 날짜 누락과 미래 기준일 거부", () => {
     const p = sample(); p.performance!.daily!.splice(1, 1);
