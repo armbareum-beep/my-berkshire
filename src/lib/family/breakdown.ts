@@ -87,6 +87,15 @@ export function consolidateHoldings(s: Summary): HoldingRow[] {
   return [...rows.values()];
 }
 
+export type HoldingFilter = "stock" | "etf" | "all";
+/** Holdings of one kind (or all), merged across accounts, with totals over the priced ones. */
+export function holdingReturns(p: Portfolio, s: Summary, filter: HoldingFilter) {
+  const rows = consolidateHoldings(s).filter(r => filter === "all" || productKind(p.products[r.code]) === filter);
+  const priced = rows.filter(r => r.value !== null);
+  const value = priced.reduce((t, r) => t + r.value!, 0), cost = priced.reduce((t, r) => t + r.cost, 0);
+  return { rows, value, cost, profit: value - cost, rate: cost > 0 ? (value - cost) / cost : null, unpriced: rows.length - priced.length };
+}
+
 /** Rows without a value for the key (unpriced, no cost) always go last. */
 export function sortHoldings(rows: HoldingRow[], key: HoldingSort, descending: boolean) {
   return [...rows].sort((a, b) => {
