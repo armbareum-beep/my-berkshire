@@ -43,6 +43,5 @@ export default function Holdings({ data, owner, account, broker, group }: { data
       </tr>;
     })}</tbody></table></div>
     {!rows.length && <p className="fine">선택한 범위에 {filter === "all" ? "보유종목이" : filter === "etf" ? "ETF가" : "개별 주식이"} 없어요.</p>}
-    <p className="fine">같은 종목은 계좌가 달라도 합쳐서 보여줘요. 수익률은 지금 보유 중인 수량의 평가손익 ÷ 매입원가이고, 이미 판 종목의 실현손익과 배당은 포함하지 않아요. 비중은 {filter === "all" ? `전체 자산(${won(s.nav)}, 현금 포함)` : `${label} 평가액 합계`} 대비입니다.</p>
   </section>;
 }
