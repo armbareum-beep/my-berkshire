@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { accountGroup, emptyPortfolio, summarize, validatePortfolio, type Portfolio } from "./model";
-import { allocationBreakdown, bondCountry, consolidateHoldings, productKind, quoteCodes, sortHoldings, targetActuals } from "./breakdown";
+import { allocationBreakdown, bondCountry, consolidateHoldings, productKind, quoteCodes, sortHoldings, stockReturns, targetActuals } from "./breakdown";
 
 function sample(): Portfolio {
   const p = emptyPortfolio(); p.asOf = "2025-01-01";
@@ -58,6 +58,23 @@ describe("보유상품 합산", () => {
     expect(sortHoldings(rows, "profit", true).map(r => r.code)).toEqual(["005930", "283580", "FD", "284430", "JPYKRW=X", "META", "NOPRICE"]);
     expect(sortHoldings(rows, "rate", false).map(r => r.code)).toEqual(["META", "JPYKRW=X", "284430", "FD", "283580", "005930", "NOPRICE"]);
     expect(sortHoldings(rows, "value", false).at(-1)!.code).toBe("NOPRICE");
+  });
+});
+
+describe("종목별 수익률", () => {
+  it("개별 주식만 계좌를 합쳐 보여주고 가격 없는 종목은 합계에서 뺌", () => {
+    const p = validatePortfolio(sample()), r = stockReturns(p, summarize(p));
+    expect(r.rows.map(x => x.code).sort()).toEqual(["005930", "META"]);
+    expect(r.rows.find(x => x.code === "005930")!.quantity).toBe(15);
+    expect(r.value).toBe(2500);
+    expect(r.cost).toBe(2600);
+    expect(r.profit).toBe(-100);
+    expect(r.rate).toBeCloseTo(-100 / 2600, 10);
+    expect(r.unpriced).toBe(0);
+    const q = sample(); q.products.NOPRICE.kind = "stock"; q.holdings.push({ account: "general", code: "NOPRICE", quantity: 1, cost: 50 });
+    const u = stockReturns(q, summarize(q));
+    expect(u.unpriced).toBe(1);
+    expect(u.cost).toBe(2600);
   });
 });
 

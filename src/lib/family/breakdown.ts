@@ -87,6 +87,14 @@ export function consolidateHoldings(s: Summary): HoldingRow[] {
   return [...rows.values()];
 }
 
+/** Individual stocks only (no ETF, bond, deposit or cash), with totals over the priced ones. */
+export function stockReturns(p: Portfolio, s: Summary) {
+  const rows = consolidateHoldings(s).filter(r => productKind(p.products[r.code]) === "stock");
+  const priced = rows.filter(r => r.value !== null);
+  const value = priced.reduce((t, r) => t + r.value!, 0), cost = priced.reduce((t, r) => t + r.cost, 0);
+  return { rows, value, cost, profit: value - cost, rate: cost > 0 ? (value - cost) / cost : null, unpriced: rows.length - priced.length };
+}
+
 /** Rows without a value for the key (unpriced, no cost) always go last. */
 export function sortHoldings(rows: HoldingRow[], key: HoldingSort, descending: boolean) {
   return [...rows].sort((a, b) => {
