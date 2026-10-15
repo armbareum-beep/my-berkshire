@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { accountGroup, emptyPortfolio, summarize, validatePortfolio, type Portfolio } from "./model";
-import { allocationBreakdown, bondCountry, consolidateHoldings, productKind, quoteCodes, sortHoldings, holdingReturns, bucketSplit, mainBucket, targetActuals } from "./breakdown";
+import { allocationBreakdown, bondCountry, consolidateHoldings, productKind, quoteCodes, sortHoldings, holdingReturns, bucketRows, targetActuals } from "./breakdown";
 
 function sample(): Portfolio {
   const p = emptyPortfolio(); p.asOf = "2025-01-01";
@@ -76,12 +76,15 @@ describe("보유종목", () => {
     expect(u.unpriced).toBe(1);
     expect(u.cost).toBe(2600);
   });
-  it("ETF를 주된 국가별로 나누고 혼합 ETF는 비중이 큰 쪽(같으면 앞쪽)에 넣음", () => {
+  it("ETF를 국가별로 나누고 혼합 ETF는 비중대로 쪼갬", () => {
     const p = validatePortfolio(sample()), rows = holdingReturns(p, summarize(p), "etf").rows;
-    expect(bucketSplit(p, rows)).toEqual([1000, 1000, 0, 0, 0]);
-    expect(mainBucket(p.products["283580"])).toBe(1);
-    expect(mainBucket(p.products["284430"])).toBe(0);
-    expect(mainBucket(p.products.FD)).toBe(4);
+    const groups = bucketRows(p, rows), sum = (g: typeof groups[0]) => g.reduce((t, r) => t + (r.value ?? 0), 0);
+    expect(groups.map(sum)).toEqual([500, 1000, 0, 0, 500]);
+    const mixed = groups[0].find(r => r.code === "284430")!, bond = groups[4].find(r => r.code === "284430")!;
+    expect([mixed.part, bond.part]).toEqual([.5, .5]);
+    expect(mixed.cost + bond.cost).toBe(rows.find(r => r.code === "284430")!.cost);
+    expect(mixed.rate).toBe(rows.find(r => r.code === "284430")!.rate);
+    expect(groups[1][0].part).toBe(1);
   });
   it("ETF와 전체 필터", () => {
     const p = validatePortfolio(sample()), s = summarize(p);
