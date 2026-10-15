@@ -1,4 +1,4 @@
-import { summarize, type Portfolio, type Product, type ProductKind } from "./model";
+import { countries, summarize, type Portfolio, type Product, type ProductKind } from "./model";
 
 type Summary = ReturnType<typeof summarize>;
 const ETF_BRANDS = /^(KODEX|TIGER|RISE|ACE|SOL|KBSTAR|HANARO|PLUS|KIWOOM|ARIRANG|KOSEF|TIME|1Q|WON|BNK|FOCUS|TREX|마이다스|파워)/i;
@@ -110,6 +110,19 @@ export function bucketRows(p: Portfolio, rows: HoldingRow[]): BucketRow[][] {
     });
   }
   return groups;
+}
+
+/** Which part of a mixed product a bucket row is, e.g. 한국 주식 50% or 미국 채권 50%. */
+export function partLabel(p: Portfolio, row: BucketRow, bucket: number) {
+  const bond = bondCountry(p.products[row.code]), country = bucket < 4 ? bucket : bond.indexOf(Math.max(...bond));
+  return `${countries[country]} ${bucket < 4 ? "주식" : "채권"} ${Math.round(row.part * 100)}%`;
+}
+
+/** What makes up one target group (한국·중국·미국, or 3 = everything else), largest first; the last group also holds account cash by currency. */
+export function targetMembers(p: Portfolio, s: Summary, group: number) {
+  const buckets = bucketRows(p, consolidateHoldings(s)).map((rows, bucket) => rows.map(row => ({ row, bucket })));
+  const members = (group < 3 ? buckets[group] : [...buckets[3], ...buckets[4]]).filter(m => m.row.value !== null);
+  return { members: members.sort((a, b) => b.row.value! - a.row.value!), cash: group < 3 ? [] : cashByCurrency(s, {}).filter(([, v]) => Math.round(v)) };
 }
 
 /** Rows without a value for the key (unpriced, no cost) always go last. */

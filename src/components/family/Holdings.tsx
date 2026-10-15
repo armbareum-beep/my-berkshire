@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ArrowDownWideNarrow, ArrowUpNarrowWide } from "lucide-react";
-import { bondCountry, bucketRows, holdingReturns, sortHoldings, type BucketRow, type HoldingFilter, type HoldingSort } from "@/lib/family/breakdown";
+import { bucketRows, partLabel, holdingReturns, sortHoldings, type BucketRow, type HoldingFilter, type HoldingSort } from "@/lib/family/breakdown";
 import { colors, countries, summarize, type Portfolio } from "@/lib/family/model";
 
 const won = (n: number) => Math.round(n).toLocaleString("ko-KR") + "원";
@@ -27,11 +27,6 @@ export default function Holdings({ data, owner, account, broker, group }: { data
   /** ETF and stock views split by country; the whole list is already split on the 국가별 배분 tab. */
   const byCountry = filter !== "all", total = (g: BucketRow[]) => g.reduce((t, h) => t + (h.value ?? 0), 0);
   const groups: [number, BucketRow[]][] = byCountry ? bucketRows(data, r.rows).map((g, i) => [i, sortHoldings(g, sortKey, descending)] as [number, BucketRow[]]).filter(([, g]) => g.length) : [[-1, rows.map(h => ({ ...h, part: 1 }))]];
-  /** Which part of a mixed ETF a row is, e.g. 한국 주식 50% or 미국 채권 50%. */
-  const partLabel = (h: BucketRow, bucket: number) => {
-    const bond = bondCountry(data.products[h.code]), country = bucket < 4 ? bucket : bond.indexOf(Math.max(...bond));
-    return `${countries[country]} ${bucket < 4 ? "주식" : "채권"} ${Math.round(h.part * 100)}%`;
-  };
   return <section className="surface holdings">
     <div className="section-title"><h2>보유종목 <em>{rows.length}</em></h2><span>{data.checkedAt ? `시세 조회 ${new Date(data.checkedAt).toLocaleString("ko-KR")}` : "파일 기준가격 · 실시간 아님"}</span></div>
     <div className="segmented holding-filter" role="group" aria-label="종류">{filters.map(([id, name]) => <button key={id} aria-pressed={filter === id} onClick={() => setFilter(id)}>{name}</button>)}</div>
@@ -44,7 +39,7 @@ export default function Holdings({ data, owner, account, broker, group }: { data
     <div className="table-wrap"><table><thead><tr><th>종목 / 계좌</th><th>보유수량</th><th>평가액</th><th>수익금 / 수익률</th><th>비중</th></tr></thead><tbody>{groups.map(([bucket, group]) => [bucket >= 0 && <tr className="group-row" key={"g" + bucket}><td colSpan={5}><i style={{ background: bucketColors[bucket] }} />{buckets[bucket]}<span>{won(total(group))} · {share(total(group), r.value)}</span></td></tr>, ...group.map(h => {
       const owners = [...new Set(h.accounts.map(id => ownerName(accountOf(id)!.owner)))];
       return <tr key={bucket + h.code}>
-        <td><strong>{h.name}</strong>{h.part < 1 && <em className="part-tag">{partLabel(h, bucket)}</em>}<small>{h.accounts.length === 1 ? `${owners[0]} · ${accountOf(h.accounts[0])!.name}` : `${h.accounts.length}개 계좌 · ${owners.join(", ")}`} · {h.code}</small><small className="narrow-block">{h.quantity.toLocaleString("ko-KR")}{unit(h.code)} · 평단 {unitPrice(h.code, h.cost / h.quantity)}</small></td>
+        <td><strong>{h.name}</strong>{h.part < 1 && <em className="part-tag">{partLabel(data, h, bucket)}</em>}<small>{h.accounts.length === 1 ? `${owners[0]} · ${accountOf(h.accounts[0])!.name}` : `${h.accounts.length}개 계좌 · ${owners.join(", ")}`} · {h.code}</small><small className="narrow-block">{h.quantity.toLocaleString("ko-KR")}{unit(h.code)} · 평단 {unitPrice(h.code, h.cost / h.quantity)}</small></td>
         <td>{h.quantity.toLocaleString("ko-KR")}{unit(h.code)}<small>평단 {unitPrice(h.code, h.cost / h.quantity)}</small></td>
         <td><strong>{h.value === null ? "가격 필요" : won(h.value)}</strong><small><span className="wide-only">{h.price === null ? "—" : "현재가 " + unitPrice(h.code, h.price)}</span><span className="narrow-only">{h.value === null ? "—" : "비중 " + share(h.value, base)}</span></small></td>
         <td className={(h.profit ?? 0) < 0 ? "negative" : "positive"}>{signed(h.profit)}<small>{rate(h.rate)}</small></td>

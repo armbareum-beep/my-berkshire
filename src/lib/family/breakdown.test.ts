@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { accountGroup, emptyPortfolio, summarize, validatePortfolio, type Portfolio } from "./model";
-import { allocationBreakdown, bondCountry, consolidateHoldings, productKind, quoteCodes, sortHoldings, holdingReturns, bucketRows, targetActuals } from "./breakdown";
+import { allocationBreakdown, bondCountry, consolidateHoldings, productKind, quoteCodes, sortHoldings, holdingReturns, bucketRows, partLabel, targetActuals, targetMembers } from "./breakdown";
 
 function sample(): Portfolio {
   const p = emptyPortfolio(); p.asOf = "2025-01-01";
@@ -85,6 +85,19 @@ describe("보유종목", () => {
     expect(mixed.cost + bond.cost).toBe(rows.find(r => r.code === "284430")!.cost);
     expect(mixed.rate).toBe(rows.find(r => r.code === "284430")!.rate);
     expect(groups[1][0].part).toBe(1);
+  });
+  it("국가별 비중 펼치기: 묶음 합계가 실제 비중 금액과 같음", () => {
+    const p = validatePortfolio(sample()), s = summarize(p), actual = targetActuals(s);
+    for (const group of [0, 1, 2, 3]) {
+      const { members, cash } = targetMembers(p, s, group);
+      expect(members.reduce((t, m) => t + m.row.value!, 0) + cash.reduce((t, [, v]) => t + v, 0)).toBeCloseTo(actual[group]);
+    }
+    const korea = targetMembers(p, s, 0).members, other = targetMembers(p, s, 3);
+    expect(korea.map(m => m.row.code)).toEqual(["005930", "284430"]);
+    expect(partLabel(p, korea[1].row, korea[1].bucket)).toBe("한국 주식 50%");
+    const bond = other.members.find(m => m.row.code === "284430")!;
+    expect(partLabel(p, bond.row, bond.bucket)).toBe("미국 채권 50%");
+    expect(other.cash).toEqual([["KRW", 1400], ["USD", 70], ["JPY", 30]]);
   });
   it("ETF와 전체 필터", () => {
     const p = validatePortfolio(sample()), s = summarize(p);
