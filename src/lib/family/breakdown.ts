@@ -68,7 +68,7 @@ export function targetActuals(s: Summary) {
   return [s.exposure[0], s.exposure[1], s.exposure[2], s.nav - s.exposure[0] - s.exposure[1] - s.exposure[2]];
 }
 
-export type HoldingRow = { code: string; name: string; price: number | null; quantity: number; cost: number; value: number | null; profit: number | null; rate: number | null; accounts: string[] };
+export type HoldingRow = { code: string; name: string; price: number | null; quantity: number; cost: number; value: number | null; profit: number | null; rate: number | null; accounts: string[]; members?: string[] };
 export type HoldingSort = "value" | "profit" | "rate";
 
 /** One row per product across the selected accounts. */
@@ -94,6 +94,27 @@ export function holdingReturns(p: Portfolio, s: Summary, filter: HoldingFilter) 
   const priced = rows.filter(r => r.value !== null);
   const value = priced.reduce((t, r) => t + r.value!, 0), cost = priced.reduce((t, r) => t + r.cost, 0);
   return { rows, value, cost, profit: value - cost, rate: cost > 0 ? (value - cost) / cost : null, unpriced: rows.length - priced.length };
+}
+
+/** Same-index key for ETFs: the stored label, else the name without the issuer brand (KODEX200TR and RISE200TR → 200TR). */
+export function indexKey(product: Product) {
+  if (product.index) return product.index;
+  if (productKind(product) !== "etf") return null;
+  const key = product.name.replace(/\s/g, "").replace(ETF_BRANDS, "").toUpperCase();
+  return key && key !== product.name.replace(/\s/g, "").toUpperCase() ? key : null;
+}
+
+/** Merges ETFs that track the same index into one row; single ETFs and other products stay as they are. */
+export function groupByIndex(p: Portfolio, rows: HoldingRow[]): HoldingRow[] {
+  const groups = new Map<string, HoldingRow[]>(), out: HoldingRow[] = [];
+  for (const r of rows) { const key = indexKey(p.products[r.code]); if (key) groups.set(key, [...(groups.get(key) ?? []), r]); else out.push(r); }
+  for (const [key, members] of groups) {
+    if (members.length === 1) { out.push(members[0]); continue; }
+    const cost = members.reduce((t, r) => t + r.cost, 0), priced = members.every(r => r.value !== null);
+    const value = priced ? members.reduce((t, r) => t + r.value!, 0) : null, profit = value === null ? null : value - cost;
+    out.push({ code: "index:" + key, name: key, price: null, quantity: 0, cost, value, profit, rate: profit !== null && cost > 0 ? profit / cost : null, accounts: [...new Set(members.flatMap(r => r.accounts))], members: members.map(r => r.name) });
+  }
+  return out;
 }
 
 /** Rows without a value for the key (unpriced, no cost) always go last. */

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ArrowDownWideNarrow, ArrowUpNarrowWide } from "lucide-react";
-import { holdingReturns, sortHoldings, type HoldingFilter, type HoldingSort } from "@/lib/family/breakdown";
+import { groupByIndex, holdingReturns, sortHoldings, type HoldingFilter, type HoldingSort } from "@/lib/family/breakdown";
 import { summarize, type Portfolio } from "@/lib/family/model";
 
 const won = (n: number) => Math.round(n).toLocaleString("ko-KR") + "원";
@@ -13,8 +13,8 @@ const sortOptions: [HoldingSort, string][] = [["rate", "수익률"], ["profit", 
 
 /** Holdings merged across the selected accounts; individual stocks first. */
 export default function Holdings({ data, owner, account, broker, group }: { data: Portfolio; owner: string; account: string; broker: string; group: string }) {
-  const [filter, setFilter] = useState<HoldingFilter>("stock"), [sortKey, setSortKey] = useState<HoldingSort>("rate"), [descending, setDescending] = useState(true);
-  const s = summarize(data, owner, account, broker, group), r = holdingReturns(data, s, filter), rows = sortHoldings(r.rows, sortKey, descending);
+  const [filter, setFilter] = useState<HoldingFilter>("stock"), [sortKey, setSortKey] = useState<HoldingSort>("rate"), [descending, setDescending] = useState(true), [merged, setMerged] = useState(true);
+  const s = summarize(data, owner, account, broker, group), r = holdingReturns(data, s, filter), rows = sortHoldings(filter !== "stock" && merged ? groupByIndex(data, r.rows) : r.rows, sortKey, descending);
   /** Weights within the chosen kind; the whole list is weighed against all assets, cash included. */
   const base = filter === "all" ? s.nav : r.value;
   const ownerName = (id: string) => data.owners.find(o => o.id === id)?.name || "가족";
@@ -26,6 +26,7 @@ export default function Holdings({ data, owner, account, broker, group }: { data
   return <section className="surface holdings">
     <div className="section-title"><h2>보유종목 <em>{rows.length}</em></h2><span>{data.checkedAt ? `시세 조회 ${new Date(data.checkedAt).toLocaleString("ko-KR")}` : "파일 기준가격 · 실시간 아님"}</span></div>
     <div className="segmented holding-filter" role="group" aria-label="종류">{filters.map(([id, name]) => <button key={id} aria-pressed={filter === id} onClick={() => setFilter(id)}>{name}</button>)}</div>
+    {filter !== "stock" && <label className="index-toggle"><input type="checkbox" checked={merged} onChange={e => setMerged(e.target.checked)} />같은 지수 ETF 묶기</label>}
     <div className="performance-grid">
       <div className="performance-own"><span>{label} 수익률</span><strong className={(r.rate ?? 0) < 0 ? "negative" : "positive"}>{rate(r.rate)}</strong><small>평가손익 {signed(r.profit)}</small></div>
       <div><span>평가액</span><strong>{won(r.value)}</strong><small>전체 자산의 {share(r.value, s.nav)}</small></div>
@@ -34,10 +35,11 @@ export default function Holdings({ data, owner, account, broker, group }: { data
     <div className="holding-sort"><div className="segmented" role="group" aria-label="정렬 기준">{sortOptions.map(([id, name]) => <button key={id} aria-pressed={sortKey === id} onClick={() => setSortKey(id)}>{name}</button>)}</div><button className="sort-direction" onClick={() => setDescending(!descending)}>{descending ? <ArrowDownWideNarrow size={15} /> : <ArrowUpNarrowWide size={15} />}{descending ? "높은순" : "낮은순"}</button></div>
     <div className="table-wrap"><table><thead><tr><th>종목 / 계좌</th><th>보유수량</th><th>평가액</th><th>수익금 / 수익률</th><th>비중</th></tr></thead><tbody>{rows.map(h => {
       const owners = [...new Set(h.accounts.map(id => ownerName(accountOf(id)!.owner)))];
+      const m = h.members;
       return <tr key={h.code}>
-        <td><strong>{h.name}</strong><small>{h.accounts.length === 1 ? `${owners[0]} · ${accountOf(h.accounts[0])!.name}` : `${h.accounts.length}개 계좌 · ${owners.join(", ")}`} · {h.code}</small><small className="narrow-block">{h.quantity.toLocaleString("ko-KR")}{unit(h.code)} · 평단 {unitPrice(h.code, h.cost / h.quantity)}</small></td>
-        <td>{h.quantity.toLocaleString("ko-KR")}{unit(h.code)}<small>평단 {unitPrice(h.code, h.cost / h.quantity)}</small></td>
-        <td><strong>{h.value === null ? "가격 필요" : won(h.value)}</strong><small><span className="wide-only">{h.price === null ? "—" : "현재가 " + unitPrice(h.code, h.price)}</span><span className="narrow-only">{h.value === null ? "—" : "비중 " + share(h.value, base)}</span></small></td>
+        <td><strong>{h.name}</strong>{m && <small>{m.join(" · ")}</small>}<small>{h.accounts.length === 1 ? `${owners[0]} · ${accountOf(h.accounts[0])!.name}` : `${h.accounts.length}개 계좌 · ${owners.join(", ")}`} {m ? "" : ` · ${h.code}`}</small><small className="narrow-block">{m ? `${m.length}개 ETF 합산` : `${h.quantity.toLocaleString("ko-KR")}${unit(h.code)} · 평단 ${unitPrice(h.code, h.cost / h.quantity)}`}</small></td>
+        <td>{m ? <>{m.length}개 ETF<small>합산</small></> : <>{h.quantity.toLocaleString("ko-KR")}{unit(h.code)}<small>평단 {unitPrice(h.code, h.cost / h.quantity)}</small></>}</td>
+        <td><strong>{h.value === null ? "가격 필요" : won(h.value)}</strong><small><span className="wide-only">{m ? "합산" : h.price === null ? "—" : "현재가 " + unitPrice(h.code, h.price)}</span><span className="narrow-only">{h.value === null ? "—" : "비중 " + share(h.value, base)}</span></small></td>
         <td className={(h.profit ?? 0) < 0 ? "negative" : "positive"}>{signed(h.profit)}<small>{rate(h.rate)}</small></td>
         <td className="weight">{h.value === null ? "—" : <><strong>{share(h.value, base)}</strong><i aria-hidden="true"><b style={{ width: `${base > 0 ? Math.min(100, Math.max(0, h.value / base * 100)) : 0}%` }} /></i></>}</td>
       </tr>;
