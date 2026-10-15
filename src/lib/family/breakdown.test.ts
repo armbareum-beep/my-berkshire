@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { accountGroup, emptyPortfolio, summarize, validatePortfolio, type Portfolio } from "./model";
-import { allocationBreakdown, bondCountry, consolidateHoldings, productKind, quoteCodes, sortHoldings, holdingReturns, targetActuals } from "./breakdown";
+import { allocationBreakdown, bondCountry, consolidateHoldings, productKind, quoteCodes, sortHoldings, holdingReturns, bucketSplit, mainBucket, targetActuals } from "./breakdown";
 
 function sample(): Portfolio {
   const p = emptyPortfolio(); p.asOf = "2025-01-01";
@@ -75,6 +75,13 @@ describe("보유종목", () => {
     const u = holdingReturns(q, summarize(q), "stock");
     expect(u.unpriced).toBe(1);
     expect(u.cost).toBe(2600);
+  });
+  it("ETF를 주된 국가별로 나누고 혼합 ETF는 비중이 큰 쪽(같으면 앞쪽)에 넣음", () => {
+    const p = validatePortfolio(sample()), rows = holdingReturns(p, summarize(p), "etf").rows;
+    expect(bucketSplit(p, rows)).toEqual([1000, 1000, 0, 0, 0]);
+    expect(mainBucket(p.products["283580"])).toBe(1);
+    expect(mainBucket(p.products["284430"])).toBe(0);
+    expect(mainBucket(p.products.FD)).toBe(4);
   });
   it("ETF와 전체 필터", () => {
     const p = validatePortfolio(sample()), s = summarize(p);

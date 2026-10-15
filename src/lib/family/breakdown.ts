@@ -96,6 +96,18 @@ export function holdingReturns(p: Portfolio, s: Summary, filter: HoldingFilter) 
   return { rows, value, cost, profit: value - cost, rate: cost > 0 ? (value - cost) / cost : null, unpriced: rows.length - priced.length };
 }
 
+/** Main bucket of a product: 0–3 = 한국·중국·미국·기타 equity, 4 = 채권·현금성. Ties go to the earlier bucket. */
+export function mainBucket(product: Product) {
+  return product.exposure.reduce((best, v, i, all) => v > all[best] ? i : best, 0);
+}
+
+/** Value of the rows by main bucket, so each row counts once under its own heading. */
+export function bucketSplit(p: Portfolio, rows: HoldingRow[]) {
+  const split = [0, 0, 0, 0, 0];
+  for (const r of rows) if (r.value !== null) split[mainBucket(p.products[r.code])] += r.value;
+  return split;
+}
+
 /** Rows without a value for the key (unpriced, no cost) always go last. */
 export function sortHoldings(rows: HoldingRow[], key: HoldingSort, descending: boolean) {
   return [...rows].sort((a, b) => {
