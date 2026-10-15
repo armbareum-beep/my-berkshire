@@ -96,8 +96,24 @@ export function holdingReturns(p: Portfolio, s: Summary, filter: HoldingFilter) 
   return { rows, value, cost, profit: value - cost, rate: cost > 0 ? (value - cost) / cost : null, unpriced: rows.length - priced.length };
 }
 
+export type BucketRow = HoldingRow & { part: number };
+/** Rows by 한국·중국·미국·기타 equity and 채권·현금성 (0–4). A mixed ETF appears in each bucket it holds, with that part of its value. */
+export function bucketRows(p: Portfolio, rows: HoldingRow[]): BucketRow[][] {
+  const groups: BucketRow[][] = [[], [], [], [], []];
+  for (const r of rows) {
+    const exposure = p.products[r.code].exposure, total = exposure.reduce((a, b) => a + b, 0);
+    if (total <= 0) { groups[4].push({ ...r, part: 1 }); continue; }
+    exposure.forEach((w, i) => {
+      if (w <= 0) return;
+      const part = w / total, scale = (n: number | null) => n === null ? null : n * part;
+      groups[i].push(part === 1 ? { ...r, part } : { ...r, part, cost: r.cost * part, value: scale(r.value), profit: scale(r.profit) });
+    });
+  }
+  return groups;
+}
+
 /** Rows without a value for the key (unpriced, no cost) always go last. */
-export function sortHoldings(rows: HoldingRow[], key: HoldingSort, descending: boolean) {
+export function sortHoldings<T extends HoldingRow>(rows: T[], key: HoldingSort, descending: boolean) {
   return [...rows].sort((a, b) => {
     const x = a[key], y = b[key];
     if (x === null || y === null) return x === null ? (y === null ? 0 : 1) : -1;
