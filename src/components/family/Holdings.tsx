@@ -35,8 +35,8 @@ export default function Holdings({ data, owner, account, broker, group }: { data
     <div className="table-wrap"><table><thead><tr><th>종목 / 계좌</th><th>보유수량</th><th>평가액</th><th>수익금 / 수익률</th><th>비중</th></tr></thead><tbody>{rows.map(h => {
       const owners = [...new Set(h.accounts.map(id => ownerName(accountOf(id)!.owner)))];
       return <tr key={h.code}>
-        <td><strong>{h.name}</strong><small>{h.accounts.length === 1 ? `${owners[0]} · ${accountOf(h.accounts[0])!.name}` : `${h.accounts.length}개 계좌 · ${owners.join(", ")}`} · {h.code}</small></td>
-        <td>{h.quantity.toLocaleString("ko-KR")}{unit(h.code)}<small>평균 {unitPrice(h.code, h.cost / h.quantity)}</small></td>
+        <td><strong>{h.name}</strong><small>{h.accounts.length === 1 ? `${owners[0]} · ${accountOf(h.accounts[0])!.name}` : `${h.accounts.length}개 계좌 · ${owners.join(", ")}`} · {h.code}</small><small className="narrow-block">{h.quantity.toLocaleString("ko-KR")}{unit(h.code)} · 평단 {unitPrice(h.code, h.cost / h.quantity)}</small></td>
+        <td>{h.quantity.toLocaleString("ko-KR")}{unit(h.code)}<small>평단 {unitPrice(h.code, h.cost / h.quantity)}</small></td>
         <td><strong>{h.value === null ? "가격 필요" : won(h.value)}</strong><small><span className="wide-only">{h.price === null ? "—" : "현재가 " + unitPrice(h.code, h.price)}</span><span className="narrow-only">{h.value === null ? "—" : "비중 " + share(h.value, base)}</span></small></td>
         <td className={(h.profit ?? 0) < 0 ? "negative" : "positive"}>{signed(h.profit)}<small>{rate(h.rate)}</small></td>
         <td className="weight">{h.value === null ? "—" : <><strong>{share(h.value, base)}</strong><i aria-hidden="true"><b style={{ width: `${base > 0 ? Math.min(100, Math.max(0, h.value / base * 100)) : 0}%` }} /></i></>}</td>
