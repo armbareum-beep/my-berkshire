@@ -2,7 +2,7 @@ export type Owner = { id: string; name: string };
 export type Account = { id: string; owner: string; broker: string; name: string; type: string; mask: string; cash: number; complete: boolean; div: number; interest: number; realized: number; divGross?: number; divTax?: number; interestGross?: number; interestTax?: number; valuationDate?: string; cashLabel?: string; interestKnown?: boolean; inceptionDate?: string; cashByCurrency?: Record<string, number> };
 export type ProductKind = "stock" | "etf" | "deposit" | "bond" | "cash";
 /** exposure: [한국, 중국, 미국, 기타 주식, 채권]. bondCountry splits the bond part by 한국·중국·미국·기타. */
-export type Product = { name: string; price: number | null; exposure: number[]; source?: string; kind?: ProductKind; bondCountry?: number[]; currency?: string; /** ETFs with the same label track the same index (e.g. KODEX 200 and TIGER 200). */ index?: string };
+export type Product = { name: string; price: number | null; exposure: number[]; source?: string; kind?: ProductKind; bondCountry?: number[]; currency?: string };
 export type Position = { account: string; code: string; quantity: number; cost: number };
 export type Flow = { id: string; account: string; date: string; amount: number; transfer?: string };
 export type Valuation = { account: string; date: string; value: number; estimated: boolean; note?: string };
@@ -51,7 +51,7 @@ export function validatePortfolio(input: unknown): Portfolio {
   check(new Set(p.accounts.map(a=>a.id)).size===p.accounts.length, "계좌 ID가 중복되었습니다.");
   check(p.products && typeof p.products === "object" && !Array.isArray(p.products), "상품 정보가 필요합니다.");
   check(Object.entries(p.products).every(([code,v])=>/^[A-Za-z0-9.^=-]{1,20}$/.test(code)&&str(v.name)&&(v.price===null||(num(v.price)&&v.price>0))&&Array.isArray(v.exposure)&&v.exposure.length===5&&v.exposure.every(n=>num(n)&&n>=0&&n<=1)&&Math.abs(v.exposure.reduce((a,b)=>a+b,0)-1)<1e-6), "상품 가격과 국가·채권 비중 합계(100%)를 확인해 주세요.");
-  check(Object.values(p.products).every(v=>(v.index===undefined||str(v.index))&&(v.kind===undefined||["stock","etf","deposit","bond","cash"].includes(v.kind))&&(v.bondCountry===undefined||shares(v.bondCountry,4))&&(v.currency===undefined||/^[A-Z]{3}$/.test(v.currency))&&(v.kind!=="cash"||(!!v.currency&&v.exposure[4]===1))), "상품 유형·통화와 채권 국가 비중(100%)을 확인해 주세요.");
+  check(Object.values(p.products).every(v=>(v.kind===undefined||["stock","etf","deposit","bond","cash"].includes(v.kind))&&(v.bondCountry===undefined||shares(v.bondCountry,4))&&(v.currency===undefined||/^[A-Z]{3}$/.test(v.currency))&&(v.kind!=="cash"||(!!v.currency&&v.exposure[4]===1))), "상품 유형·통화와 채권 국가 비중(100%)을 확인해 주세요.");
   check(p.accounts.every(a=>a.cashByCurrency===undefined||(a.cashByCurrency&&typeof a.cashByCurrency==="object"&&!Array.isArray(a.cashByCurrency)&&Object.entries(a.cashByCurrency).every(([c,v])=>/^[A-Z]{3}$/.test(c)&&num(v)&&v>=0)&&Math.abs(Object.values(a.cashByCurrency).reduce((x,y)=>x+y,0)-a.cash)<=1)), "통화별 현금 금액과 합계를 확인해 주세요.");
   check(p.holdings.every(h=>p.accounts.some(a=>a.id===h.account)&&Object.hasOwn(p.products,h.code)&&num(h.quantity)&&h.quantity>0&&num(h.cost)&&h.cost>=0), "보유상품의 계좌·코드·수량·원가를 확인해 주세요.");
   check(new Set(p.holdings.map(h=>h.account+":"+h.code)).size===p.holdings.length, "같은 계좌에 동일한 보유상품이 중복되었습니다.");

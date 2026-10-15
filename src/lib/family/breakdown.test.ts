@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { accountGroup, emptyPortfolio, summarize, validatePortfolio, type Portfolio } from "./model";
-import { allocationBreakdown, bondCountry, consolidateHoldings, productKind, quoteCodes, sortHoldings, holdingReturns, groupByIndex, indexKey, targetActuals } from "./breakdown";
+import { allocationBreakdown, bondCountry, consolidateHoldings, productKind, quoteCodes, sortHoldings, holdingReturns, targetActuals } from "./breakdown";
 
 function sample(): Portfolio {
   const p = emptyPortfolio(); p.asOf = "2025-01-01";
@@ -75,25 +75,6 @@ describe("보유종목", () => {
     const u = holdingReturns(q, summarize(q), "stock");
     expect(u.unpriced).toBe(1);
     expect(u.cost).toBe(2600);
-  });
-  it("같은 지수를 따라가는 ETF를 운용사와 상관없이 묶음", () => {
-    expect(indexKey({ name: "KODEX200TR", price: 1, exposure: [1, 0, 0, 0, 0] })).toBe("200TR");
-    expect(indexKey({ name: "RISE 200TR", price: 1, exposure: [1, 0, 0, 0, 0] })).toBe("200TR");
-    expect(indexKey({ name: "삼성전자", price: 1, exposure: [1, 0, 0, 0, 0] })).toBeNull();
-    expect(indexKey({ name: "버크셔", price: 1, exposure: [0, 0, 1, 0, 0], kind: "etf" })).toBeNull();
-    expect(indexKey({ name: "KODEX 200", price: 1, exposure: [1, 0, 0, 0, 0], index: "코스피200" })).toBe("코스피200");
-    const p = sample();
-    p.products.A = { name: "KODEX200TR", price: 10, exposure: [1, 0, 0, 0, 0] };
-    p.products.B = { name: "RISE200TR", price: 20, exposure: [1, 0, 0, 0, 0] };
-    p.holdings.push({ account: "general", code: "A", quantity: 10, cost: 80 }, { account: "isa", code: "B", quantity: 5, cost: 120 });
-    const s = summarize(validatePortfolio(p)), rows = groupByIndex(p, holdingReturns(p, s, "etf").rows);
-    const merged = rows.find(r => r.code === "index:200TR")!;
-    expect(merged.members).toEqual(["KODEX200TR", "RISE200TR"]);
-    expect(merged.value).toBe(200);
-    expect(merged.cost).toBe(200);
-    expect(merged.rate).toBe(0);
-    expect(merged.accounts.sort()).toEqual(["general", "isa"]);
-    expect(rows.map(r => r.code)).toContain("283580");
   });
   it("ETF와 전체 필터", () => {
     const p = validatePortfolio(sample()), s = summarize(p);
