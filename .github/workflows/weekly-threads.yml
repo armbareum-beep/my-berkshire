@@ -1,0 +1,33 @@
+name: weekly-threads
+
+on:
+  schedule:
+    - cron: "30 23 * * 5"   # 토요일 08:30 KST
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "1이면 게시하지 않고 글만 출력"
+        default: "1"
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build and post
+        env:
+          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || '0' }}
+        run: python automation/weekly-threads/post.py
+      - name: Refresh Threads token (60일 만료 방지)
+        if: always()
+        env:
+          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          new=$(curl -sS "https://graph.threads.net/refresh_access_token?grant_type=th_refresh_token&access_token=$THREADS_ACCESS_TOKEN" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("access_token",""))')
+          if [ -n "$new" ]; then echo "::add-mask::$new"; gh secret set THREADS_ACCESS_TOKEN --body "$new" --repo "$GITHUB_REPOSITORY"; echo "토큰 갱신됨"; else echo "토큰 갱신 건너뜀 (발급 24시간 이내이거나 실패)"; fi
