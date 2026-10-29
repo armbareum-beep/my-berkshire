@@ -37,9 +37,10 @@ export default function TargetMembers({ data, s, group }: { data: Portfolio; s: 
       </div>
       {expanded && <ul className="tb-items">{g.list.map(m => <li key={m.key}>
         <div className="tb-item-main">
-        <span><b>{m.name}</b>{m.tag && <em className="part-tag">{m.tag}</em>}{m.kind !== g.name && <small>{m.kind}</small>}{m.isStock && <HoldingValuationStatus data={data} code={m.code} price={m.price} />}</span>
+        <span><b>{m.name}</b>{m.tag && <em className="part-tag">{m.tag}</em>}{m.kind !== g.name && <small>{m.kind}</small>}</span>
         <span><b>{share(m.value, g.value)}</b><small>{won(m.value)}</small><Gain profit={m.profit} cost={m.cost} /></span>
         </div>
+        {m.isStock && <HoldingValuationStatus data={data} code={m.code} price={m.price} />}
       </li>)}</ul>}
     </li>;
   })}</ul></>;
