@@ -2,7 +2,7 @@ import { validatePortfolio, validTargets } from "@/lib/family/model";
 import { authorized, database, json, sameOrigin } from "@/lib/family/server";
 
 export const runtime = "nodejs";
-/** The only write: replaces the four target weights. Holdings, cash and flows stay read-only. */
+/** The only write: replaces the five target weights. Holdings, cash and flows stay read-only. */
 export async function POST(request: Request) {
   if (!sameOrigin(request)) return json({ error: "요청 출처를 확인해 주세요." }, 403);
   if (!await authorized()) return json({ error: "비밀번호를 입력해 주세요." }, 401);
