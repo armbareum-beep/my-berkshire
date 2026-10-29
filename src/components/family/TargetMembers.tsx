@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { partLabel, productKind, targetMembers } from "@/lib/family/breakdown";
 import { summarize, type Portfolio } from "@/lib/family/model";
+import ValuationStages from "./ValuationStages";
 
 const won = (n: number) => Math.round(n).toLocaleString("ko-KR") + "원";
 const share = (v: number, total: number) => total > 0 ? (v / total * 100).toFixed(1) + "%" : "—";
@@ -22,8 +23,8 @@ export default function TargetMembers({ data, s, group }: { data: Portfolio; s: 
   const items = [...members.map(({ row, bucket }) => {
     const kind = productKind(data.products[row.code]);
     const sub = group < 3 ? (kind === "etf" ? "ETF" : "개별 주식") : group === 3 ? (kind === "etf" ? "ETF" : "현물·기타") : bucket === 3 ? "그 밖의 나라 주식" : kind === "cash" ? "현금" : "채권·예금";
-    return { key: bucket + row.code, sub, name: row.name, tag: row.part < 1 ? partLabel(data, row, bucket) : "", kind: kindNames[kind], value: row.value!, profit: row.profit, cost: row.cost };
-  }), ...cash.map(([currency, value]) => ({ key: "cash" + currency, sub: "현금", name: `계좌 현금 · ${currencyNames[currency] || currency}`, tag: "", kind: "CMA·예수금", value, profit: null as number | null, cost: 0 }))];
+    return { key: bucket + row.code, code: row.code, price: row.price, isStock: kind === "stock", sub, name: row.name, tag: row.part < 1 ? partLabel(data, row, bucket) : "", kind: kindNames[kind], value: row.value!, profit: row.profit, cost: row.cost };
+  }), ...cash.map(([currency, value]) => ({ key: "cash" + currency, code: "", price: null, isStock: false, sub: "현금", name: `계좌 현금 · ${currencyNames[currency] || currency}`, tag: "", kind: "CMA·예수금", value, profit: null as number | null, cost: 0 }))];
   const subs = subNames[group].map(name => { const list = items.filter(m => m.sub === name).sort((a, b) => b.value - a.value); const gains = list.filter(m => m.profit !== null); return { name, list, value: list.reduce((t, m) => t + m.value, 0), profit: gains.length ? gains.reduce((t, m) => t + m.profit!, 0) : null, cost: gains.reduce((t, m) => t + m.cost, 0) }; }).filter(g => g.list.length);
   const total = subs.reduce((t, g) => t + g.value, 0);
   if (!subs.length) return <p className="tb-members-empty">보유한 종목이 없어요.</p>;
@@ -35,8 +36,11 @@ export default function TargetMembers({ data, s, group }: { data: Portfolio; s: 
         <span><b>{share(g.value, total)}</b><small>{won(g.value)}</small><Gain profit={g.profit} cost={g.cost} /></span>
       </div>
       {expanded && <ul className="tb-items">{g.list.map(m => <li key={m.key}>
+        <div className="tb-item-main">
         <span><b>{m.name}</b>{m.tag && <em className="part-tag">{m.tag}</em>}{m.kind !== g.name && <small>{m.kind}</small>}</span>
         <span><b>{share(m.value, g.value)}</b><small>{won(m.value)}</small><Gain profit={m.profit} cost={m.cost} /></span>
+        </div>
+        {m.isStock && <ValuationStages basis={data.valuationAlerts?.[m.code]} price={m.price} marketTime={data.quoteMarketTimes?.[m.code]} />}
       </li>)}</ul>}
     </li>;
   })}</ul>;

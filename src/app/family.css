@@ -40,3 +40,17 @@
 .tb-members-empty{margin:10px 0 0;font-size:12px;color:#8a99ad}
 .holdings .narrow-block{display:none}@media(max-width:640px){.holdings td small.narrow-block{display:block;margin-top:2px}.holdings tr.group-row td span{float:none;margin-left:8px;font-size:11px}}
 .holdings .part-tag{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:9px;background:#eef2f7;color:#526781;font-size:11px;font-style:normal;font-weight:600;vertical-align:1px}.holdings tr.group-row td{padding:16px 6px 6px;font-size:13px;font-weight:700;color:#334c6a;border-bottom:1px solid #e4e9f0}.holdings tr.group-row i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px}.holdings tr.group-row span{float:right;font-weight:500;color:#74869c;font-variant-numeric:tabular-nums}
+
+/* Per-share alert stages in the country allocation drill-down. */
+.tb-items>li{display:block}.tb-item-main{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.alert-empty{margin:7px 0 0;font-size:10px;color:#8a99ad}
+.valuation-alert{margin-top:8px;min-width:0}.valuation-alert summary{list-style:none;cursor:pointer;outline-offset:3px}.valuation-alert summary::-webkit-details-marker{display:none}
+.valuation-alert .alert-summary-row{display:flex;align-items:center;flex-wrap:wrap;gap:5px 9px;margin:4px 0;text-align:left;white-space:normal;font-variant-numeric:tabular-nums}
+.valuation-alert .alert-method{flex:0 0 55px;font-size:10px;font-weight:600;color:#6b7f97;white-space:normal;text-align:left}
+.valuation-alert .alert-side{display:inline-flex;align-items:center;gap:3px;white-space:nowrap;font-size:10px;color:#7b899b;text-align:left}
+.valuation-alert .alert-stage{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:21px;padding:0 3px;border:1px solid #dce3ed;border-radius:6px;font-size:10px;line-height:1;color:#74869c;background:white}
+.valuation-alert .down .hit{background:#dcefe8;border-color:#a5d5c1;color:#17684c;font-weight:700}.valuation-alert .up .hit{background:#fff0d8;border-color:#ebcc91;color:#855414;font-weight:700}.valuation-alert .unknown{border-style:dashed;color:#9aa8ba;background:#f6f8fb}
+.valuation-alert .alert-expand{display:block;margin:4px 0 0;font-size:9px;color:#8193aa;text-align:left;white-space:normal}.valuation-alert[open] .alert-expand{color:#4165e8}
+.alert-detail{margin-top:7px;padding:10px;background:white;border:1px solid #e2e8f0;border-radius:9px;overflow-wrap:anywhere}.alert-detail p{font-size:10px;line-height:1.6;color:#74869c;margin-top:5px;white-space:normal;text-align:left}.alert-detail .alert-pending{color:#936b2b}.alert-method-detail{margin-top:10px}.alert-detail strong{color:#526781}
+.alert-detail table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:10px;margin:5px 0}.alert-detail th,.alert-detail td{padding:5px 2px;border-bottom:1px solid #edf1f6;text-align:right;white-space:normal;font-weight:400;vertical-align:top}.alert-detail th:first-child{width:30px;text-align:left}.alert-detail thead th{color:#8a99ad;font-size:9px}.alert-detail td small{font-size:9px}.alert-detail .reached-down,.alert-detail .reached-down small{color:#17684c}.alert-detail .reached-up,.alert-detail .reached-up small{color:#855414}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@media(max-width:380px){.valuation-alert .alert-method{flex-basis:100%}.valuation-alert .alert-summary-row{gap:5px 10px}.alert-detail{padding:8px}}
