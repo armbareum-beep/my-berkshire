@@ -27,3 +27,62 @@
 갱신은 관리자 경로에서 행 잠금 또는 revision 비교 후 해당 종목의 기준만 `jsonb_set`으로 교체한다. 최상위 `revision`과 `updated_at`도 바꿔 앱의 기존 30초/focus 읽기에 반영한다. `data - 'valuationAlerts'`가 변경 전후 동일한지 확인한다. 일반 로그인 세션은 기준 쓰기 권한을 갖지 않으며 새 공개 쓰기 API를 만들지 않는다. 기존 RLS를 유지하며 스키마 변경은 필요 없다.
 
 저장 실패 시 이전 검증 기준을 보존하고 다음 점검에서 동기화를 재시도한다. 다른 예약·종목의 기준은 덮어쓰지 않는다. 잔고 전체를 오래된 파일로 덮어쓰지 않는다. 보고서 반영과 화면 시세 갱신은 별개며 화면에는 재무기말·기준 갱신일·시세시각을 각각 표시한다.
+
+## 공통 예약 연결 v1 (해외·다양한 조건)
+
+기존 `data.valuationAlerts`와 국내 47조건은 그대로 유지한다. 새 연결은 동일한 **비공개 Supabase 프로젝트**의 `public.family_vault`, `id='family'` 행에서 `data.priceWatchConnections[예약ID]`로 읽는다. 실제 기준·개인 금융자료·예약 상태는 공개 코드/테스트/문서에 넣지 않는다. 네 예약은 독립적으로 자기 키만 소유하며 합치거나 새로 만들지 않는다.
+
+```ts
+{
+  version: 1,
+  updatedAt: string, // timezone을 포함한 ISO 시각
+  title: string,
+  instruments: [{
+    symbol: string, exchange: string, currency: string,
+    basisDate: string | null, // YYYY-MM-DD, 공개된 재무기말. 미검증 pending만 null 허용
+    updatedAt: string, // 검증/동기화 ISO 시각
+    status: 'verified' | 'pending',
+    conditions: [{
+      id: string, label: string,
+      direction: 'lte' | 'gte',
+      value: number | null, // 유한한 양수 또는 검증 전 null
+      note: string
+    }],
+    note: string
+  }]
+}
+```
+
+- `symbol`+`exchange`로 상장종목을 식별한다. `currency`는 ISO 통화코드다. `note`에 **보통주/B주/ADR 등 주식 종류와 1주 단위**, 공시 출처·계산식·한계·환율 적용일/자료시각/방향을 기록한다. 종목 이름만 같은 다른 상장증권으로 대체하지 않는다.
+- NYSE BRK.B는 제공자 코드 BRK-B로만 연결한다. TSX FFH는 FFH.TO CAD 시세다. FFH.U/FRFHF/FIH.U, BRK.A는 대체값이 아니다. 나머지는 거래소가 명시된 제공자 코드 그대로 사용한다. KRX 6자리 코드는 .KS/.KQ 원시 메타데이터를 확인한다.
+- 조건 `id`·`label`·`direction`을 원문 그대로 표시한다. A/B 독립 OR 조건을 1/2/3차로 변환하거나 합성 가격으로 합치지 않는다. 여러 예약에 같은 종목이 있어도 별도로 표시한다. 이 표시기는 예약의 발송/중복방지 상태를 수정하지 않는다.
+- 미검증 `pending` 종목은 확인된 재무기말이 없으면 `basisDate=null`을 허용한다. 아직 조건 자체가 미설정이면 `conditions=[]`로 두고 ‘기준 설정 검증 대기’를 표시한다. 날짜·조건을 임의 생성하지 않는다.
+- 검증 안 된 조건은 `value=null`. 일부만 미검증이면 종목은 `verified`, 해당 조건만 null로 두어 독립적으로 확인된 조건을 계속 표시한다. 종목 전체가 미검증이면 `status=pending`으로 모든 판정을 대기한다. `pending`에 이전 숫자를 넣어도 도달로 표시하지 않는다. 잘못된 계약은 파서가 거부하며 자산 계산을 중단하지 않는다.
+- 미보유 연결은 해당 상장시장 국가의 ‘가격 감시 · 미보유’에 별도 표시한다. 한국/중국/미국 이외 거래소는 기타·현금성 하위에 표시한다. 보유수량·평가액·배분·수익률에 포함하지 않는다. 같은 종목이 계좌주 필터에서 안 보이더라도 가족 전체 보유종목은 미보유로 재분류하지 않는다.
+
+### 원시 시세와 판정
+
+`/api/family-quotes`는 기존 `prices`(KRW 주당 평가가)·`marketTimes`에 더해 `rawQuotes`를 반환한다. `rawQuotes`의 price/currency/symbol/exchange/marketTime/unit은 제공자 메타데이터의 관측값이다. 가격을 수량·100주·환율로 나누거나 곱해 새 연결과 비교하지 않는다. FX 실패에도 원시 외화 시세는 남고 원화 평가는 이전 값을 유지한다. `watchSymbols`는 미보유 감시 조회용이며 보유자산 시세 누락 목록과 분리한다. 시세는 기존 인증·동일 출처 검사 뒤 반환하며 새로운 공개 쓰기 API를 만들지 않는다.
+
+원시 시세의 통화·상장시장·종목·주식단위가 모두 맞고 가격이 양수이며 실제 시세시각이 20분 이내(미래 오차 최대 5분)일 때만 `lte`/`gte`의 경계를 포함해 비교한다. 30초마다 시세 나이를 다시 평가한다. 시각 누락/0/NaN/오래된 시세·통화/시장/단위 불일치는 **판정 보류**, null/pending 기준은 **검증 대기**, 유효한 비교의 불충족만 **미도달**이다. 휴장 종가가 오래됐다고 0원이나 최신가로 꾸미지 않는다. 화면에 실제 시세의 연월일·초·KST를 표시한다. 이는 장중 알림 전용 예약의 정규장·휴일·최신성 검사나 과거 도달/발송 이력을 대체하지 않는다.
+
+### 예약의 동기화 의무
+
+각 예약은 기존 일정·활성상태·판정·근거·중복방지 이력을 보존하고, 매 실행에서 기존 검증 근거를 재조회한다. 새 정식 보고서/실제 매입분기/롤링 표본/분할/환율을 반영해 검증한 **예약과 동일한 기준**을 자기 예약 키에 기록한다. 공시 지연을 주가 미도달로 취급하지 않는다. 화면 비교만을 위해 가정·보간·단계를 추가하지 않는다. 환산 참고선에는 원 통화 가격·FX 방향/값/출처/관측일을 함께 기록하며 역사적 실제 현지 체결가라고 부르지 않는다.
+
+새 자료가 미검증이면 해당 조건은 null/pending으로 두거나 이전 검증값·검증시각·한계를 명시해서 유지한다. 새 자료 적용이 필요한데 이전 값이 더 이상 유효하지 않으면 null/pending으로 전환한다. 업데이트 성공은 다시 읽어 내용과 revision/updated_at 변경까지 확인한 뒤 기록한다. 실패 시 이전 데이터 보존, 다음 실행 재시도. ‘저장 성공’과 ‘시세 판정 성공’은 별도다. 앱 동기화로 예약의 마지막 도달/회복/발송 상태를 초기화하지 않는다.
+
+### 원자적 갱신 규칙 (관리자만)
+
+프로젝트는 연결된 비공개 환경에서 지정한다. 일반 로그인은 쓰기 권한을 얻지 않는다. 기존 RLS·스키마·시세 원본을 유지한다. 아래는 실행 구조 예시이며 실제 예약 ID·기준 JSON은 비공개 실행에서 전달한다.
+
+1. 트랜잭션에서 `SELECT ... FROM public.family_vault WHERE id='family' FOR UPDATE`로 현재 행을 잠근다. 행이 없거나 `priceWatchConnections`가 object가 아니면 중단한다(null/미존재는 빈 object로 초기화 가능).
+2. `jsonb_set`으로 부모 object를 없을 때만 만들고 `ARRAY['priceWatchConnections', task_id]` 경로에 검증한 payload만 기록한다. 오래된 전체 data 스냅샷을 UPDATE하지 않는다. 저장된 해당 키의 updatedAt보다 오래된 쓰기는 중단 후 재조회한다.
+3. `revision=gen_random_uuid()`, `updated_at=clock_timestamp()`도 같은 UPDATE에서 갱신한다.
+4. 같은 트랜잭션의 변경 전후를 아래 조건으로 비교하고 하나라도 다르면 예외로 전체 rollback한다.
+   - `after.data - 'priceWatchConnections' = before.data - 'priceWatchConnections'` (국내 47조건·계좌·보유수량·현금·거래·목표·시세 포함)
+   - `(after.data->'priceWatchConnections') - task_id = coalesce(before.data->'priceWatchConnections','{}') - task_id`
+   - 해당 키가 입력 payload와 정확히 같고 revision/updated_at이 변경됐음
+5. COMMIT 후 해당 키를 다시 SELECT해 확인한다. 다른 예약의 키나 일정·프롬프트는 수정하지 않는다. 병렬 실행은 행 잠금으로 직렬화하며 늦게 도착한 옛 기준이 새 기준을 덮어쓰지 못하게 한다.
+
+앱은 기존 30초/focus 읽기에서 revision 변경을 확인해 새 기준을 가져온다. 보고서 검증·기준 동기화·시세 관측의 날짜는 서로 구분해 표시한다.

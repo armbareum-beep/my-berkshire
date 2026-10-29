@@ -16,4 +16,19 @@ describe("시세 검증",()=>{
    .toEqual({});
  });
  it("엔화 환율 상품은 원/1엔 가격 그대로 사용",async()=>{const fetch=vi.fn(async()=>quote(8.65,"KRW",200));vi.stubGlobal("fetch",fetch);const p=await getFamilyPrices(["JPYKRW=X"]);expect(p.prices).toEqual({"JPYKRW=X":8.65});expect(fetch).toHaveBeenCalledTimes(1);});
+ it("원시 USD/CAD 시세는 원화 평가와 분리하고 FX 실패에도 유지",async()=>{
+  vi.stubGlobal("fetch",vi.fn(async(u:string)=>{
+   if(u.includes("KRW=X"))return {ok:false};
+   const ffh=u.includes("FFH.TO");
+   return {ok:true,json:async()=>({chart:{result:[{meta:{regularMarketPrice:ffh?200:100,currency:ffh?"CAD":"USD",symbol:ffh?"FFH.TO":"BRK-B",exchangeName:ffh?"TOR":"NYQ",instrumentType:"EQUITY",regularMarketTime:12345}}]}})};
+  }));
+  const result=await getFamilyPrices(["BRK-B","FFH.TO"]);
+  expect(result.prices).toEqual({});
+  expect(result.rawQuotes["BRK-B"]).toEqual({symbol:"BRK-B",exchange:"NYSE",currency:"USD",price:100,marketTime:12345,unit:"share"});
+  expect(result.rawQuotes["FFH.TO"]).toMatchObject({exchange:"TSX",currency:"CAD",price:200});
+ });
+ it("지수·시세시각 누락·다른 종목 반환을 원시 관측에서 숨기지 않음",async()=>{
+  vi.stubGlobal("fetch",vi.fn(async()=>({ok:true,json:async()=>({chart:{result:[{meta:{regularMarketPrice:100,currency:"KRW",symbol:"OTHER",exchangeName:"UNKNOWN",instrumentType:"INDEX"}}]}})})));
+  expect((await getFamilyPrices(["TEST"])).rawQuotes.TEST).toEqual({symbol:"OTHER",exchange:"",currency:"KRW",price:100,marketTime:0,unit:"other"});
+ });
 });
