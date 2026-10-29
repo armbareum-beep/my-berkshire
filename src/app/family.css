@@ -62,3 +62,8 @@
 .price-watch .watch-detail{padding:6px 0;border-bottom:1px solid #edf1f6}.unheld-watches{margin-top:14px;padding:12px;border:1px dashed #dce3ed;border-radius:10px;min-width:0}.unheld-watches>p{font-size:12px;color:#526781}.unheld-watches>p>small{display:block;color:#8a99ad;font-size:10px;margin-top:3px}
 
 .watch-connections{margin:0 0 14px;padding:12px 16px;background:white;border:1px solid #e2e8f0;border-radius:12px;overflow-wrap:anywhere}.watch-connections summary{cursor:pointer;font-size:13px;color:#526781}.watch-connections ul{list-style:none;padding:0;margin:8px 0}.watch-connections li{padding:8px 0;border-top:1px solid #edf1f6}.watch-connections strong,.watch-connections span,.watch-connections small{display:block;white-space:normal;text-align:left}.watch-connections strong{font-size:12px;color:#526781}.watch-connections span{font-size:11px;color:#936b2b;margin-top:3px}.watch-connections small{font-size:9px;color:#8a99ad;margin-top:3px}
+
+/* One quiet status under each held stock name. */
+.tb-members .holding-valuation-status{display:table;margin-top:5px;padding:2px 7px;border-radius:5px;font-size:10px;font-weight:500;line-height:1.5;text-align:left;white-space:normal;color:#7b899b;background:#edf1f6}
+.tb-members .holding-valuation-status.hit{color:#17684c;background:#dcefe8}
+.tb-members .holding-valuation-status.pending{color:#936b2b;background:#faf3e6}
