@@ -7,8 +7,8 @@ const won = (n: number) => Math.round(n).toLocaleString("ko-KR") + "원";
 const share = (v: number, total: number) => total > 0 ? (v / total * 100).toFixed(1) + "%" : "—";
 const currencyNames: Record<string, string> = { KRW: "원화", USD: "달러", JPY: "엔화", CNY: "위안화", HKD: "홍콩달러", EUR: "유로" };
 const kindNames = { stock: "개별 주식", etf: "ETF", deposit: "예금", bond: "채권", cash: "외화" };
-/** Sub-groups in display order: countries split ETF / 개별 주식, the last group splits cash, bonds and other equity. */
-const subNames = [["ETF", "개별 주식"], ["ETF", "개별 주식"], ["ETF", "개별 주식"], ["현금", "채권·예금", "그 밖의 나라 주식"]];
+/** Sub-groups in display order: countries split ETF / 개별 주식, gold splits ETF / 현물, the last group splits cash, bonds and other equity. */
+const subNames = [["ETF", "개별 주식"], ["ETF", "개별 주식"], ["ETF", "개별 주식"], ["ETF", "현물·기타"], ["현금", "채권·예금", "그 밖의 나라 주식"]];
 
 /** The holdings behind one row of the 국가별 비중 card, grouped by kind; each sub-group opens to its items. Weights are within the level above, so each level adds up to 100%. */
 export default function TargetMembers({ data, s, group }: { data: Portfolio; s: ReturnType<typeof summarize>; group: number }) {
@@ -16,7 +16,7 @@ export default function TargetMembers({ data, s, group }: { data: Portfolio; s: 
   const { members, cash } = targetMembers(data, s, group);
   const items = [...members.map(({ row, bucket }) => {
     const kind = productKind(data.products[row.code]);
-    const sub = group < 3 ? (kind === "etf" ? "ETF" : "개별 주식") : bucket === 3 ? "그 밖의 나라 주식" : kind === "cash" ? "현금" : "채권·예금";
+    const sub = group < 3 ? (kind === "etf" ? "ETF" : "개별 주식") : group === 3 ? (kind === "etf" ? "ETF" : "현물·기타") : bucket === 3 ? "그 밖의 나라 주식" : kind === "cash" ? "현금" : "채권·예금";
     return { key: bucket + row.code, sub, name: row.name, tag: row.part < 1 ? partLabel(data, row, bucket) : "", kind: kindNames[kind], value: row.value! };
   }), ...cash.map(([currency, value]) => ({ key: "cash" + currency, sub: "현금", name: `계좌 현금 · ${currencyNames[currency] || currency}`, tag: "", kind: "CMA·예수금", value }))];
   const subs = subNames[group].map(name => { const list = items.filter(m => m.sub === name).sort((a, b) => b.value - a.value); return { name, list, value: list.reduce((t, m) => t + m.value, 0) }; }).filter(g => g.list.length);

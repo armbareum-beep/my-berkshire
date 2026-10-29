@@ -45,27 +45,32 @@ const add = (to: number[], from: number[], scale = 1) => from.forEach((v, i) => 
  * Splits the selection by what is held. ETF equity, individual stock equity and
  * bonds/deposits (including the bond part of mixed ETFs) are [한국, 중국, 미국, 기타] in KRW;
  * cash — account cash and foreign-currency holdings such as a yen deposit — is kept per currency.
+ * Gold (including the gold part of mixed ETFs) is its own total, with the part held through ETFs.
  */
 export function allocationBreakdown(p: Portfolio, s: Summary) {
   const etf = zero(), stock = zero(), fixed = zero();
   const held: Record<string, number> = {};
-  let bond = 0, deposit = 0;
+  let bond = 0, deposit = 0, gold = 0, goldEtf = 0;
   for (const h of s.positions) {
     if (h.value === null) continue;
     const product = p.products[h.code], kind = productKind(product);
     if (kind === "cash") { held[product.currency!] = (held[product.currency!] || 0) + h.value; continue; }
     add(kind === "etf" ? etf : stock, product.exposure.slice(0, 4), h.value);
+    const inGold = h.value * (product.exposure[5] ?? 0);
+    gold += inGold;
+    if (kind === "etf") goldEtf += inGold;
     const amount = h.value * product.exposure[4];
     if (!amount) continue;
     add(fixed, bondCountry(product), amount);
     if (kind === "deposit") deposit += amount; else bond += amount;
   }
-  return { etf, stock, fixed, cash: cashByCurrency(s, held), bond, deposit };
+  return { etf, stock, fixed, cash: cashByCurrency(s, held), bond, deposit, gold, goldEtf };
 }
 
-/** Current weights for the targets: 한국·중국·미국 equity, and everything else (cash, bonds, other equity). */
+/** Current weights for the targets: 한국·중국·미국 equity, gold, and everything else (cash, bonds, other equity). */
 export function targetActuals(s: Summary) {
-  return [s.exposure[0], s.exposure[1], s.exposure[2], s.nav - s.exposure[0] - s.exposure[1] - s.exposure[2]];
+  const [kr, cn, us, , , gold] = s.exposure;
+  return [kr, cn, us, gold, s.nav - kr - cn - us - gold];
 }
 
 export type HoldingRow = { code: string; name: string; price: number | null; quantity: number; cost: number; value: number | null; profit: number | null; rate: number | null; accounts: string[] };
@@ -97,9 +102,9 @@ export function holdingReturns(p: Portfolio, s: Summary, filter: HoldingFilter) 
 }
 
 export type BucketRow = HoldingRow & { part: number };
-/** Rows by 한국·중국·미국·기타 equity and 채권·현금성 (0–4). A mixed ETF appears in each bucket it holds, with that part of its value. */
+/** Rows by 한국·중국·미국·기타 equity, 채권·현금성 and 금 (0–5). A mixed ETF appears in each bucket it holds, with that part of its value. */
 export function bucketRows(p: Portfolio, rows: HoldingRow[]): BucketRow[][] {
-  const groups: BucketRow[][] = [[], [], [], [], []];
+  const groups: BucketRow[][] = [[], [], [], [], [], []];
   for (const r of rows) {
     const exposure = p.products[r.code].exposure, total = exposure.reduce((a, b) => a + b, 0);
     if (total <= 0) { groups[4].push({ ...r, part: 1 }); continue; }
@@ -112,17 +117,18 @@ export function bucketRows(p: Portfolio, rows: HoldingRow[]): BucketRow[][] {
   return groups;
 }
 
-/** Which part of a mixed product a bucket row is, e.g. 한국 주식 50% or 미국 채권 50%. */
+/** Which part of a mixed product a bucket row is, e.g. 한국 주식 50%, 미국 채권 50% or 금 50%. */
 export function partLabel(p: Portfolio, row: BucketRow, bucket: number) {
+  if (bucket === 5) return `금 ${Math.round(row.part * 100)}%`;
   const bond = bondCountry(p.products[row.code]), country = bucket < 4 ? bucket : bond.indexOf(Math.max(...bond));
   return `${countries[country]} ${bucket < 4 ? "주식" : "채권"} ${Math.round(row.part * 100)}%`;
 }
 
-/** What makes up one target group (한국·중국·미국, or 3 = everything else), largest first; the last group also holds account cash by currency. */
+/** What makes up one target group (0–2 한국·중국·미국, 3 금, 4 everything else), largest first; the last group also holds account cash by currency. */
 export function targetMembers(p: Portfolio, s: Summary, group: number) {
   const buckets = bucketRows(p, consolidateHoldings(s)).map((rows, bucket) => rows.map(row => ({ row, bucket })));
-  const members = (group < 3 ? buckets[group] : [...buckets[3], ...buckets[4]]).filter(m => m.row.value !== null);
-  return { members: members.sort((a, b) => b.row.value! - a.row.value!), cash: group < 3 ? [] : cashByCurrency(s, {}).filter(([, v]) => Math.round(v)) };
+  const members = (group < 3 ? buckets[group] : group === 3 ? buckets[5] : [...buckets[3], ...buckets[4]]).filter(m => m.row.value !== null);
+  return { members: members.sort((a, b) => b.row.value! - a.row.value!), cash: group < 4 ? [] : cashByCurrency(s, {}).filter(([, v]) => Math.round(v)) };
 }
 
 /** Rows without a value for the key (unpriced, no cost) always go last. */

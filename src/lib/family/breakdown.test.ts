@@ -79,7 +79,7 @@ describe("보유종목", () => {
   it("ETF를 국가별로 나누고 혼합 ETF는 비중대로 쪼갬", () => {
     const p = validatePortfolio(sample()), rows = holdingReturns(p, summarize(p), "etf").rows;
     const groups = bucketRows(p, rows), sum = (g: typeof groups[0]) => g.reduce((t, r) => t + (r.value ?? 0), 0);
-    expect(groups.map(sum)).toEqual([500, 1000, 0, 0, 500]);
+    expect(groups.map(sum)).toEqual([500, 1000, 0, 0, 500, 0]);
     const mixed = groups[0].find(r => r.code === "284430")!, bond = groups[4].find(r => r.code === "284430")!;
     expect([mixed.part, bond.part]).toEqual([.5, .5]);
     expect(mixed.cost + bond.cost).toBe(rows.find(r => r.code === "284430")!.cost);
@@ -88,11 +88,11 @@ describe("보유종목", () => {
   });
   it("국가별 비중 펼치기: 묶음 합계가 실제 비중 금액과 같음", () => {
     const p = validatePortfolio(sample()), s = summarize(p), actual = targetActuals(s);
-    for (const group of [0, 1, 2, 3]) {
+    for (const group of [0, 1, 2, 3, 4]) {
       const { members, cash } = targetMembers(p, s, group);
       expect(members.reduce((t, m) => t + m.row.value!, 0) + cash.reduce((t, [, v]) => t + v, 0)).toBeCloseTo(actual[group]);
     }
-    const korea = targetMembers(p, s, 0).members, other = targetMembers(p, s, 3);
+    const korea = targetMembers(p, s, 0).members, other = targetMembers(p, s, 4);
     expect(korea.map(m => m.row.code)).toEqual(["005930", "284430"]);
     expect(partLabel(p, korea[1].row, korea[1].bucket)).toBe("한국 주식 50%");
     const bond = other.members.find(m => m.row.code === "284430")!;
@@ -143,8 +143,26 @@ describe("유형별 국가 비중", () => {
   });
   it("목표 비교의 기타에는 현금·채권이 들어감", () => {
     const s = summarize(sample()), actual = targetActuals(s);
-    expect(actual).toEqual([2000, 1000, 1000, s.nav - 4000]);
-    expect(actual[3]).toBe(1500 + 500 + 2000 + 900);
+    expect(actual).toEqual([2000, 1000, 1000, 0, s.nav - 4000]);
+    expect(actual[4]).toBe(1500 + 500 + 2000 + 900);
+  });
+  it("금은 따로: 금채권혼합은 금 50%·채권 50%로 나뉨", () => {
+    const p = sample();
+    p.products.GOLD = { name: "PLUS 금채권혼합", price: 10, exposure: [0, 0, 0, 0, .5, .5], kind: "etf" };
+    p.holdings.push({ account: "isa", code: "GOLD", quantity: 100, cost: 900 });
+    const v = validatePortfolio(p), s = summarize(v), actual = targetActuals(s), b = allocationBreakdown(v, s);
+    expect(actual[3]).toBe(500);
+    expect(actual.reduce((a, c) => a + c, 0)).toBeCloseTo(s.nav);
+    expect([b.gold, b.goldEtf]).toEqual([500, 500]);
+    const gold = targetMembers(v, s, 3).members;
+    expect(gold.map(m => [m.row.code, m.row.value, partLabel(v, m.row, m.bucket)])).toEqual([["GOLD", 500, "금 50%"]]);
+    expect(targetMembers(v, s, 4).members.some(m => m.row.code === "GOLD" && m.row.value === 500)).toBe(true);
+  });
+  it("금 칸이 없던 자료는 금 0으로 읽고 목표도 금 0%를 끼워 넣음", () => {
+    const p = sample(); p.targets = [40, 20, 20, 20];
+    const v = validatePortfolio(p);
+    expect(v.targets).toEqual([40, 20, 20, 0, 20]);
+    expect(v.products["005930"].exposure).toEqual([1, 0, 0, 0, 0, 0]);
   });
   it("통화별 현금 합계와 채권 국가 비중을 검증", () => {
     const p = sample(); p.accounts[0].cashByCurrency = { KRW: 900, USD: 50, JPY: 30 };

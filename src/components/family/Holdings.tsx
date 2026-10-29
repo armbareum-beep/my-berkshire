@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ArrowDownWideNarrow, ArrowUpNarrowWide } from "lucide-react";
 import { bucketRows, partLabel, holdingReturns, sortHoldings, type BucketRow, type HoldingFilter, type HoldingSort } from "@/lib/family/breakdown";
-import { colors, countries, summarize, type Portfolio } from "@/lib/family/model";
+import { colors, countries, goldColor, summarize, type Portfolio } from "@/lib/family/model";
 
 const won = (n: number) => Math.round(n).toLocaleString("ko-KR") + "원";
 const signed = (n: number | null) => n === null ? "미평가" : (n >= 0 ? "+" : "−") + won(Math.abs(n));
@@ -10,7 +10,9 @@ const share = (v: number, total: number) => total > 0 ? (v / total * 100).toFixe
 const currencyUnits: Record<string, string> = { JPY: "엔", USD: "달러", CNY: "위안", EUR: "유로", HKD: "홍콩달러" };
 const filters: [HoldingFilter, string][] = [["stock", "개별 주식"], ["etf", "ETF"], ["all", "전체"]];
 const sortOptions: [HoldingSort, string][] = [["rate", "수익률"], ["profit", "수익금"], ["value", "평가액"]];
-const buckets = [...countries, "채권·현금성"], bucketColors = [...colors, "#c7d2e3"];
+const buckets = [...countries, "채권·현금성", "금"], bucketColors = [...colors, "#c7d2e3", goldColor];
+/** Same order as the targets: 금 before 채권·현금성. */
+const bucketOrder = [0, 1, 2, 3, 5, 4];
 
 /** Holdings merged across the selected accounts; individual stocks first. */
 export default function Holdings({ data, owner, account, broker, group }: { data: Portfolio; owner: string; account: string; broker: string; group: string }) {
@@ -26,7 +28,7 @@ export default function Holdings({ data, owner, account, broker, group }: { data
   const label = filters.find(([id]) => id === filter)![1];
   /** ETF and stock views split by country; the whole list is already split on the 국가별 배분 tab. */
   const byCountry = filter !== "all", total = (g: BucketRow[]) => g.reduce((t, h) => t + (h.value ?? 0), 0);
-  const groups: [number, BucketRow[]][] = byCountry ? bucketRows(data, r.rows).map((g, i) => [i, sortHoldings(g, sortKey, descending)] as [number, BucketRow[]]).filter(([, g]) => g.length) : [[-1, rows.map(h => ({ ...h, part: 1 }))]];
+  const groups: [number, BucketRow[]][] = byCountry ? (b => bucketOrder.map(i => [i, sortHoldings(b[i], sortKey, descending)] as [number, BucketRow[]]))(bucketRows(data, r.rows)).filter(([, g]) => g.length) : [[-1, rows.map(h => ({ ...h, part: 1 }))]];
   return <section className="surface holdings">
     <div className="section-title"><h2>보유종목 <em>{rows.length}</em></h2><span>{data.checkedAt ? `시세 조회 ${new Date(data.checkedAt).toLocaleString("ko-KR")}` : "파일 기준가격 · 실시간 아님"}</span></div>
     <div className="segmented holding-filter" role="group" aria-label="종류">{filters.map(([id, name]) => <button key={id} aria-pressed={filter === id} onClick={() => setFilter(id)}>{name}</button>)}</div>
