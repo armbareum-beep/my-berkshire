@@ -14,9 +14,52 @@ export type StockAlertBasis = {
   methods: AlertMethod[];
 };
 export type ValuationAlerts = Record<string, StockAlertBasis>;
+export type PriceWatchCondition = { id: string; label: string; direction: "lte" | "gte"; value: number | null; note: string };
+export type PriceWatchInstrument = { symbol: string; exchange: string; currency: string; basisDate: string | null; updatedAt: string; status: "verified" | "pending"; conditions: PriceWatchCondition[]; note: string };
+export type PriceWatchConnection = { version: 1; updatedAt: string; title: string; instruments: PriceWatchInstrument[] };
+/** Screen-only provider observation, independent of KRW portfolio valuation and FX. */
+export type NativeQuote = { symbol: string; exchange: string; currency: string; price: number; marketTime: number; unit: "share" | "other" };
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const text = (v: unknown, max: number): v is string => typeof v === "string" && v.length > 0 && v.length <= max;
 const date = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && Number.isFinite(Date.parse(v)) && new Date(v).toISOString().slice(0, 10) === v;
+const iso = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/.test(v) && Number.isFinite(Date.parse(v));
+const note = (v: unknown): v is string => typeof v === "string" && v.length <= 6000;
+const symbol = (v: unknown): v is string => typeof v === "string" && /^[A-Za-z0-9.^=-]{1,20}$/.test(v);
+const positive = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v > 0;
+
+export function readPriceWatchConnection(input: unknown): PriceWatchConnection | null {
+  if (!record(input) || input.version !== 1 || !iso(input.updatedAt) || !text(input.title, 120) || !Array.isArray(input.instruments) || input.instruments.length > 50) return null;
+  if (!input.instruments.every(i => record(i) && symbol(i.symbol) && typeof i.exchange === "string" && /^[A-Z0-9-]{2,20}$/.test(i.exchange) && typeof i.currency === "string" && /^[A-Z]{3}$/.test(i.currency) && (date(i.basisDate) || (i.basisDate === null && i.status === "pending")) && iso(i.updatedAt) && ["verified", "pending"].includes(String(i.status)) && note(i.note) && Array.isArray(i.conditions) && (i.conditions.length > 0 || i.status === "pending") && i.conditions.length <= 20 && i.conditions.every(c => record(c) && text(c.id, 40) && text(c.label, 120) && ["lte", "gte"].includes(String(c.direction)) && (c.value === null || positive(c.value)) && note(c.note)) && new Set(i.conditions.map(c => c.id)).size === i.conditions.length)) return null;
+  if (new Set(input.instruments.map(i => `${i.exchange}:${i.symbol}`)).size !== input.instruments.length) return null;
+  return input as PriceWatchConnection;
+}
+export function priceWatchEntries(input: unknown) {
+  if (!record(input)) return [];
+  return Object.entries(input).flatMap(([taskId, v]) => {
+    const connection = readPriceWatchConnection(v);
+    return connection ? connection.instruments.map(instrument => ({ taskId, title: connection.title, instrument })) : [];
+  });
+}
+/** Only explicit exchange-scoped aliases; never FFH.U/FRFHF/FIH.U or BRK.A. */
+export function watchQuoteSymbol(i: Pick<PriceWatchInstrument, "symbol" | "exchange">) {
+  if (i.exchange === "NYSE" && ["BRK.B", "BRK-B"].includes(i.symbol)) return "BRK-B";
+  if (i.exchange === "TSX") return i.symbol.endsWith(".TO") ? i.symbol : i.symbol + ".TO";
+  return i.symbol;
+}
+export function watchesForSymbol(input: unknown, code: string) {
+  return priceWatchEntries(input).filter(({ instrument: i }) => code === watchQuoteSymbol(i) || code === i.symbol);
+}
+/** Screen comparison requires the exact listing, currency, share unit and a fresh provider timestamp. */
+export function watchConditionStates(i: PriceWatchInstrument, q: NativeQuote | undefined, now = Date.now()) {
+  const age = q ? now - q.marketTime * 1000 : NaN;
+  let reason = "";
+  if (!q) reason = "시세 없음";
+  else if ((q.symbol !== watchQuoteSymbol(i) && !(i.exchange === "KRX" && /^\d{6}$/.test(i.symbol) && [i.symbol + ".KS", i.symbol + ".KQ"].includes(q.symbol))) || q.exchange !== i.exchange) reason = "상장시장·종목 확인 필요";
+  else if (q.currency !== i.currency || q.unit !== "share") reason = "통화·주식단위 확인 필요";
+  else if (!positive(q.price) || !positive(q.marketTime) || !Number.isFinite(age) || age < -300_000 || age > 20 * 60_000) reason = "시세 시각·가격 확인 필요";
+  const conditions = i.conditions.map(c => ({ condition: c, state: i.status === "pending" || c.value === null ? "pending" as const : reason ? "unjudged" as const : (c.direction === "lte" ? q!.price <= c.value : q!.price >= c.value) ? "hit" as const : "waiting" as const }));
+  return { reason, conditions };
+}
 function levels(v: unknown, down: boolean): v is number[] {
   return Array.isArray(v) && v.length <= 3 && v.every((n, i) => typeof n === "number" && Number.isFinite(n) && n > 0 && n < 1e12 && (!i || (down ? n < v[i - 1] : n > v[i - 1])));
 }

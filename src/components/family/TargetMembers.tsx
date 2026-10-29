@@ -3,6 +3,8 @@ import { ChevronRight } from "lucide-react";
 import { partLabel, productKind, targetMembers } from "@/lib/family/breakdown";
 import { summarize, type Portfolio } from "@/lib/family/model";
 import ValuationStages from "./ValuationStages";
+import PriceWatchStages, { UnheldPriceWatches } from "./PriceWatchStages";
+import { watchesForSymbol, watchQuoteSymbol } from "@/lib/family/valuation-alerts";
 
 const won = (n: number) => Math.round(n).toLocaleString("ko-KR") + "원";
 const share = (v: number, total: number) => total > 0 ? (v / total * 100).toFixed(1) + "%" : "—";
@@ -27,8 +29,8 @@ export default function TargetMembers({ data, s, group }: { data: Portfolio; s: 
   }), ...cash.map(([currency, value]) => ({ key: "cash" + currency, code: "", price: null, isStock: false, sub: "현금", name: `계좌 현금 · ${currencyNames[currency] || currency}`, tag: "", kind: "CMA·예수금", value, profit: null as number | null, cost: 0 }))];
   const subs = subNames[group].map(name => { const list = items.filter(m => m.sub === name).sort((a, b) => b.value - a.value); const gains = list.filter(m => m.profit !== null); return { name, list, value: list.reduce((t, m) => t + m.value, 0), profit: gains.length ? gains.reduce((t, m) => t + m.profit!, 0) : null, cost: gains.reduce((t, m) => t + m.cost, 0) }; }).filter(g => g.list.length);
   const total = subs.reduce((t, g) => t + g.value, 0);
-  if (!subs.length) return <p className="tb-members-empty">보유한 종목이 없어요.</p>;
-  return <ul className="tb-members">{subs.map(g => {
+  if (!subs.length) return <><p className="tb-members-empty">보유한 종목이 없어요.</p><UnheldPriceWatches data={data} group={group} /></>;
+  return <><ul className="tb-members">{subs.map(g => {
     const expanded = open === g.name, toggle = () => setOpen(expanded ? null : g.name);
     return <li key={g.name} className={expanded ? "tb-sub open" : "tb-sub"}>
       <div className="tb-sub-head" role="button" tabIndex={0} aria-expanded={expanded} onClick={toggle} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } }}>
@@ -40,8 +42,11 @@ export default function TargetMembers({ data, s, group }: { data: Portfolio; s: 
         <span><b>{m.name}</b>{m.tag && <em className="part-tag">{m.tag}</em>}{m.kind !== g.name && <small>{m.kind}</small>}</span>
         <span><b>{share(m.value, g.value)}</b><small>{won(m.value)}</small><Gain profit={m.profit} cost={m.cost} /></span>
         </div>
-        {m.isStock && <ValuationStages basis={data.valuationAlerts?.[m.code]} price={m.price} marketTime={data.quoteMarketTimes?.[m.code]} />}
+        {m.isStock && <>
+          {(data.valuationAlerts?.[m.code] !== undefined || !watchesForSymbol(data.priceWatchConnections, m.code).length) && <ValuationStages basis={data.valuationAlerts?.[m.code]} price={m.price} marketTime={data.quoteMarketTimes?.[m.code]} />}
+          {watchesForSymbol(data.priceWatchConnections, m.code).map(({taskId, title, instrument}) => <PriceWatchStages key={`${taskId}:${instrument.exchange}:${instrument.symbol}`} title={title} instrument={instrument} quote={data.rawQuotes?.[watchQuoteSymbol(instrument)]} />)}
+        </>}
       </li>)}</ul>}
     </li>;
-  })}</ul>;
+  })}</ul><UnheldPriceWatches data={data} group={group} /></>;
 }
