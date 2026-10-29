@@ -42,6 +42,19 @@ describe("운용성과 비교", () => {
     p.accounts[0].divTax = 0;
     expect(() => validatePortfolio(p)).toThrow(/세후/);
   });
+  it("일별 자료 이후에 만든 계좌는 그 전 평가액을 0으로 보고 오늘 TWR에 넣음", () => {
+    const p = sample(); p.asOf = "2026-01-05"; p.pricedAt = "2026-01-05"; p.performance!.incomeAccounts = ["a"];
+    p.accounts.push({ ...p.accounts[0], id: "new", broker: "N", cash: 0, inceptionDate: "2026-01-05", valuationDate: "2026-01-05" });
+    p.products = { X: { name: "주식", price: 11, exposure: [1, 0, 0, 0, 0] } };
+    p.holdings = [{ account: "new", code: "X", quantity: 10, cost: 100 }];
+    p.flows.push({ id: "new-in", account: "new", date: "2026-01-05", amount: -100 });
+    const v = validatePortfolio(p), daily = performanceComparison(v), today = performanceComparison(v, "all", "all", "all", "all", { start: "2025-12-31", end: liveEnd(v)! });
+    expect(daily.rate).toBeCloseTo(.1, 10);
+    expect(daily.exIncomeRate).not.toBeNull();
+    expect(today.rate).toBeCloseTo(1.1 * (330 - 100) / 220 - 1, 10);
+    p.accounts[1].inceptionDate = "2025-06-01";
+    expect(performanceComparison(validatePortfolio(p)).reason).toMatch(/일별 평가자료/);
+  });
   it("출금과 두 계좌의 내부이체를 선택 범위에 맞춰 처리", () => {
     const p = sample(); p.accounts.push({ ...p.accounts[0], id: "b", owner: "P02", broker: "B" });
     p.performance!.daily = [{ date: "2025-12-31", values: { a: 100, b: 100 } }, { date: "2026-01-01", values: { a: 50, b: 150 } }, { date: "2026-01-02", values: { a: 55, b: 165 } }];

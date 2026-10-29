@@ -62,7 +62,9 @@ export function performanceComparison(
   const invested = selected.selected.filter(a => !isStandaloneCashAccount(a.type));
   if (!invested.length) return unavailable("독립 CMA·외화 계좌는 운용성과 비교에서 제외해요.");
   if (invested.some(a => !a.complete)) return unavailable("입출금 내역이 완전한 계좌만 비교할 수 있어요.");
-  if (daily.some(d => invested.some(a => d.values[a.id] === undefined))) return unavailable("선택한 계좌의 일별 평가자료가 필요해요.");
+  /** An account opened after a daily close held nothing on that day. */
+  const valueOn = (d: (typeof daily)[number], a: (typeof invested)[number]) => d.values[a.id] ?? (a.inceptionDate && a.inceptionDate > d.date ? 0 : undefined);
+  if (daily.some(d => invested.some(a => valueOn(d, a) === undefined))) return unavailable("선택한 계좌의 일별 평가자료가 필요해요.");
   const ids = new Set(invested.map(a => a.id));
   const movements = p.flows.filter(f => ids.has(f.account));
   const external = movements.filter(f => !f.transfer || !p.flows.some(g => g.id !== f.id && g.transfer === f.transfer && ids.has(g.account)));
@@ -70,7 +72,7 @@ export function performanceComparison(
   for (const f of external) flows.set(f.date, (flows.get(f.date) || 0) - f.amount);
   const income = new Map<string, number>();
   for (const row of history.income || []) if (ids.has(row.account)) income.set(row.date, (income.get(row.date) || 0) + row.dividend + row.interest);
-  const values = daily.map(d => invested.reduce((n, a) => n + d.values[a.id], 0));
+  const values = daily.map(d => invested.reduce((n, a) => n + valueOn(d, a)!, 0));
   const dates = daily.map(d => d.date);
   if (live) {
     const today = invested.reduce((n, a) => n + a.cash + selected.positions.filter(h => h.account === a.id).reduce((m, h) => m + (h.value ?? NaN), 0), 0);
@@ -81,7 +83,8 @@ export function performanceComparison(
   const step = (map: Map<string, number>, i: number) => i < daily.length ? map.get(dates[i]) || 0 : [...map].reduce((n, [date, v]) => date > dates[i - 1] && date <= dates[i] ? n + v : n, 0);
   let growth = 1, exIncomeGrowth = 1;
   const incomeAccounts = new Set(history.incomeAccounts || []);
-  const missingIncomeAccounts = invested.filter(a => !incomeAccounts.has(a.id));
+  /** Accounts opened after the daily history have no income inside it to report. */
+  const missingIncomeAccounts = invested.filter(a => !incomeAccounts.has(a.id) && !(a.inceptionDate && a.inceptionDate > history.end));
   let exIncomeReason = missingIncomeAccounts.length
     ? `세후 배당·이자 입금 내역 필요: ${missingIncomeAccounts.map(a => `${a.broker} ${a.name}`).join(", ")}`
     : "";
