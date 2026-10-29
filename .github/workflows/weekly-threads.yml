@@ -1,8 +1,6 @@
 name: weekly-threads
 
 on:
-  schedule:
-    - cron: "30 23 * * 5"   # 토요일 08:30 KST
   workflow_dispatch:
     inputs:
       dry_run:
@@ -11,6 +9,8 @@ on:
 
 jobs:
   post:
+    # Cancelled by owner: skip publishing and token refresh.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
