@@ -20,11 +20,12 @@ describe("평가방식별 독립 단계", () => {
     expect(states(result[0])).toEqual(["hit", "hit", "waiting"]);
     expect(states(result[1])).toEqual(["unregistered", "unregistered", "unregistered"]);
   });
-  it("역DCF는 별도 행으로 분리하고 고평가 조건은 제외", () => {
+  it("역DCF 매수·매도는 같은 방식 안에서 별도 단계로 유지", () => {
     const dcf = { ...instrument, conditions: [{ id: "dcf-1", label: "역DCF 1차", direction: "lte" as const, value: 95, note: "가상" }, { id: "dcf-high", label: "역DCF 고평가", direction: "gte" as const, value: 120, note: "가상" }] };
     const result = rows({ basis: undefined, instruments: [instrument, dcf], quotes: { TEST: quote } });
     expect(states(result[0])).toEqual(["hit", "hit", "waiting"]);
     expect(states(result[1])).toEqual(["hit", "unregistered", "unregistered"]);
+    expect(result[1].sellStages.map(s => s.state)).toEqual(["waiting", "unregistered", "unregistered"]);
   });
   it("PER를 역DCF로 바꾸거나 없는 3차 가격선을 만들지 않음", () => {
     const per = { ...instrument, conditions: [{ id: "eps25", label: "정규화 TTM EPS ×25", direction: "lte" as const, value: 100, note: "가상" }, { id: "eps20", label: "정규화 TTM EPS ×20", direction: "lte" as const, value: 80, note: "가상" }] };
@@ -45,5 +46,33 @@ describe("평가방식별 독립 단계", () => {
     expect(states(result[0])).toEqual(["unjudged", "unjudged", "unjudged"]);
     const pending = { ...instrument, status: "pending" as const, conditions: instrument.conditions.map(c => ({ ...c, value: null })) };
     expect(states(rows({ basis: undefined, instruments: [pending] })[0])).toEqual(["pending", "pending", "pending"]);
+  });
+});
+
+describe("매도 단계 복원", () => {
+  it("국내 매도 경계값 포함, 두 평가방식과 매수 조건은 독립", () => {
+    const result = rows({ price: 300 });
+    expect(states(result[0])).toEqual(["waiting", "waiting", "waiting"]);
+    expect(states(result[1])).toEqual(["waiting", "waiting", "waiting"]);
+    expect(result[0].sellStages.map(s => s.state)).toEqual(["waiting", "waiting", "unregistered"]);
+    expect(result[1].sellStages.map(s => s.state)).toEqual(["hit", "hit", "unregistered"]);
+  });
+  it("매도만 있는 기준도 누락하지 않고 세 단계를 보존", () => {
+    const sellOnly = { ...basis, methods: [{ ...basis.methods[0], down: [], up: [200, 300, 400] }] };
+    const dcf = rows({ basis: sellOnly, price: 300 }).find(r => r.id === "DCF")!;
+    expect(states(dcf)).toEqual(["unregistered", "unregistered", "unregistered"]);
+    expect(dcf.sellStages.map(s => s.state)).toEqual(["hit", "hit", "waiting"]);
+  });
+  it("해외 gte 세 단계는 원래 통화로 비교, lte와 섞지 않음", () => {
+    const both = { ...instrument, conditions: [...instrument.conditions, ...[100, 110, 120].map((value, i) => ({ id: `ptbv-high-${i + 1}`, label: `P/TBV 매도 ${i + 1}차`, direction: "gte" as const, value, note: "가상" }))] };
+    const result = rows({ basis: undefined, instruments: [both], quotes: { TEST: { ...quote, price: 110 } } });
+    expect(states(result[0])).toEqual(["waiting", "waiting", "waiting"]);
+    expect(result[0].sellStages.map(s => s.state)).toEqual(["hit", "hit", "waiting"]);
+    const wrongCurrency = rows({ basis: undefined, instruments: [both], quotes: { TEST: { ...quote, currency: "KRW" } } });
+    expect(wrongCurrency[0].sellStages.map(s => s.state)).toEqual(["unjudged", "unjudged", "unjudged"]);
+  });
+  it("미검증·누락 시세를 매도 미도달로 표시하지 않음", () => {
+    expect(rows({ marketTime: undefined })[1].sellStages.map(s => s.state)).toEqual(["unjudged", "unjudged", "unregistered"]);
+    expect(rows({ basis: {} })[1].sellStages.map(s => s.state)).toEqual(["pending", "pending", "pending"]);
   });
 });

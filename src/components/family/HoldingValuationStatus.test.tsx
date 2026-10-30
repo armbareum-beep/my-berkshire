@@ -13,11 +13,15 @@ describe("보유종목 단계 표시", () => {
     const html = renderToStaticMarkup(<HoldingValuationStatus data={data} code="TEST" price={100} />);
     expect(html).toContain("P/TBV");
     expect(html).toContain("역DCF");
-    expect(html).toContain('aria-label="역DCF 1차 도달"');
-    expect(html).toContain('aria-label="역DCF 2차 미도달"');
-    expect(html).toContain('aria-label="역DCF 3차 미도달"');
-    expect(html).toContain('aria-label="P/TBV 1차 기준 미설정"');
-    for (const text of ["고평가", "가상 산식", "상세 산식", "details", "table", "예약"]) expect(html).not.toContain(text);
+    expect(html).toContain('aria-label="역DCF 매수 1차 도달"');
+    expect(html).toContain('aria-label="역DCF 매수 2차 미도달"');
+    expect(html).toContain('aria-label="역DCF 매수 3차 미도달"');
+    expect(html).toContain('aria-label="P/TBV 매수 1차 기준 미설정"');
+    expect(html).toContain('aria-label="역DCF 매도 1차 미도달"');
+    expect(html).toContain('aria-label="역DCF 매도 2차 미도달"');
+    expect(html).toContain('aria-label="역DCF 매도 3차 기준 미설정"');
+    expect((html.match(/class="hv-side up"/g) || [])).toHaveLength(2);
+    for (const text of ["가상 산식", "상세 산식", "details", "table", "예약"]) expect(html).not.toContain(text);
     expect((html.match(/class="hv-row"/g) || [])).toHaveLength(2);
   });
   it("미보유 감시종목은 국가 목록에 나타나지 않음", () => {
