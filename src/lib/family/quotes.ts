@@ -14,6 +14,33 @@ export async function getBenchmarkMoves(ids:string[],since:string){
  await Promise.all(ids.map(async id=>{const candidates=/^\d{6}$/.test(id)?await Promise.all([move(id+".KS",since),move(id+".KQ",since)]):[await move(id,since)];const best=candidates.filter((q):q is {ratio:number;marketTime:number}=>q!==null).sort((a,b)=>b.marketTime-a.marketTime)[0];if(best)moves[id]=best.ratio;}));
  return moves;
 }
+/** Full-period returns are independent of portfolio valuation success and carry the actual exchange date. */
+export async function getBenchmarkQuotes(ids:string[],start:string){
+ const quotes:Record<string,{start:string;asOf:string;return:number;currency:string;marketTime:number;totalReturn:boolean}>={};
+ await Promise.all(ids.map(async id=>{
+  try{
+   const symbol=/^\d{6}$/.test(id)?id+".KS":id;
+   const from=Math.floor(Date.parse(start)/1000)-14*86400;
+   const r=await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&period1=${from}&period2=${Math.floor(Date.now()/1000)}&includeAdjustedClose=true`,{headers:{"User-Agent":"Mozilla/5.0"},signal:AbortSignal.timeout(20000),cache:"no-store"});
+   if(!r.ok)return;
+   const body=await r.json(),res=body?.chart?.result?.[0],m=res?.meta;
+   const ts=res?.timestamp,closes=res?.indicators?.quote?.[0]?.close,adj=res?.indicators?.adjclose?.[0]?.adjclose;
+   if(body?.chart?.error||!Array.isArray(ts)||!Array.isArray(closes)||!(m?.regularMarketPrice>0)||!Number.isFinite(m.regularMarketPrice)||!(m.regularMarketTime>0)||!Number.isFinite(m.regularMarketTime)||m.regularMarketTime>Date.now()/1000+60||typeof m.currency!=="string"||(m.symbol&&m.symbol!==symbol))return;
+   const offset=Number.isFinite(m.gmtoffset)?m.gmtoffset:0;
+   const date=(t:number)=>new Date((t+offset)*1000).toISOString().slice(0,10);
+   let base=-1,last=-1;
+   ts.forEach((t:number,i:number)=>{if(Number.isFinite(t)&&Number.isFinite(closes[i])&&closes[i]>0){last=i;if(date(t)<=start)base=i;}});
+   if(base<0||last<base)return;
+   const totalReturn=Array.isArray(adj)&&Number.isFinite(adj[base])&&adj[base]>0&&Number.isFinite(adj[last])&&adj[last]>0;
+   const ratio=totalReturn?m.regularMarketPrice*(adj[last]/closes[last])/adj[base]:m.regularMarketPrice/closes[base];
+   if(!Number.isFinite(ratio)||ratio<=0)return;
+   const asOf=date(m.regularMarketTime);
+   if(asOf<start)return;
+   quotes[id]={start,asOf,return:ratio-1,currency:m.currency,marketTime:m.regularMarketTime,totalReturn};
+  }catch{/* A missing benchmark does not suppress other current quotes. */}
+ }));
+ return quotes;
+}
 export async function getFamilyPrices(symbols:string[]){
  const quotes:Record<string,Quote>={},prices:Record<string,number>={},marketTimes:Record<string,number>={};
  // Limit parallel requests. Missing quotes never become zero-price assets.

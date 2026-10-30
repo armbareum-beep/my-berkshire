@@ -19,6 +19,17 @@ export function liveBenchmarks(p: Portfolio) {
   return h.benchmarks.map(b => ({ ...b, return: (1 + b.return) * moves[b.id] - 1, confirmed: b.return }));
 }
 
+/** Benchmark freshness must not depend on whether the selected accounts can be valued. */
+export function benchmarkPerformance(p: Portfolio) {
+  const h = p.performance;
+  return h?.benchmarks.map(b => {
+    const q = p.benchmarkQuotes?.[b.id];
+    const current = !!q && q.start === h.start && q.asOf >= h.end && Number.isFinite(q.return) && q.return > -1;
+    return { ...b, return: current ? q.return : b.return, asOf: current ? q.asOf : h.end,
+      currency: current ? q.currency : null, totalReturn: current ? q.totalReturn : null, current };
+  }) ?? [];
+}
+
 /** Daily linked TWR approximation: external flows occur at the end of each day. */
 export function performanceComparison(
   p: Portfolio,
