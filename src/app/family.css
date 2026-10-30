@@ -74,3 +74,8 @@
 .holding-valuation-stages .hv-level.pending,.holding-valuation-stages .hv-level.unjudged{border-style:dashed;color:#936b2b;background:#faf8f2}
 .holding-valuation-stages .hv-level.unregistered{color:#a4afbd;background:#f1f4f8;border-color:#e6ebf2}
 .holding-valuation-stages .hv-note{margin:0;font-size:9px;color:#8a99ad;white-space:nowrap}
+
+.holding-valuation-stages .hv-sides{display:grid;gap:4px;min-width:0}
+.holding-valuation-stages .hv-side{display:flex;align-items:center;gap:5px;min-width:0}
+.holding-valuation-stages .hv-side-label{flex:0 0 22px;font-size:9px;color:#7b899b;text-align:left;white-space:nowrap}
+.holding-valuation-stages .hv-side.up .hv-level.hit{color:#855414;background:#fff0d8;border-color:#ebcc91}
