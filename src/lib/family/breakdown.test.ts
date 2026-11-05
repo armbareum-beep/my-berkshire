@@ -84,6 +84,9 @@ describe("보유종목", () => {
     expect([mixed.part, bond.part]).toEqual([.5, .5]);
     expect(mixed.cost + bond.cost).toBe(rows.find(r => r.code === "284430")!.cost);
     expect(mixed.rate).toBe(rows.find(r => r.code === "284430")!.rate);
+    const whole = rows.find(r => r.code === "284430")!;
+    expect(mixed.quantity + bond.quantity).toBe(whole.quantity);
+    expect(mixed.cost / mixed.quantity).toBeCloseTo(whole.cost / whole.quantity, 10);
     expect(groups[1][0].part).toBe(1);
   });
   it("국가별 비중 펼치기: 묶음 합계가 실제 비중 금액과 같음", () => {

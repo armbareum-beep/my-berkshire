@@ -102,7 +102,7 @@ export function holdingReturns(p: Portfolio, s: Summary, filter: HoldingFilter) 
 }
 
 export type BucketRow = HoldingRow & { part: number };
-/** Rows by 한국·중국·미국·기타 equity, 채권·현금성 and 금 (0–5). A mixed ETF appears in each bucket it holds, with that part of its value. */
+/** Rows by 한국·중국·미국·기타 equity, 채권·현금성 and 금 (0–5). A mixed ETF appears in each bucket it holds, with that part of its quantity, cost and value, so the parts add up to the holding and its average price stays the same. */
 export function bucketRows(p: Portfolio, rows: HoldingRow[]): BucketRow[][] {
   const groups: BucketRow[][] = [[], [], [], [], [], []];
   for (const r of rows) {
@@ -111,7 +111,7 @@ export function bucketRows(p: Portfolio, rows: HoldingRow[]): BucketRow[][] {
     exposure.forEach((w, i) => {
       if (w <= 0) return;
       const part = w / total, scale = (n: number | null) => n === null ? null : n * part;
-      groups[i].push(part === 1 ? { ...r, part } : { ...r, part, cost: r.cost * part, value: scale(r.value), profit: scale(r.profit) });
+      groups[i].push(part === 1 ? { ...r, part } : { ...r, part, quantity: r.quantity * part, cost: r.cost * part, value: scale(r.value), profit: scale(r.profit) });
     });
   }
   return groups;
