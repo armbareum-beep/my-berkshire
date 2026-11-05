@@ -10,12 +10,13 @@ const timestamp = (value: number) => Number.isFinite(value) && value > 0 && valu
 export default function PriceWatchStages({ instrument, title, quote }: { instrument: PriceWatchInstrument; title: string; quote?: NativeQuote }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(timer); }, []);
-  const { conditions, reason } = watchConditionStates(instrument, quote, now);
+  const { conditions, reason, quoteLabel } = watchConditionStates(instrument, quote, now);
   return <details className="valuation-alert price-watch">
     <summary aria-label={`${instrument.symbol} 가격 감시 조건과 기준가격 보기`}>
       <span className="watch-heading">{instrument.symbol} · {instrument.exchange} · {instrument.currency}/주</span>
       {!conditions.length && <span className="watch-condition pending">기준 설정 검증 대기</span>}
       {conditions.map(({ condition: c, state }) => <span key={c.id} className={`watch-condition ${state}`} aria-label={`${c.label} ${names[state]}`}><span>{c.label}</span><b>{state === "hit" ? "✓ " : ""}{names[state]}</b></span>)}
+      {quoteLabel && <small>{quoteLabel}</small>}
       <span className="alert-expand">조건·기준가격 보기</span>
     </summary>
     <div className="alert-detail">
@@ -26,7 +27,7 @@ export default function PriceWatchStages({ instrument, title, quote }: { instrum
       {conditions.map(({ condition: c, state }) => <div className="watch-detail" key={c.id}><p><strong>{c.label}</strong> · {c.value === null ? "검증 대기" : `${amount(c.value, instrument.currency)}/주 ${c.direction === "lte" ? "이하" : "이상"}`} · {names[state]}</p>{c.note && <p>{c.note}</p>}</div>)}
       <p>재무 기준 {instrument.basisDate || "검증 대기"} · 기준 갱신 {instrument.updatedAt}</p>
       <p>{instrument.note}</p>
-      <p>화면의 원시 주당 시세 비교예요. 20분 초과·시각 누락·통화·상장시장·주식단위 불일치는 판정 보류예요. 과거 도달 이력·예약 알림 발송 여부와 다르며 지연 시세일 수 있어요.</p>
+      <p>화면의 원시 주당 시세 비교예요. 장중에는 20분 이내 시세, 장 마감 후에는 제공자가 확인한 마지막 정규장 종가를 사용해요. 종가·시각 확인 실패나 통화·상장시장·주식단위 불일치는 판정 보류예요. 과거 도달 이력·예약 알림 발송 여부와 다르며 지연 시세일 수 있어요.</p>
     </div>
   </details>;
 }

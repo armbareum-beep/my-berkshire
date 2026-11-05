@@ -2,7 +2,7 @@ import { alertStages, readAlertBasis, watchConditionStates, watchQuoteSymbol, ty
 
 export type StageState = "hit" | "waiting" | "pending" | "unjudged" | "unregistered";
 export type HoldingStage = { id: string; label: string; state: StageState };
-export type HoldingStageRow = { id: string; label: string; stages: HoldingStage[]; sellStages: HoldingStage[] };
+export type HoldingStageRow = { id: string; label: string; stages: HoldingStage[]; sellStages: HoldingStage[]; quoteLabel?: string; quoteReason?: string };
 const missing = (): HoldingStage[] => [1, 2, 3].map(n => ({ id: String(n), label: `${n}차`, state: "unregistered" }));
 const method = (c: PriceWatchCondition) => {
   const text = `${c.id} ${c.label}`;
@@ -39,10 +39,10 @@ export function holdingValuationRows({ basis: input, price, marketTime, instrume
   }
   instruments.forEach((instrument, index) => {
     const groups = new Map<string, HoldingStageRow>();
-    const { conditions } = watchConditionStates(instrument, quotes[watchQuoteSymbol(instrument)], now);
+    const { conditions, quoteLabel, reason } = watchConditionStates(instrument, quotes[watchQuoteSymbol(instrument)], now);
     for (const { condition: c, state } of conditions) {
       const m = method(c);
-      const row = groups.get(m.id) ?? { ...m, stages: [], sellStages: [] };
+      const row = groups.get(m.id) ?? { ...m, stages: [], sellStages: [], quoteLabel, quoteReason: reason };
       const side = c.direction === "lte" ? row.stages : row.sellStages;
       const named = /^[AB]$/.test(c.id);
       const explicit = c.label.match(/([123])\s*차/)?.[1] ?? c.id.match(/(?:^|[-_])(?:stage|low|high|up|sell)[-_]?([123])$/i)?.[1];

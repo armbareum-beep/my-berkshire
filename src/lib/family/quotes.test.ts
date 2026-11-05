@@ -31,4 +31,12 @@ describe("시세 검증",()=>{
   vi.stubGlobal("fetch",vi.fn(async()=>({ok:true,json:async()=>({chart:{result:[{meta:{regularMarketPrice:100,currency:"KRW",symbol:"OTHER",exchangeName:"UNKNOWN",instrumentType:"INDEX"}}]}})})));
   expect((await getFamilyPrices(["TEST"])).rawQuotes.TEST).toEqual({symbol:"OTHER",exchange:"",currency:"KRW",price:100,marketTime:0,unit:"other"});
  });
+ it("정규장 메타를 가격과 함께 전달하고 종가를 이전 종가로 대체하지 않음",async()=>{
+  const day=(d:string)=>Date.parse(d)/1000;
+  const previous={start:day("2026-10-29T13:30:00Z"),end:day("2026-10-29T20:00:00Z")};
+  const current={start:day("2026-10-30T13:30:00Z"),end:day("2026-10-30T20:00:00Z")};
+  vi.stubGlobal("fetch",vi.fn(async()=>({ok:true,json:async()=>({chart:{result:[{meta:{regularMarketPrice:95,previousClose:999,currency:"USD",symbol:"BRK-B",exchangeName:"NYQ",instrumentType:"EQUITY",regularMarketTime:previous.end,exchangeTimezoneName:"America/New_York",currentTradingPeriod:{regular:current},tradingPeriods:[[previous],[current]]}}]}})})));
+  const q=(await getFamilyPrices(["BRK-B"])).rawQuotes["BRK-B"];
+  expect(q).toMatchObject({price:95,marketTime:previous.end,regularSession:current,regularSessions:[previous,current],sessionTimeZone:"America/New_York"});
+ });
 });

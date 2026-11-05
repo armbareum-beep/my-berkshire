@@ -16,6 +16,6 @@ export default function HoldingValuationStatus({ data, code, price }: { data: Po
       <span className="hv-side-label">{side.label}</span>
       <span className="hv-levels">{side.stages.map(stage => <span key={stage.id} className={`hv-level ${stage.state}`} title={`${row.label} ${side.label} ${stage.label} ${names[stage.state]}`} aria-label={`${row.label} ${side.label} ${stage.label} ${names[stage.state]}`}>{stage.label}<b>{marks[stage.state]}</b></span>)}</span>
       {side.stages.every(s => s.state === "unregistered") && <small className="hv-note">미설정</small>}
-    </div>)}</div>
+    </div>)}{row.quoteLabel && <small className="hv-quote">{row.quoteLabel}</small>}{!row.quoteLabel && row.quoteReason && <small className="hv-quote">{row.quoteReason} · 판정 보류</small>}</div>
   </div>)}</div>;
 }
