@@ -15,7 +15,7 @@ const money=(n:number)=>Math.round(n).toLocaleString("ko-KR");
 const won=(n:number)=>money(n)+"원";
 const pct=(n:number|null)=>n===null?"자료 확인 필요":(n*100).toFixed(1)+"%";
 const signed=(n:number|null)=>n===null?"자료 확인 필요":(n>=0?"+":"−")+won(Math.abs(n));
-const today=()=>new Date().toISOString().slice(0,10);
+const today=()=>new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Seoul",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
 type Tab="overview"|"holdings"|"performance"|"allocation"|"flows";
 const share=(v:number,total:number)=>total>0?(v/total*100).toFixed(1)+"%":"—";
 const currencyNames:Record<string,string>={KRW:"원화",USD:"달러",JPY:"엔화",CNY:"위안화",HKD:"홍콩달러",EUR:"유로"};
@@ -25,19 +25,25 @@ export default function FamilyDashboard(){
  const [draft,setDraft]=useState<string[]|null>(null),[saving,setSaving]=useState(false),[openTarget,setOpenTarget]=useState<number|null>(null);
  const [notice,setNotice]=useState(""),[error,setError]=useState(""),[busy,setBusy]=useState(false),[updatedAt,setUpdatedAt]=useState("");
  const revision=useRef(""),reading=useRef(false),quoting=useRef(false);
+ const refreshBenchmarks=useCallback(async(base:Portfolio)=>{
+  const h=base.performance;if(!h?.benchmarks.length)return;
+  try{const r=await fetch("/api/family-quotes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({symbols:[],benchmarks:{ids:h.benchmarks.map(b=>b.id),since:h.end,start:h.start}}),signal:AbortSignal.timeout(25000)});if(r.status===401){window.location.replace("/");return;}if(!r.ok)throw Error();const result=await r.json();setData(d=>d.performance?.start===h.start?{...d,benchmarkQuotes:result.benchmarkQuotes||{}}:d);}
+  catch{setData(d=>({...d,benchmarkQuotes:{}}));}
+ },[]);
  /** Quotes apply to this screen only; the stored portfolio is never changed. `auto` runs whenever stored data loads and stays quiet unless it fails. */
  const quote=useCallback(async (base:Portfolio,auto=false)=>{
   if(quoting.current||reading.current)return;
+  void refreshBenchmarks(base);
   const {quoted:codes,held}=quoteCodes(base);
   if(auto&&!codes.length)return;
   quoting.current=true;setBusy(true);if(!auto){setError("");setNotice("");}
-  try{if(!base.holdings.length)throw Error("등록된 보유상품이 없어요. 자료를 ChatGPT에 올려 주세요.");if(!codes.length)throw Error("시세가 있는 상품이 없어요. 예금은 원금 기준으로 평가합니다.");const r=await fetch("/api/family-quotes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({symbols:codes,watchSymbols:[...new Set(base.holdings.flatMap(({code})=>watchesForSymbol(base.priceWatchConnections,code).map(({instrument})=>watchQuoteSymbol(instrument))))],...(base.performance?.daily&&base.performance.benchmarks.length?{benchmarks:{ids:base.performance.benchmarks.map(b=>b.id),since:base.performance.end}}:{})}),signal:AbortSignal.timeout(45000)});if(r.status===401){window.location.replace("/");return;}const result=await r.json();if(!r.ok)throw Error(result.error||"시세를 불러오지 못했습니다.");setData(d=>({...d,rawQuotes:result.rawQuotes||{}}));const missing=codes.filter(c=>!(Number.isFinite(result.prices[c])&&result.prices[c]>0));if(missing.length){setError(`시세 누락: ${missing.join(", ")}. 가격이 섞이지 않도록 이전 평가를 유지했어요.`);return;}setData(d=>{const products={...d.products};for(const code of codes)if(products[code])products[code]={...products[code],price:result.prices[code]};return {...d,products,checkedAt:result.checkedAt,pricedAt:today(),quoteMarketTimes:result.marketTimes||{},rawQuotes:result.rawQuotes||{},benchmarkMoves:result.benchmarkMoves||{}};});if(!auto)setNotice("화면의 시세를 갱신했어요. 보유수량·현금은 자료 기준일 그대로입니다."+(held.length?` 예금 ${held.length}개는 시세가 없어 원금 기준으로 유지했어요.`:""));}
+  try{if(!base.holdings.length)throw Error("등록된 보유상품이 없어요. 자료를 ChatGPT에 올려 주세요.");if(!codes.length)throw Error("시세가 있는 상품이 없어요. 예금은 원금 기준으로 평가합니다.");const r=await fetch("/api/family-quotes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({symbols:codes,watchSymbols:[...new Set(base.holdings.flatMap(({code})=>watchesForSymbol(base.priceWatchConnections,code).map(({instrument})=>watchQuoteSymbol(instrument))))]}),signal:AbortSignal.timeout(45000)});if(r.status===401){window.location.replace("/");return;}const result=await r.json();if(!r.ok)throw Error(result.error||"시세를 불러오지 못했습니다.");setData(d=>({...d,rawQuotes:result.rawQuotes||{}}));const missing=codes.filter(c=>!(Number.isFinite(result.prices[c])&&result.prices[c]>0));if(missing.length){setError(`시세 누락: ${missing.join(", ")}. 가격이 섞이지 않도록 이전 평가를 유지했어요.`);return;}setData(d=>{const products={...d.products};for(const code of codes)if(products[code])products[code]={...products[code],price:result.prices[code]};return {...d,products,checkedAt:result.checkedAt,pricedAt:today(),quoteMarketTimes:result.marketTimes||{},rawQuotes:result.rawQuotes||{},benchmarkMoves:result.benchmarkMoves||{}};});if(!auto)setNotice("화면의 시세를 갱신했어요. 보유수량·현금은 자료 기준일 그대로입니다."+(held.length?` 예금 ${held.length}개는 시세가 없어 원금 기준으로 유지했어요.`:""));}
   catch(e){setData(d=>({...d,rawQuotes:{}}));const message=e instanceof Error?e.message:"시세 조회에 실패했습니다.";setError(auto?`자동 시세 조회 실패, 저장된 가격으로 표시 중이에요. ${message}`:message);}finally{quoting.current=false;setBusy(false);}
- },[]);
+ },[refreshBenchmarks]);
  const loadOnline=useCallback(async (quiet=false)=>{
   if(quoting.current||reading.current)return;
   reading.current=true;let fresh:Portfolio|null=null;
-  try{const r=await fetch("/api/family-data",{cache:"no-store",signal:AbortSignal.timeout(20000)});if(r.status===401){window.location.replace("/");return;}const result=await r.json();if(!r.ok)throw Error(result.error||"자료를 불러오지 못했어요.");const p=validatePortfolio(result.data);if(quoting.current)return;if(result.revision!==revision.current){revision.current=result.revision;setData(p);fresh=p;}setUpdatedAt(result.updated_at);setReady(true);if(!quiet){setError("");setNotice("온라인 자료를 불러왔어요.");}}
+  try{const r=await fetch("/api/family-data",{cache:"no-store",signal:AbortSignal.timeout(20000)});if(r.status===401){window.location.replace("/");return;}const result=await r.json();if(!r.ok)throw Error(result.error||"자료를 불러오지 못했어요.");const p=validatePortfolio(result.data);if(quoting.current)return;fresh=p;if(result.revision!==revision.current){revision.current=result.revision;setData(p);}setUpdatedAt(result.updated_at);setReady(true);if(!quiet){setError("");setNotice("온라인 자료를 불러왔어요.");}}
   catch(e){setError(e instanceof Error?e.message:"온라인 저장소에 연결하지 못했어요.");}finally{reading.current=false;}
   if(fresh)void quote(fresh,true);
  },[quote]);

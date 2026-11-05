@@ -1,5 +1,5 @@
 import { validDate } from "@/lib/family/model";
-import { getBenchmarkMoves, getFamilyPrices } from "@/lib/family/quotes";
+import { getBenchmarkQuotes, getFamilyPrices } from "@/lib/family/quotes";
 import { authorized, json, sameOrigin } from "@/lib/family/server";
 export const maxDuration=60;
 export async function POST(request:Request){
@@ -8,13 +8,14 @@ export async function POST(request:Request){
  try{
   if(Number(request.headers.get("content-length")||0)>4096)return Response.json({error:"요청이 너무 큽니다."},{status:413});
   const body=await request.json();
-  if(!Array.isArray(body.symbols)||body.symbols.length<1||body.symbols.length>50||body.symbols.some((s:unknown)=>typeof s!=="string"||!/^[A-Za-z0-9.^=-]{1,20}$/.test(s)))return Response.json({error:"종목코드 1~50개를 입력해 주세요."},{status:400});
+  if(!Array.isArray(body.symbols)||body.symbols.length>50||body.symbols.some((s:unknown)=>typeof s!=="string"||!/^[A-Za-z0-9.^=-]{1,20}$/.test(s)))return Response.json({error:"종목코드는 최대 50개까지 입력해 주세요."},{status:400});
   const symbols=[...new Set(body.symbols as string[])];
   if(body.watchSymbols!==undefined&&(!Array.isArray(body.watchSymbols)||body.watchSymbols.length>50||body.watchSymbols.some((s:unknown)=>typeof s!=="string"||!/^[A-Za-z0-9.^=-]{1,20}$/.test(s))))return Response.json({error:"감시 종목코드를 확인해 주세요."},{status:400});
   const requested=[...new Set([...symbols,...(body.watchSymbols||[])])] as string[];
   const bench=body.benchmarks;
-  if(bench!==undefined&&(!bench||!Array.isArray(bench.ids)||bench.ids.length>10||bench.ids.some((s:unknown)=>typeof s!=="string"||!/^[A-Za-z0-9.^=-]{1,20}$/.test(s))||typeof bench.since!=="string"||!validDate(bench.since)))return Response.json({error:"비교 ETF 요청을 확인해 주세요."},{status:400});
-  const [result,benchmarkMoves]=await Promise.all([getFamilyPrices(requested),bench?getBenchmarkMoves([...new Set(bench.ids as string[])],bench.since):{}]);
-  return Response.json({prices:result.prices,marketTimes:result.marketTimes,rawQuotes:result.rawQuotes,benchmarkMoves,checkedAt:new Date().toISOString(),missing:symbols.filter(s=>result.prices[s]==null)},{headers:{"Cache-Control":"no-store"}});
+  if(bench!==undefined&&(!bench||!Array.isArray(bench.ids)||bench.ids.length>10||bench.ids.some((s:unknown)=>typeof s!=="string"||!/^[A-Za-z0-9.^=-]{1,20}$/.test(s))||typeof bench.since!=="string"||!validDate(bench.since)||(bench.start!==undefined&&(typeof bench.start!=="string"||!validDate(bench.start)||bench.start>bench.since))))return Response.json({error:"비교 ETF 요청을 확인해 주세요."},{status:400});
+  if(!symbols.length&&!bench?.ids?.length)return Response.json({error:"시세 또는 비교 ETF를 선택해 주세요."},{status:400});
+  const [result,benchmarkQuotes]=await Promise.all([getFamilyPrices(requested),bench?getBenchmarkQuotes([...new Set(bench.ids as string[])],bench.start??bench.since):{}]);
+  return Response.json({prices:result.prices,marketTimes:result.marketTimes,rawQuotes:result.rawQuotes,benchmarkQuotes,checkedAt:new Date().toISOString(),missing:symbols.filter(s=>result.prices[s]==null)},{headers:{"Cache-Control":"no-store"}});
  }catch{return Response.json({error:"시세를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."},{status:502});}
 }

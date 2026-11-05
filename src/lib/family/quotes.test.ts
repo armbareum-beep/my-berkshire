@@ -1,8 +1,19 @@
 import {afterEach,describe,it,expect,vi} from "vitest";
-import {getBenchmarkMoves,getFamilyPrices} from "./quotes";
+import {getBenchmarkMoves,getBenchmarkQuotes,getFamilyPrices} from "./quotes";
 const quote=(price:unknown,currency="KRW",marketTime=100)=>({ok:true,json:async()=>({chart:{error:null,result:[{meta:{regularMarketPrice:price,currency,regularMarketTime:marketTime}}]}})});
 afterEach(()=>{vi.unstubAllGlobals();vi.restoreAllMocks();});
 describe("시세 검증",()=>{
+ it("비교 ETF는 연초부터 현재까지 조정종가로 계산하고 실제 거래일을 반환",async()=>{
+  const day=(d:string)=>Date.parse(d+"T06:00:00Z")/1000;
+  vi.stubGlobal("fetch",vi.fn(async(u:string)=>u.includes("MISSING")?{ok:false}:{ok:true,json:async()=>({chart:{result:[{
+   meta:{symbol:"379800.KS",regularMarketPrice:120,currency:"KRW",regularMarketTime:day("2026-10-29"),gmtoffset:32400},
+   timestamp:[day("2025-12-30"),day("2026-10-29")],indicators:{quote:[{close:[100,120]}],adjclose:[{adjclose:[98,120]}]},
+  }]}})}));
+  const result=await getBenchmarkQuotes(["379800","MISSING"],"2025-12-31");
+  expect(result["379800"].return).toBeCloseTo(120/98-1,10);
+  expect(result["379800"]).toMatchObject({start:"2025-12-31",asOf:"2026-10-29",currency:"KRW",totalReturn:true});
+  expect(result.MISSING).toBeUndefined();
+ });
  it("국내 두 거래소 중 최신 가격",async()=>{vi.stubGlobal("fetch",vi.fn(async(u:string)=>u.includes(".KQ")?quote(120,"KRW",200):quote(100)));expect((await getFamilyPrices(["123456"])).prices).toEqual({"123456":120});});
  it("통화 없는 가격, 0원, 무한대 거부",async()=>{vi.stubGlobal("fetch",vi.fn(async(u:string)=>u.includes("BAD")?quote(100,""):u.includes("ZERO")?quote(0):quote(Infinity)));expect((await getFamilyPrices(["BAD","ZERO","INF"])).prices).toEqual({});});
  it("외화 환산 및 실패 시 누락",async()=>{vi.stubGlobal("fetch",vi.fn(async(u:string)=>u.includes("USDKRW")?quote(1300):u.includes("AAPL")?quote(10,"USD"):quote(10,"EUR")));const p=await getFamilyPrices(["AAPL"]);expect(p.prices.AAPL).toBe(13000);});
