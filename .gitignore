@@ -42,3 +42,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# 증권사 거래내역 첨부 — 금융 원본은 절대 커밋하지 않는다
+/automation/broker-statements/downloads/
