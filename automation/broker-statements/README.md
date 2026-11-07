@@ -49,6 +49,8 @@ npx tsx automation/broker-statements/setup.ts
 
 ### 환경변수
 
+`setup.ts` 가 저장한 `.env.local` 이 있으면 `fetch.ts` 가 알아서 읽는다. 셸에서 직접 넣으려면:
+
 ```bash
 export NAVER_MAIL_USER='아이디@naver.com'        # 전체 주소. 네이버 ID 만 넣으면 실패한다
 export NAVER_MAIL_APP_PASSWORD='XXXXXXXXXXXX'     # 12자리 앱 비밀번호

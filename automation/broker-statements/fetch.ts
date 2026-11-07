@@ -73,8 +73,22 @@ interface SavedAttachment {
   note?: string;
 }
 
+/**
+ * 환경변수가 없으면 setup.ts 가 저장한 .env.local 을 읽는다.
+ * 이미 셸에서 export 한 값이 우선이고, 파일이 없으면 조용히 넘어간다.
+ */
+function loadEnvLocal(): void {
+  if (process.env.NAVER_MAIL_USER && process.env.NAVER_MAIL_APP_PASSWORD) return;
+  try {
+    process.loadEnvFile(path.resolve(".env.local"));
+  } catch {
+    // 파일이 없으면 아래에서 환경변수 누락으로 안내한다.
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  loadEnvLocal();
   const user = process.env.NAVER_MAIL_USER;
   const pass = process.env.NAVER_MAIL_APP_PASSWORD;
   if (!user || !pass) {
