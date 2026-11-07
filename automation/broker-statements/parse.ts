@@ -36,6 +36,8 @@ export interface ParsedEvent {
   price?: number;
   /** 거래금액(양수). 입출금·배당은 금액 그대로. */
   amount: number;
+  /** 그 금액의 통화. 해외 계좌는 한 명세서 안에서도 원화와 달러가 섞인다. */
+  currency: string;
   fee: number;
   tax: number;
 }
@@ -157,6 +159,7 @@ export function parseKiwoom(rows: string[][]): ParsedStatement {
     const label = (head[1] ?? "").trim();
     const quantity = toNumber(tail[0]);
     const price = toNumber(tail[1]);
+    const amount = parseAmount(tail[2]);
     events.push({
       date: toDate(head[0]),
       type: classifyEvent(label),
@@ -164,7 +167,8 @@ export function parseKiwoom(rows: string[][]): ParsedStatement {
       ...(head[2]?.trim() ? { name: head[2].trim() } : {}),
       ...(quantity ? { quantity } : {}),
       ...(price ? { price } : {}),
-      amount: toNumber(tail[2]),
+      amount: amount.value,
+      currency: amount.currency ?? "KRW",
       fee: toNumber(head[3]),
       tax: toNumber(head[4]),
     });
@@ -244,6 +248,7 @@ export function parseKb(rows: string[][]): ParsedStatement {
       if (!isDateCell(row[0])) break;
       const label = (row[1] ?? "").trim();
       const detail = parseKbDetail(row[2] ?? "");
+      const settled = parseAmount(row[3]);
       events.push({
         date: toDate(row[0]),
         type: classifyEvent(label),
@@ -257,7 +262,8 @@ export function parseKb(rows: string[][]): ParsedStatement {
         amount:
           detail.quantity && detail.price
             ? detail.quantity * detail.price
-            : Math.abs(toNumber(row[3])),
+            : Math.abs(settled.value),
+        currency: settled.currency ?? "KRW",
         fee: detail.fee,
         tax: 0,
       });

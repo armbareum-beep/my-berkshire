@@ -8,6 +8,7 @@ import {
   reconcileCash,
   reconcileHoldings,
   monthlyIncome,
+  formatIncome,
   type VaultAccount,
   type VaultHolding,
   type VaultFlow,
@@ -28,10 +29,10 @@ const statement = (over: Partial<ParsedStatement> = {}): ParsedStatement => ({
     { name: "KODEX 미국S&P500", quantity: 203, price: 22945, value: 4657835 },
   ],
   events: [
-    { date: "2026-10-01", type: "DEPOSIT", label: "이체입금", amount: 100000, fee: 0, tax: 0 },
-    { date: "2026-10-02", type: "DIVIDEND", label: "수익분배금입금", name: "KODEX코리아밸류업", amount: 1600, fee: 0, tax: 0 },
-    { date: "2026-10-11", type: "INTEREST", label: "예탁금이용료", amount: 1059, fee: 0, tax: 0 },
-    { date: "2026-10-23", type: "DEPOSIT", label: "이체입금", amount: 100000, fee: 0, tax: 0 },
+    { date: "2026-10-01", type: "DEPOSIT", label: "이체입금", currency: "KRW", amount: 100000, fee: 0, tax: 0 },
+    { date: "2026-10-02", type: "DIVIDEND", label: "수익분배금입금", currency: "KRW", name: "KODEX코리아밸류업", amount: 1600, fee: 0, tax: 0 },
+    { date: "2026-10-11", type: "INTEREST", label: "예탁금이용료", currency: "KRW", amount: 1059, fee: 0, tax: 0 },
+    { date: "2026-10-23", type: "DEPOSIT", label: "이체입금", currency: "KRW", amount: 100000, fee: 0, tax: 0 },
   ],
   ...over,
 });
@@ -181,8 +182,24 @@ describe("reconcileCash / reconcileHoldings", () => {
 });
 
 describe("monthlyIncome", () => {
+  it("해외 계좌의 섞인 통화를 따로 모은다 — 달러 배당과 원화 이자를 더하면 뜻이 없다", () => {
+    const mixed = statement({
+      events: [
+        { date: "2026-09-05", type: "DIVIDEND", label: "배당금", amount: 6.84, currency: "USD", fee: 0, tax: 0 },
+        { date: "2026-09-11", type: "INTEREST", label: "예탁금이용료", amount: 2186, currency: "KRW", fee: 0, tax: 0 },
+      ],
+    });
+    expect(monthlyIncome(mixed)).toEqual({ dividend: { USD: 6.84 }, interest: { KRW: 2186 } });
+    expect(formatIncome({ USD: 6.84 })).toBe("USD 6.84");
+    expect(formatIncome({ KRW: 1600 })).toBe("1,600원");
+    expect(formatIncome({})).toBe("0");
+  });
+
   it("그 달의 배당·이자를 나눠 합산한다", () => {
-    expect(monthlyIncome(statement())).toEqual({ dividend: 1600, interest: 1059 });
+    expect(monthlyIncome(statement())).toEqual({
+      dividend: { KRW: 1600 },
+      interest: { KRW: 1059 },
+    });
   });
 });
 

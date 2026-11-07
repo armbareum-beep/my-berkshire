@@ -19,6 +19,7 @@ import {
   reconcileCash,
   reconcileHoldings,
   monthlyIncome,
+  formatIncome,
   normalizeName,
   type Diff,
   type VaultAccount,
@@ -105,7 +106,12 @@ async function main() {
 
   const allDiffs: Diff[] = [];
   const unmatched: string[] = [];
-  const income: { account: string; label: string; dividend: number; interest: number }[] = [];
+  const income: {
+    account: string;
+    label: string;
+    dividend: Record<string, number>;
+    interest: Record<string, number>;
+  }[] = [];
   let read = 0;
 
   for (const file of files) {
@@ -135,7 +141,7 @@ async function main() {
     ];
     allDiffs.push(...diffs);
     const m = monthlyIncome(statement);
-    if (m.dividend || m.interest) {
+    if (Object.keys(m.dividend).length || Object.keys(m.interest).length) {
       income.push({ account: match.account.id, label: who, ...m });
     }
     console.log(
@@ -157,7 +163,7 @@ async function main() {
     console.log("\n명세서가 말하는 그 달의 배당·이자:");
     for (const i of income) {
       console.log(
-        `  ${i.label} (${i.account}) 배당 ${i.dividend.toLocaleString()} · 이자 ${i.interest.toLocaleString()}`,
+        `  ${i.label} (${i.account}) 배당 ${formatIncome(i.dividend)} · 이자 ${formatIncome(i.interest)}`,
       );
     }
     console.log("  장부는 계좌별 누적만 들고 있어 월별 대조는 못 합니다. 눈으로 확인해 주세요.");

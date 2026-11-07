@@ -12,7 +12,7 @@ import { readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { decryptStatement, detectBroker } from "./decrypt";
 import { parseKb, parseKiwoom, type ParsedStatement } from "./parse";
-import { monthlyIncome } from "./reconcile";
+import { monthlyIncome, formatIncome } from "./reconcile";
 import { loadEnvLocal, saveEnv } from "./env";
 
 const PASSWORD_KEY = "STATEMENT_PASSWORDS";
@@ -134,7 +134,7 @@ async function main() {
           `${statement.accountLabel ? " · " + statement.accountLabel : ""} · ${statement.accountNo}\n` +
           `        기간 ${statement.periodFrom}~${statement.periodTo} · 예수금 ${statement.cash.toLocaleString()}` +
           ` · 보유 ${statement.holdings.length}종목 · 거래 ${statement.events.length}건` +
-          ` · 배당 ${income.dividend.toLocaleString()} · 이자 ${income.interest.toLocaleString()}`,
+          ` · 배당 ${formatIncome(income.dividend)} · 이자 ${formatIncome(income.interest)}`,
       );
     } catch (error) {
       failed.push({ file: name, reason: error instanceof Error ? error.message : String(error) });

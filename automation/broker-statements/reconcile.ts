@@ -244,13 +244,34 @@ export function reconcileHoldings(
   return diffs;
 }
 
-/** 명세서가 말하는 그 달의 배당·이자 합계. 장부는 누적이라 바로 비교할 수 없어 따로 낸다. */
-export function monthlyIncome(statement: ParsedStatement): { dividend: number; interest: number } {
-  let dividend = 0;
-  let interest = 0;
+/**
+ * 명세서가 말하는 그 달의 배당·이자를 통화별로 낸다.
+ * 해외 계좌는 한 명세서 안에서도 원화 이자와 달러 배당이 섞여 나오므로
+ * 한 숫자로 더하면 뜻이 없어진다. 장부는 누적이라 바로 비교할 수 없어 따로 낸다.
+ */
+export function monthlyIncome(statement: ParsedStatement): {
+  dividend: Record<string, number>;
+  interest: Record<string, number>;
+} {
+  const dividend: Record<string, number> = {};
+  const interest: Record<string, number> = {};
   for (const event of statement.events) {
-    if (event.type === "DIVIDEND") dividend += event.amount;
-    if (event.type === "INTEREST") interest += event.amount;
+    const bucket =
+      event.type === "DIVIDEND" ? dividend : event.type === "INTEREST" ? interest : null;
+    if (!bucket) continue;
+    const currency = event.currency || "KRW";
+    bucket[currency] = (bucket[currency] ?? 0) + event.amount;
   }
   return { dividend, interest };
+}
+
+/** 통화별 합계를 "1,600원 · USD 6.84" 처럼 읽기 좋게. 비어 있으면 "0". */
+export function formatIncome(sums: Record<string, number>): string {
+  const parts = Object.entries(sums).filter(([, v]) => v);
+  if (!parts.length) return "0";
+  return parts
+    .map(([currency, value]) =>
+      currency === "KRW" ? `${value.toLocaleString()}원` : `${currency} ${value.toLocaleString()}`,
+    )
+    .join(" · ");
 }
