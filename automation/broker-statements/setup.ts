@@ -105,27 +105,57 @@ async function saveEnv(user: string, pass: string): Promise<string> {
   return file;
 }
 
-function explain(error: unknown): string {
+/**
+ * ImapFlow 는 쓸 만한 정보를 message 가 아니라 responseText·serverResponseCode·
+ * authenticationFailed 에 담는다. message 만 보면 "Command failed" 밖에 안 나온다.
+ */
+function detailsOf(error: unknown): { text: string; authFailed: boolean } {
+  const parts: string[] = [];
+  let authFailed = false;
+  if (error && typeof error === "object") {
+    const e = error as Record<string, unknown>;
+    if (e.authenticationFailed === true) authFailed = true;
+    for (const key of ["responseText", "serverResponseCode", "response", "code"]) {
+      const value = e[key];
+      if (value !== undefined && value !== null && value !== "") {
+        parts.push(`${key}: ${String(value)}`);
+      }
+    }
+  }
+  return { text: parts.join(" / "), authFailed };
+}
+
+export function explain(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
+  const { text: detail, authFailed } = detailsOf(error);
+  const withDetail = (lines: string[]) =>
+    (detail ? [...lines, "", `서버 응답 — ${detail}`] : lines).join("\n");
   if (/ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EHOSTUNREACH/i.test(message)) {
-    return [
+    return withDetail([
       `${HOST}:${PORT} 에 닿지 못했습니다 (${message}).`,
       "",
       "이 스크립트는 993 포트가 열린 곳에서 돌아야 합니다.",
       "Claude Code 클라우드 세션은 HTTPS 만 나가므로 여기서는 실행되지 않습니다 —",
       "본인 컴퓨터 터미널에서 돌려 주세요.",
-    ].join("\n");
+    ]);
   }
-  if (/AUTHENTICATIONFAILED|LOGIN failed|Invalid credentials|AUTHENTICATE/i.test(message)) {
-    return [
-      "네이버가 로그인을 거부했습니다. 셋 중 하나입니다:",
+  if (
+    authFailed ||
+    /AUTHENTICATIONFAILED|LOGIN failed|Invalid credentials|AUTHENTICATE|Command failed/i.test(
+      message + " " + detail,
+    )
+  ) {
+    return withDetail([
+      "네이버가 로그인을 거부했습니다. 흔한 원인 순서대로:",
       "",
-      "  1. 일반 로그인 비밀번호를 넣으셨다 → 2단계 인증의 '애플리케이션 비밀번호'(12자리, 대문자+숫자)가 필요합니다",
-      "  2. 메일 환경설정 → POP3/IMAP 설정에서 'IMAP 사용'이 꺼져 있다 → 켜 주세요",
-      "  3. 아이디에 네이버 ID 만 넣으셨다 → 전체 주소(아이디@naver.com)로 넣어야 합니다",
-    ].join("\n");
+      "  1. 메일 환경설정 → POP3/IMAP 설정에서 'IMAP 사용'이 꺼져 있다 → 켜고 저장했는지 확인",
+      "     (ID 설정이 아니라 '메일' 쪽 환경설정입니다. 저장 버튼까지 눌러야 적용됩니다.)",
+      "  2. 일반 로그인 비밀번호를 넣었다 → 2단계 인증의 '애플리케이션 비밀번호'(12자리, 대문자+숫자)가 필요",
+      "  3. 앱 비밀번호를 새로 발급하고 예전 것을 넣었다 → 가장 최근 것으로",
+      "  4. 붙여넣을 때 앞뒤 공백이나 줄바꿈이 섞였다 → 12자만 정확히",
+    ]);
   }
-  return message;
+  return withDetail([message]);
 }
 
 async function testConnection(user: string, pass: string): Promise<void> {
@@ -163,9 +193,15 @@ async function main() {
   console.log("  · 2단계 인증 → 애플리케이션 비밀번호 발급 (12자리, 대문자+숫자)");
   console.log("  · 메일 환경설정 → POP3/IMAP 설정 → IMAP 사용 ON\n");
 
-  const user = process.env[USER_KEY] ?? (await ask("네이버 메일 주소 (아이디@naver.com): "));
+  let user = process.env[USER_KEY] ?? "";
+  for (let attempt = 0; !user.includes("@") && attempt < 3; attempt++) {
+    if (attempt > 0) {
+      console.log("전체 주소로 넣어 주세요 — 네이버 ID 만 쓰면 로그인이 거부됩니다.");
+    }
+    user = await ask("네이버 메일 주소 (아이디@naver.com): ");
+  }
   if (!user.includes("@")) {
-    console.error("\n전체 주소로 넣어 주세요. 네이버 ID 만 쓰면 로그인이 거부됩니다.");
+    console.error("\n주소를 받지 못했습니다. 다시 돌려 주세요.");
     process.exit(1);
   }
   const pass = process.env[PASS_KEY] ?? (await askHidden("애플리케이션 비밀번호 (화면에 안 보입니다): "));

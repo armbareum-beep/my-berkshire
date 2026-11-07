@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mergeEnv } from "./setup";
+import { mergeEnv, explain } from "./setup";
 
 describe("mergeEnv", () => {
   it("빈 파일이면 두 줄만 쓴다", () => {
@@ -65,5 +65,44 @@ describe("mergeEnv", () => {
   it("비밀번호 값에 = 가 있어도 그대로 보존한다", () => {
     const out = mergeEnv("", "u", "ab=cd==");
     expect(out).toContain("NAVER_MAIL_APP_PASSWORD=ab=cd==");
+  });
+});
+
+describe("explain", () => {
+  it("ImapFlow 의 'Command failed' 를 인증 실패로 읽고 서버 응답을 보여준다", () => {
+    const error = Object.assign(new Error("Command failed"), {
+      authenticationFailed: true,
+      responseText: "Invalid credentials",
+      serverResponseCode: "AUTHENTICATIONFAILED",
+    });
+    const out = explain(error);
+    expect(out).toContain("네이버가 로그인을 거부했습니다");
+    expect(out).toContain("IMAP 사용");
+    // 핵심: 원인 추측만 하지 말고 서버가 실제로 뭐라 했는지 보여줄 것
+    expect(out).toContain("Invalid credentials");
+    expect(out).toContain("AUTHENTICATIONFAILED");
+  });
+
+  it("authenticationFailed 플래그만 있어도 인증 안내를 낸다", () => {
+    const error = Object.assign(new Error("Command failed"), { authenticationFailed: true });
+    expect(explain(error)).toContain("네이버가 로그인을 거부했습니다");
+  });
+
+  it("포트가 막히면 네트워크 안내를 낸다", () => {
+    const error = Object.assign(new Error("connect ECONNREFUSED 1.2.3.4:993"), {
+      code: "ECONNREFUSED",
+    });
+    const out = explain(error);
+    expect(out).toContain("993 포트가 열린 곳에서 돌아야");
+    expect(out).toContain("ECONNREFUSED");
+  });
+
+  it("모르는 오류는 메시지를 그대로 보여준다", () => {
+    expect(explain(new Error("무슨 일인지 모를 오류"))).toContain("무슨 일인지 모를 오류");
+  });
+
+  it("객체가 아닌 값도 터지지 않는다", () => {
+    expect(() => explain("문자열 오류")).not.toThrow();
+    expect(() => explain(null)).not.toThrow();
   });
 });
