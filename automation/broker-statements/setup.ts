@@ -120,7 +120,7 @@ function explain(error: unknown): string {
     return [
       "네이버가 로그인을 거부했습니다. 셋 중 하나입니다:",
       "",
-      "  1. 일반 로그인 비밀번호를 넣으셨다 → 2단계 인증의 '애플리케이션 비밀번호'(16자리)가 필요합니다",
+      "  1. 일반 로그인 비밀번호를 넣으셨다 → 2단계 인증의 '애플리케이션 비밀번호'(12자리, 대문자+숫자)가 필요합니다",
       "  2. 메일 환경설정 → POP3/IMAP 설정에서 'IMAP 사용'이 꺼져 있다 → 켜 주세요",
       "  3. 아이디에 네이버 ID 만 넣으셨다 → 전체 주소(아이디@naver.com)로 넣어야 합니다",
     ].join("\n");
@@ -160,7 +160,7 @@ function runDiscover(user: string, pass: string, from: string, to: string): Prom
 async function main() {
   console.log("네이버 메일 IMAP 연결 설치\n");
   console.log("먼저 네이버에서 아래 두 가지가 되어 있어야 합니다:");
-  console.log("  · 2단계 인증 → 애플리케이션 비밀번호 발급 (16자리)");
+  console.log("  · 2단계 인증 → 애플리케이션 비밀번호 발급 (12자리, 대문자+숫자)");
   console.log("  · 메일 환경설정 → POP3/IMAP 설정 → IMAP 사용 ON\n");
 
   const user = process.env[USER_KEY] ?? (await ask("네이버 메일 주소 (아이디@naver.com): "));

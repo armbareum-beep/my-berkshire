@@ -80,7 +80,7 @@ async function main() {
   if (!user || !pass) {
     console.error(
       "NAVER_MAIL_USER 와 NAVER_MAIL_APP_PASSWORD 환경변수가 필요합니다.\n" +
-        "네이버 2단계 인증의 '애플리케이션 비밀번호'(16자리)를 쓰고, 메일 환경설정에서 IMAP 사용을 켜 두세요.",
+        "네이버 2단계 인증의 '애플리케이션 비밀번호'(12자리, 대문자+숫자)를 쓰고, 메일 환경설정에서 IMAP 사용을 켜 두세요.",
     );
     process.exit(1);
   }

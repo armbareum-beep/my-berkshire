@@ -23,7 +23,7 @@ IMAP 은 네이버가 공식 지원하는 인터페이스다. 한 번 설정해 
 
 ### 1. 네이버에서 두 가지 (계정 주인만 가능)
 
-1. **2단계 인증**을 켜고 **애플리케이션 비밀번호**를 발급한다(16자리). 일반 로그인
+1. **2단계 인증**을 켜고 **애플리케이션 비밀번호**를 발급한다(12자리, 알파벳 대문자와 숫자). 일반 로그인
    비밀번호로는 접속이 거부된다 — 네이버가 2025년 6월부터 앱 비밀번호를 필수로 바꿨고
    일반 비밀번호 유예 기간도 끝났다.
 2. **네이버 메일 → 환경설정 → POP3/IMAP 설정 → IMAP 사용**을 **ON** 으로 바꾼다.
@@ -51,7 +51,7 @@ npx tsx automation/broker-statements/setup.ts
 
 ```bash
 export NAVER_MAIL_USER='아이디@naver.com'        # 전체 주소. 네이버 ID 만 넣으면 실패한다
-export NAVER_MAIL_APP_PASSWORD='xxxxxxxxxxxxxxxx' # 16자리 앱 비밀번호
+export NAVER_MAIL_APP_PASSWORD='XXXXXXXXXXXX'     # 12자리 앱 비밀번호
 ```
 
 ### 1단계 — 실제 발신자 찾기 (`--discover`)
