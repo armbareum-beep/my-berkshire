@@ -208,3 +208,105 @@ describe("normalizeName", () => {
     expect(normalizeName("TIGER200")).toBe(normalizeName("TIGER 200"));
   });
 });
+
+describe("외화는 자동으로 넣지 않는다", () => {
+  it("달러 입금은 flow-missing 이 아니라 currency-unsupported 로 낸다", () => {
+    const usd = statement({
+      events: [
+        { date: "2026-10-05", type: "DEPOSIT", label: "외화입금", amount: 1000, currency: "USD", fee: 0, tax: 0 },
+      ],
+    });
+    const diffs = reconcileFlows(usd, "A", []);
+    expect(diffs).toHaveLength(1);
+    expect(diffs[0].kind).toBe("currency-unsupported");
+    // 핵심: 자동 반영 대상(flow-missing)에 섞이면 달러가 원화로 적힌다
+    expect(diffs.some((d) => d.kind === "flow-missing")).toBe(false);
+    expect(diffs[0].message).toContain("USD");
+  });
+
+  it("원화 입금은 그대로 flow-missing 이다", () => {
+    const krw = statement({
+      events: [
+        { date: "2026-10-05", type: "DEPOSIT", label: "이체입금", amount: 1000, currency: "KRW", fee: 0, tax: 0 },
+      ],
+    });
+    expect(reconcileFlows(krw, "A", [])[0].kind).toBe("flow-missing");
+  });
+
+  it("외화 예수금은 원화 장부와 비교하지 않는다", () => {
+    const usd = statement({ currency: "USD", cash: 7092.22 });
+    const account: VaultAccount = { id: "A", cash: 9500000, valuationDate: "2026-10-31" };
+    const diffs = reconcileCash(usd, account);
+    expect(diffs).toHaveLength(1);
+    expect(diffs[0].kind).toBe("currency-unsupported");
+    expect(diffs[0].kind).not.toBe("cash");
+  });
+});
+
+describe("계좌 주인으로 먼저 거른다", () => {
+  // 실제로 터진 사고: 두 아이가 같은 ETF 를 같은 구성으로 들고 있어 보유만으로는
+  // 구분되지 않았고, 이엘 명세서가 이린 계좌로 짝지어졌다.
+  const sameHoldings: VaultHolding[] = [
+    { account: "린-국내", code: "102110", quantity: 2 },
+    { account: "린-국내", code: "379800", quantity: 203 },
+  ];
+  const accounts: VaultAccount[] = [
+    { id: "린-국내", ownerName: "이린", mask: "***-1953-10" },
+    { id: "엘-해외", ownerName: "이엘", mask: "***-6958-10" },
+  ];
+
+  it("이린 명세서는 이린 계좌로 간다", () => {
+    const s = statement({ accountName: "이린" });
+    expect(matchAccount(s, accounts, sameHoldings, codeOf)?.account.id).toBe("린-국내");
+  });
+
+  it("이엘 명세서는 이린 계좌로 가지 않는다 — 장부에 이엘 국내계좌가 없으면 못 찾는 게 맞다", () => {
+    const s = statement({ accountName: "이엘" });
+    const m = matchAccount(s, accounts, sameHoldings, codeOf);
+    expect(m?.account.id).not.toBe("린-국내");
+    expect(m).toBeNull();
+  });
+
+  it("주인이 같은 계좌가 여럿이면 그 안에서 보유로 가린다", () => {
+    const two: VaultAccount[] = [
+      { id: "린-국내", ownerName: "이린" },
+      { id: "린-해외", ownerName: "이린" },
+    ];
+    const s = statement({ accountName: "이린" });
+    expect(matchAccount(s, two, sameHoldings, codeOf)?.account.id).toBe("린-국내");
+  });
+});
+
+describe("같은 날 여러 건", () => {
+  it("한 장부 기록이 여러 명세서 거래와 중복 비교되지 않는다", () => {
+    const two = statement({
+      accountName: "홍길동",
+      events: [
+        { date: "2026-10-02", type: "DEPOSIT", label: "입금A", amount: 10000000, currency: "KRW", fee: 0, tax: 0 },
+        { date: "2026-10-02", type: "WITHDRAWAL", label: "출금B", amount: 3439435, currency: "KRW", fee: 0, tax: 0 },
+      ],
+    });
+    const flows: VaultFlow[] = [{ id: "1", account: "A", date: "2026-10-02", amount: -6745590 }];
+    const diffs = reconcileFlows(two, "A", flows);
+    // 장부 기록은 하나뿐이므로 금액 불일치는 한 번만, 나머지는 빠진 것으로 나와야 한다
+    expect(diffs.filter((d) => d.kind === "flow-amount")).toHaveLength(1);
+    expect(diffs.filter((d) => d.kind === "flow-missing")).toHaveLength(1);
+  });
+
+  it("같은 날 같은 금액이 두 번이면 장부에도 두 건 있어야 넘어간다", () => {
+    const twice = statement({
+      events: [
+        { date: "2026-10-02", type: "DEPOSIT", label: "입금", amount: 100000, currency: "KRW", fee: 0, tax: 0 },
+        { date: "2026-10-02", type: "DEPOSIT", label: "입금", amount: 100000, currency: "KRW", fee: 0, tax: 0 },
+      ],
+    });
+    const one: VaultFlow[] = [{ id: "1", account: "A", date: "2026-10-02", amount: -100000 }];
+    expect(reconcileFlows(twice, "A", one)).toHaveLength(1);
+
+    const both: VaultFlow[] = [
+      { id: "1", account: "A", date: "2026-10-02", amount: -100000 },
+      { id: "2", account: "A", date: "2026-10-02", amount: -100000 },
+    ];
+    expect(reconcileFlows(twice, "A", both)).toHaveLength(0);
+  });
+});

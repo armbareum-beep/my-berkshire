@@ -29,6 +29,7 @@ import {
 import { loadEnvLocal } from "./env";
 
 interface Vault {
+  owners?: { id: string; name: string }[];
   accounts: VaultAccount[];
   holdings: VaultHolding[];
   flows: VaultFlow[];
@@ -45,13 +46,25 @@ const flag = (name: string) => process.argv.includes(`--${name}`);
 function database() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) {
+  // 어느 쪽이 없는지 집어 준다. 둘 다 이름만 나열하면 어디를 고쳐야 할지 알 수 없다.
+  const missing = [
+    !url && "NEXT_PUBLIC_SUPABASE_URL",
+    !key && "SUPABASE_SERVICE_ROLE_KEY",
+  ].filter(Boolean);
+  if (missing.length) {
     throw new Error(
-      "NEXT_PUBLIC_SUPABASE_URL 과 SUPABASE_SERVICE_ROLE_KEY 가 필요합니다.\n" +
-        "로컬이면 .env.local, GitHub Actions 면 저장소 Secrets 에 넣어 주세요.",
+      `${missing.join(", ")} 가(이) 비어 있습니다.\n` +
+        (url ? "  NEXT_PUBLIC_SUPABASE_URL: 있음\n" : "") +
+        (key ? "  SUPABASE_SERVICE_ROLE_KEY: 있음\n" : "") +
+        "\nGitHub Actions 면 저장소 Settings → Secrets and variables → Actions 에서,\n" +
+        "로컬이면 .env.local 에 넣어 주세요.\n" +
+        "SUPABASE_SERVICE_ROLE_KEY 는 Supabase 대시보드 → Project Settings → API 의\n" +
+        "service_role 키입니다(공개 anon 키가 아닙니다).",
     );
   }
-  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  return createClient(url!, key!, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
 }
 
 async function findStatements(root: string): Promise<string[]> {
@@ -101,8 +114,14 @@ async function main() {
   if (error) throw new Error(`장부를 읽지 못했습니다: ${error.message}`);
   const vault = row.data as Vault;
   const codeOf = nameToCode(vault);
+  // 장부 계좌는 주인을 id(P01…)로 들고 있다. 명세서는 이름으로 밝히므로 풀어 둔다.
+  const ownerName = new Map((vault.owners ?? []).map((o) => [o.id, o.name]));
+  const accounts: VaultAccount[] = vault.accounts.map((a) => ({
+    ...a,
+    ownerName: a.owner ? ownerName.get(a.owner) : undefined,
+  }));
 
-  console.log(`명세서 ${files.length}건 · 장부 계좌 ${vault.accounts.length}개\n`);
+  console.log(`명세서 ${files.length}건 · 장부 계좌 ${accounts.length}개\n`);
 
   const allDiffs: Diff[] = [];
   const unmatched: string[] = [];
@@ -128,7 +147,7 @@ async function main() {
     if (since && statement.periodTo < since) continue;
     read += 1;
 
-    const match = matchAccount(statement, vault.accounts, vault.holdings, codeOf);
+    const match = matchAccount(statement, accounts, vault.holdings, codeOf);
     const who = `${statement.accountName}${statement.accountLabel ? " " + statement.accountLabel : ""}`;
     if (!match) {
       unmatched.push(`${who} (${statement.accountNo}) ${statement.periodFrom}~${statement.periodTo}`);
@@ -169,7 +188,14 @@ async function main() {
     console.log("  장부는 계좌별 누적만 들고 있어 월별 대조는 못 합니다. 눈으로 확인해 주세요.");
   }
 
+  // 자동으로 넣는 것은 "빠진 원화 현금흐름"뿐이다. 외화(currency-unsupported)와
+  // 금액·수량이 다른 항목은 사람이 판단할 일이라 보고만 한다.
   const fixable = allDiffs.filter((d) => d.kind === "flow-missing");
+  const foreign = allDiffs.filter((d) => d.kind === "currency-unsupported");
+  if (foreign.length) {
+    console.log(`\n외화라 자동으로 넣지 않은 항목 ${foreign.length}건 — 환율은 직접 적용해 주세요:`);
+    for (const d of foreign) console.log(`  ${d.message}`);
+  }
   if (!fixable.length) {
     console.log("\n자동으로 고칠 것이 없습니다.");
     return;
