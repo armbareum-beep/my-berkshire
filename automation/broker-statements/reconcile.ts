@@ -14,6 +14,8 @@ export interface VaultAccount {
   name?: string;
   owner?: string;
   mask?: string;
+  /** 계좌 주인의 이름. 명세서의 계좌명과 맞춰 보려고 호출하는 쪽이 채워 준다. */
+  ownerName?: string;
   cash?: number;
   div?: number;
   interest?: number;
@@ -117,8 +119,14 @@ export function matchAccount(
   const wanted = new Set(
     statement.holdings.map((h) => codeOf(h.name)).filter((c): c is string => !!c),
   );
+  // 명세서는 계좌명으로 주인을 밝힌다. 가족이 같은 상품을 같은 구성으로 들고 있으면
+  // 보유 종목만으로는 구분되지 않으므로, 주인 이름이 있으면 먼저 그것으로 거른다.
+  const owner = statement.accountName.trim();
+  const named = accounts.filter((a) => a.ownerName && a.ownerName.trim() === owner);
+  const pool = named.length ? named : accounts.filter((a) => !a.ownerName);
+
   const scored: AccountMatch[] = [];
-  for (const account of accounts) {
+  for (const account of pool) {
     const owned = new Set(holdings.filter((h) => h.account === account.id).map((h) => h.code));
     let overlap = 0;
     for (const code of wanted) if (owned.has(code)) overlap += 1;
@@ -126,9 +134,11 @@ export function matchAccount(
     if (!overlap && !byMask) continue;
     // 종목이 하나도 없는 계좌(현금성)는 마스크로만 짝지을 수 있다.
     const score = wanted.size ? overlap / wanted.size : byMask ? 1 : 0;
-    const reason = wanted.size
-      ? `보유 ${overlap}/${wanted.size} 일치${byMask ? " · 마스크 부합" : ""}`
-      : "마스크 부합";
+    const reason =
+      (named.length ? `주인 ${owner} · ` : "") +
+      (wanted.size
+        ? `보유 ${overlap}/${wanted.size} 일치${byMask ? " · 마스크 부합" : ""}`
+        : "마스크 부합");
     scored.push({ account, score, reason });
   }
   scored.sort((a, b) => b.score - a.score);
@@ -156,6 +166,9 @@ export function reconcileFlows(
   vaultFlows: VaultFlow[],
 ): Diff[] {
   const mine = vaultFlows.filter((f) => f.account === accountId);
+  // 같은 날 여러 건이 오갈 수 있다. 한 번 짝지은 장부 기록은 다시 쓰지 않는다 —
+  // 그러지 않으면 한 기록이 여러 명세서 거래와 비교돼 모순된 보고가 나온다.
+  const used = new Set<VaultFlow>();
   const diffs: Diff[] = [];
   for (const event of statement.events) {
     if (event.type !== "DEPOSIT" && event.type !== "WITHDRAWAL") continue;
@@ -175,9 +188,14 @@ export function reconcileFlows(
       continue;
     }
     const expected = { date: event.date, amount: toFlowAmount(event.type, event.amount) };
-    if (mine.some((f) => sameFlow(f, expected))) continue;
-    const sameDay = mine.filter((f) => f.date === expected.date);
+    const exact = mine.find((f) => !used.has(f) && sameFlow(f, expected));
+    if (exact) {
+      used.add(exact);
+      continue;
+    }
+    const sameDay = mine.filter((f) => !used.has(f) && f.date === expected.date);
     if (sameDay.length === 1) {
+      used.add(sameDay[0]);
       diffs.push({
         kind: "flow-amount",
         account: accountId,

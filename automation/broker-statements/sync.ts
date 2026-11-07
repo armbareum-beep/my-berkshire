@@ -29,6 +29,7 @@ import {
 import { loadEnvLocal } from "./env";
 
 interface Vault {
+  owners?: { id: string; name: string }[];
   accounts: VaultAccount[];
   holdings: VaultHolding[];
   flows: VaultFlow[];
@@ -113,8 +114,14 @@ async function main() {
   if (error) throw new Error(`장부를 읽지 못했습니다: ${error.message}`);
   const vault = row.data as Vault;
   const codeOf = nameToCode(vault);
+  // 장부 계좌는 주인을 id(P01…)로 들고 있다. 명세서는 이름으로 밝히므로 풀어 둔다.
+  const ownerName = new Map((vault.owners ?? []).map((o) => [o.id, o.name]));
+  const accounts: VaultAccount[] = vault.accounts.map((a) => ({
+    ...a,
+    ownerName: a.owner ? ownerName.get(a.owner) : undefined,
+  }));
 
-  console.log(`명세서 ${files.length}건 · 장부 계좌 ${vault.accounts.length}개\n`);
+  console.log(`명세서 ${files.length}건 · 장부 계좌 ${accounts.length}개\n`);
 
   const allDiffs: Diff[] = [];
   const unmatched: string[] = [];
@@ -140,7 +147,7 @@ async function main() {
     if (since && statement.periodTo < since) continue;
     read += 1;
 
-    const match = matchAccount(statement, vault.accounts, vault.holdings, codeOf);
+    const match = matchAccount(statement, accounts, vault.holdings, codeOf);
     const who = `${statement.accountName}${statement.accountLabel ? " " + statement.accountLabel : ""}`;
     if (!match) {
       unmatched.push(`${who} (${statement.accountNo}) ${statement.periodFrom}~${statement.periodTo}`);
