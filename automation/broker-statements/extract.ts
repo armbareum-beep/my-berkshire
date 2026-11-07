@@ -13,6 +13,7 @@ import path from "node:path";
 import { decryptStatement, detectBroker } from "./decrypt";
 import { parseKb, parseKiwoom, type ParsedStatement } from "./parse";
 import { monthlyIncome } from "./reconcile";
+import { loadEnvLocal, saveEnv } from "./env";
 
 const PASSWORD_KEY = "STATEMENT_PASSWORDS";
 
@@ -87,7 +88,9 @@ async function main() {
     process.exit(1);
   }
 
+  loadEnvLocal();
   let raw = process.env[PASSWORD_KEY] ?? "";
+  const asked = !raw;
   if (!raw) {
     console.log("보안메일 해제값(개인은 주민등록번호 앞 6자리)을 쉼표로 구분해 넣어 주세요.");
     console.log("가족 계좌가 섞여 있으면 사람마다 다르니 전부 넣으면 알아서 맞춰 씁니다.\n");
@@ -100,6 +103,12 @@ async function main() {
   if (!passwords.length) {
     console.error("비밀번호가 비어 있습니다.");
     process.exit(1);
+  }
+
+  if (asked) {
+    const file = await saveEnv({ [PASSWORD_KEY]: passwords.join(",") });
+    console.log(`\n${file} 에 저장했습니다. 다음부터는 묻지 않습니다.`);
+    console.log(`(지우고 싶으면 그 파일에서 ${PASSWORD_KEY} 줄을 삭제하세요.)`);
   }
 
   console.log(`\n${files.length}개 파일을 풉니다...\n`);

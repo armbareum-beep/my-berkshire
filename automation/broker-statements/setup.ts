@@ -9,13 +9,12 @@
  * 비밀번호는 화면에 찍지 않고, 저장 파일은 소유자만 읽도록(0600) 만든다.
  */
 import { ImapFlow } from "imapflow";
-import { readFile, writeFile, chmod, access } from "node:fs/promises";
+import { saveEnv } from "./env";
 import { spawn } from "node:child_process";
 import path from "node:path";
 
 const HOST = "imap.naver.com";
 const PORT = 993;
-const ENV_FILE = ".env.local";
 const USER_KEY = "NAVER_MAIL_USER";
 const PASS_KEY = "NAVER_MAIL_APP_PASSWORD";
 
@@ -74,35 +73,6 @@ function askHidden(query: string): Promise<string> {
     };
     stdin.on("data", onData);
   });
-}
-
-/**
- * 기존 .env 내용을 보존하면서 우리 키 두 개만 갈아끼운다.
- * 다른 줄(주석·빈 줄·남의 변수)은 순서까지 그대로 남긴다.
- */
-export function mergeEnv(existing: string, user: string, pass: string): string {
-  const lines = existing ? existing.split(/\r?\n/) : [];
-  const kept = lines.filter((line) => {
-    const key = line.split("=")[0]?.trim();
-    return key !== USER_KEY && key !== PASS_KEY;
-  });
-  while (kept.length && kept[kept.length - 1].trim() === "") kept.pop();
-  kept.push(`${USER_KEY}=${user}`, `${PASS_KEY}=${pass}`, "");
-  return kept.join("\n");
-}
-
-async function saveEnv(user: string, pass: string): Promise<string> {
-  const file = path.resolve(ENV_FILE);
-  let existing = "";
-  try {
-    await access(file);
-    existing = await readFile(file, "utf8");
-  } catch {
-    existing = "";
-  }
-  await writeFile(file, mergeEnv(existing, user, pass), { mode: 0o600 });
-  await chmod(file, 0o600);
-  return file;
 }
 
 /**
@@ -281,7 +251,7 @@ async function main() {
   user = working;
   console.log("");
 
-  const file = await saveEnv(user, pass);
+  const file = await saveEnv({ [USER_KEY]: user, [PASS_KEY]: pass });
   console.log(`저장: ${file} (소유자만 읽기, git 에는 올라가지 않습니다)\n`);
 
   const from = (await ask("훑어볼 시작 월 [2026-09]: ")) || "2026-09";

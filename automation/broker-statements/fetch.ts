@@ -20,6 +20,7 @@ import {
   monthRange,
   type BrokerRule,
 } from "./match";
+import { loadEnvLocal } from "./env";
 
 const HOST = "imap.naver.com";
 const PORT = 993;
@@ -72,19 +73,6 @@ interface SavedAttachment {
   savedTo: string;
   /** 열어 보기 전까지는 암호 여부를 알 수 없다. zip/xlsx 는 받은 뒤 확인한다. */
   note?: string;
-}
-
-/**
- * 환경변수가 없으면 setup.ts 가 저장한 .env.local 을 읽는다.
- * 이미 셸에서 export 한 값이 우선이고, 파일이 없으면 조용히 넘어간다.
- */
-function loadEnvLocal(): void {
-  if (process.env.NAVER_MAIL_USER && process.env.NAVER_MAIL_APP_PASSWORD) return;
-  try {
-    process.loadEnvFile(path.resolve(".env.local"));
-  } catch {
-    // 파일이 없으면 아래에서 환경변수 누락으로 안내한다.
-  }
 }
 
 async function main() {
