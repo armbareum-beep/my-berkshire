@@ -201,12 +201,32 @@ async function testConnection(user: string, pass: string): Promise<void> {
   }
 }
 
+/** YYYY-MM 인지. 셸을 거쳐 넘기기 전에 모양을 확인한다. */
+export function isMonth(value: string): boolean {
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
+}
+
 function runDiscover(user: string, pass: string, from: string, to: string): Promise<number> {
   const script = path.join("automation", "broker-statements", "fetch.ts");
+  // Windows 의 npx 는 .cmd 라 shell 없이는 spawn 이 ENOENT 로 죽는다(Node 18+).
+  // shell 을 쓰는 만큼 인자는 넘기기 전에 모양을 확인한다.
+  const useShell = process.platform === "win32";
   return new Promise((resolve) => {
+    if (!isMonth(from) || !isMonth(to)) {
+      console.error(`월 형식이 올바르지 않습니다: ${from} ~ ${to} (YYYY-MM)`);
+      resolve(1);
+      return;
+    }
     const child = spawn("npx", ["tsx", script, "--from", from, "--to", to, "--discover"], {
       stdio: "inherit",
+      shell: useShell,
       env: { ...process.env, [USER_KEY]: user, [PASS_KEY]: pass },
+    });
+    child.on("error", (error) => {
+      console.error("\n훑어보기를 자동으로 띄우지 못했습니다:", error.message);
+      console.error("아래를 직접 돌려 주세요 (자격증명은 이미 저장됐습니다):\n");
+      console.error(`  npx tsx ${script} --from ${from} --to ${to} --discover`);
+      resolve(1);
     });
     child.on("close", (code) => resolve(code ?? 1));
   });

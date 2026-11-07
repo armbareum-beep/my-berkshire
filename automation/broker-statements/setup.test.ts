@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mergeEnv, explain, usernameCandidates, isAuthFailure } from "./setup";
+import { mergeEnv, explain, usernameCandidates, isAuthFailure, isMonth } from "./setup";
 
 describe("mergeEnv", () => {
   it("빈 파일이면 두 줄만 쓴다", () => {
@@ -147,5 +147,31 @@ describe("isAuthFailure", () => {
       code: "ECONNREFUSED",
     });
     expect(isAuthFailure(error)).toBe(false);
+  });
+});
+
+describe("isMonth", () => {
+  it("YYYY-MM 만 통과시킨다", () => {
+    expect(isMonth("2026-09")).toBe(true);
+    expect(isMonth("2026-12")).toBe(true);
+    expect(isMonth("2026-01")).toBe(true);
+  });
+
+  it("월 범위를 벗어나면 거부한다", () => {
+    expect(isMonth("2026-00")).toBe(false);
+    expect(isMonth("2026-13")).toBe(false);
+  });
+
+  it("형식이 다르면 거부한다", () => {
+    expect(isMonth("2026-9")).toBe(false);
+    expect(isMonth("202609")).toBe(false);
+    expect(isMonth("")).toBe(false);
+  });
+
+  it("셸 메타문자가 섞이면 거부한다 — shell:true 로 넘어가는 값이다", () => {
+    expect(isMonth("2026-09 && calc")).toBe(false);
+    expect(isMonth("2026-09; rm -rf /")).toBe(false);
+    expect(isMonth("2026-09`whoami`")).toBe(false);
+    expect(isMonth("$(whoami)")).toBe(false);
   });
 });
