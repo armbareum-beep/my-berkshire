@@ -50,17 +50,33 @@ export interface ParsedStatement {
   periodFrom: string;
   periodTo: string;
   cash: number;
+  /** 예수금 칸이 통화를 밝힌 경우(해외주식 계좌의 "USD ..."). 없으면 원화로 본다. */
+  currency: string;
   holdings: ParsedHolding[];
   events: ParsedEvent[];
 }
 
-export function toNumber(raw: string | undefined): number {
-  if (raw === undefined) return 0;
-  const cleaned = raw.replace(/[,\s원주]/g, "").trim();
-  if (!cleaned || cleaned === "-") return 0;
+/**
+ * 금액 칸을 숫자와 통화로 나눈다. 해외주식 계좌는 "USD 7,092.22" 처럼 통화를 붙여 쓴다.
+ * 통화를 버리고 숫자만 쓰면 달러를 원화로 더해버리므로 함께 돌려준다.
+ */
+export function parseAmount(raw: string | undefined): { value: number; currency: string | null } {
+  if (raw === undefined) return { value: 0, currency: null };
+  const text = raw.trim();
+  const code = /(?:^|\s)([A-Z]{3})(?=\s|$|[\d-])|([A-Z]{3})\s*$/.exec(text);
+  const currency = code ? (code[1] ?? code[2]) : null;
+  const cleaned = text
+    .replace(/[A-Z]{3}/g, "")
+    .replace(/[,\s원주$]/g, "")
+    .trim();
+  if (!cleaned || cleaned === "-") return { value: 0, currency };
   const n = Number(cleaned);
   if (!Number.isFinite(n)) throw new Error(`숫자로 읽을 수 없습니다: ${raw}`);
-  return n;
+  return { value: n, currency };
+}
+
+export function toNumber(raw: string | undefined): number {
+  return parseAmount(raw).value;
 }
 
 /** 2026/10/31 · 20261031 · 2026-10-31 을 모두 YYYY-MM-DD 로. */
@@ -128,6 +144,8 @@ export function parseKiwoom(rows: string[][]): ParsedStatement {
     }
   }
 
+  const cash = parseAmount(labelled(rows, "예수금"));
+
   const events: ParsedEvent[] = [];
   for (let i = 0; i < rows.length; i++) {
     const head = rows[i];
@@ -160,7 +178,8 @@ export function parseKiwoom(rows: string[][]): ParsedStatement {
     asOf: toDate(need(labelled(rows, "잔고기준일"), "잔고기준일")),
     periodFrom: toDate(from),
     periodTo: toDate(to),
-    cash: toNumber(labelled(rows, "예수금")),
+    cash: cash.value,
+    currency: cash.currency ?? "KRW",
     holdings,
     events,
   };
@@ -246,6 +265,10 @@ export function parseKb(rows: string[][]): ParsedStatement {
   }
 
   const label = rows.find((r) => /^\d{2}\s+\S/.test(r[0]?.trim() ?? ""))?.[0]?.trim();
+  // 해외주식 계좌는 "예수금(외화)" 처럼 다른 이름을 쓴다.
+  const cash = parseAmount(
+    labelled(rows, "예수금(원화)") ?? labelled(rows, "예수금(외화)") ?? labelled(rows, "예수금"),
+  );
 
   return {
     broker: "KB증권",
@@ -255,7 +278,8 @@ export function parseKb(rows: string[][]): ParsedStatement {
     asOf: toDate(need(labelled(rows, "작성기준일"), "작성기준일")),
     periodFrom: toDate(from),
     periodTo: toDate(to),
-    cash: toNumber(labelled(rows, "예수금(원화)")),
+    cash: cash.value,
+    currency: cash.currency ?? "KRW",
     holdings,
     events,
   };

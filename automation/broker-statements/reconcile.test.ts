@@ -22,6 +22,7 @@ const statement = (over: Partial<ParsedStatement> = {}): ParsedStatement => ({
   periodFrom: "2026-10-01",
   periodTo: "2026-10-31",
   cash: 129796,
+  currency: "KRW",
   holdings: [
     { name: "TIGER 200", quantity: 2, price: 90640, value: 181280 },
     { name: "KODEX 미국S&P500", quantity: 203, price: 22945, value: 4657835 },

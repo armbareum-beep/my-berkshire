@@ -6,6 +6,7 @@ import {
   classifyEvent,
   toNumber,
   toDate,
+  parseAmount,
 } from "./parse";
 import { detectBroker } from "./decrypt";
 
@@ -227,5 +228,29 @@ describe("detectBroker", () => {
 
   it("둘 다 아니면 null — 엉뚱한 파서를 돌리지 않는다", () => {
     expect(detectBroker([["안녕하세요"], ["광고입니다"]])).toBeNull();
+  });
+});
+
+describe("parseAmount — 해외주식 계좌의 외화 표기", () => {
+  it("USD 금액을 숫자와 통화로 나눈다", () => {
+    expect(parseAmount("USD 7,092.22")).toEqual({ value: 7092.22, currency: "USD" });
+    expect(parseAmount("USD 1,099.97")).toEqual({ value: 1099.97, currency: "USD" });
+  });
+
+  it("통화가 없으면 원화로 본다(통화 null)", () => {
+    expect(parseAmount("129,796")).toEqual({ value: 129796, currency: null });
+  });
+
+  it("소수점을 잃지 않는다 — 해외 예수금은 센트 단위다", () => {
+    expect(parseAmount("USD 5,025.03").value).toBe(5025.03);
+  });
+
+  it("여전히 엉뚱한 값은 거부한다", () => {
+    expect(() => parseAmount("USD 어쩌구")).toThrow(/숫자로 읽을 수 없습니다/);
+  });
+
+  it("toNumber 는 숫자만 돌려주던 동작을 유지한다", () => {
+    expect(toNumber("USD 7,092.22")).toBe(7092.22);
+    expect(toNumber("1,234")).toBe(1234);
   });
 });
