@@ -15,6 +15,33 @@ describe("identifyBroker", () => {
     expect(identifyBroker("send@kiwoom.com", "10월 매매내역 안내")).toBe("키움증권");
   });
 
+  it("2026-11 --discover 로 확인한 실제 발신자·제목을 잡는다", () => {
+    expect(
+      identifyBroker('"KB증권" <mailmaster@kbsec.com>', "[KB증권]이바름고객님 2026년 8월 거래내역입니다"),
+    ).toBe("KB증권");
+    expect(
+      identifyBroker('"KB증권" <mailmaster@kbsec.com>', "[KB증권] 거래내역입니다. (2022.09.17 ~ 2026.09.17)"),
+    ).toBe("KB증권");
+    expect(
+      identifyBroker('"키움증권" <kiwoomiservice@kiwoom.com>', "[키움]  2026년 08월 월간거래내역 및 잔고현황 입니다."),
+    ).toBe("키움증권");
+    expect(
+      identifyBroker('"키움증권" <kiwoomiservice@kiwoom.com>', "[키움증권] 잔고 및 거래내역서"),
+    ).toBe("키움증권");
+  });
+
+  it("같은 증권사의 광고·안내 메일은 거른다", () => {
+    expect(
+      identifyBroker('"키움증권" <kiwoomiservice@kiwoom.com>', "[키움증권] 사기문자 피해 예방 안내"),
+    ).toBeNull();
+  });
+
+  it("KB국민은행은 KB증권이 아니다", () => {
+    expect(
+      identifyBroker('"KB국민은행" <kbinfo@kbmail.kbstar.com>', "기업여신 전자약정서 사본 교부 안내"),
+    ).toBeNull();
+  });
+
   it("대소문자·표시이름이 섞여도 판별한다", () => {
     expect(identifyBroker("KB증권 <No-Reply@KBSEC.COM>", "거래내역 통지")).toBe("KB증권");
   });
@@ -42,6 +69,8 @@ describe("classifyAttachment / isStatementAttachment", () => {
     expect(classifyAttachment("a.csv")).toBe("csv");
     expect(classifyAttachment("a.pdf")).toBe("pdf");
     expect(classifyAttachment("a.zip")).toBe("zip");
+    expect(classifyAttachment("KBSC_20260907.html")).toBe("html");
+    expect(classifyAttachment("kiwoom_month.HTM")).toBe("html");
     expect(classifyAttachment("logo.png")).toBe("other");
     expect(classifyAttachment("noext")).toBe("other");
   });
@@ -49,6 +78,13 @@ describe("classifyAttachment / isStatementAttachment", () => {
   it("이미지는 거래내역 첨부가 아니다", () => {
     expect(isStatementAttachment("거래내역.xlsx")).toBe(true);
     expect(isStatementAttachment("signature.png")).toBe(false);
+  });
+
+  it("증권사가 html 로 보내는 월간 거래내역을 받는다", () => {
+    expect(isStatementAttachment("KBSC_20260907.html")).toBe(true);
+    expect(isStatementAttachment("kiwoom_month.html")).toBe(true);
+    expect(isStatementAttachment("KiwoomSecurities_20260923_04_282.pdf")).toBe(true);
+    expect(isStatementAttachment("KBSC_거래내역_(2022.09.17 ~ 2026.09.17).pdf")).toBe(true);
   });
 });
 

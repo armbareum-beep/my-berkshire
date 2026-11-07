@@ -22,12 +22,15 @@ export interface BrokerRule {
 export const DEFAULT_RULES: BrokerRule[] = [
   {
     broker: "KB증권",
-    fromContains: ["kbsec.com", "kbsec.co.kr", "kbstar.com"],
+    // 2026-11 --discover 로 확인: "KB증권" <mailmaster@kbsec.com>
+    // kbstar.com 은 국민은행 쪽이라 뺐다(증권 거래내역이 오지 않는다).
+    fromContains: ["mailmaster@kbsec.com", "kbsec.com"],
     subjectContains: ["거래내역", "매매내역", "거래명세", "월간거래", "잔고"],
   },
   {
     broker: "키움증권",
-    fromContains: ["kiwoom.com", "kiwoom.co.kr"],
+    // 2026-11 --discover 로 확인: "키움증권" <kiwoomiservice@kiwoom.com>
+    fromContains: ["kiwoomiservice@kiwoom.com", "kiwoom.com"],
     subjectContains: ["거래내역", "매매내역", "거래명세", "월간거래", "잔고"],
   },
 ];
@@ -48,11 +51,14 @@ export function identifyBroker(
   return null;
 }
 
-export type AttachmentKind = "xlsx" | "xls" | "csv" | "pdf" | "zip" | "other";
+export type AttachmentKind = "html" | "xlsx" | "xls" | "csv" | "pdf" | "zip" | "other";
 
 /** 확장자로 첨부 종류를 가른다. 내용 검증은 하지 않는다. */
 export function classifyAttachment(filename: string): AttachmentKind {
   const ext = filename.toLowerCase().split(".").pop() ?? "";
+  // KB(KBSC_*.html)·키움(kiwoom_month.html)은 월간 거래내역을 html 로 보낸다.
+  // PDF 와 달리 암호가 걸려 있지 않아 파싱하기 쉽다 — 반드시 받아야 한다.
+  if (ext === "html" || ext === "htm") return "html";
   if (ext === "xlsx") return "xlsx";
   if (ext === "xls") return "xls";
   if (ext === "csv") return "csv";
