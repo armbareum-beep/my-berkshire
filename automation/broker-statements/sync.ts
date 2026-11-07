@@ -45,13 +45,25 @@ const flag = (name: string) => process.argv.includes(`--${name}`);
 function database() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) {
+  // 어느 쪽이 없는지 집어 준다. 둘 다 이름만 나열하면 어디를 고쳐야 할지 알 수 없다.
+  const missing = [
+    !url && "NEXT_PUBLIC_SUPABASE_URL",
+    !key && "SUPABASE_SERVICE_ROLE_KEY",
+  ].filter(Boolean);
+  if (missing.length) {
     throw new Error(
-      "NEXT_PUBLIC_SUPABASE_URL 과 SUPABASE_SERVICE_ROLE_KEY 가 필요합니다.\n" +
-        "로컬이면 .env.local, GitHub Actions 면 저장소 Secrets 에 넣어 주세요.",
+      `${missing.join(", ")} 가(이) 비어 있습니다.\n` +
+        (url ? "  NEXT_PUBLIC_SUPABASE_URL: 있음\n" : "") +
+        (key ? "  SUPABASE_SERVICE_ROLE_KEY: 있음\n" : "") +
+        "\nGitHub Actions 면 저장소 Settings → Secrets and variables → Actions 에서,\n" +
+        "로컬이면 .env.local 에 넣어 주세요.\n" +
+        "SUPABASE_SERVICE_ROLE_KEY 는 Supabase 대시보드 → Project Settings → API 의\n" +
+        "service_role 키입니다(공개 anon 키가 아닙니다).",
     );
   }
-  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  return createClient(url!, key!, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
 }
 
 async function findStatements(root: string): Promise<string[]> {
