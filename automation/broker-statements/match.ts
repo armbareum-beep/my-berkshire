@@ -105,3 +105,20 @@ export function monthRange(fromMonth: string, toMonth: string): { since: Date; b
   if (before <= since) throw new Error("끝 월이 시작 월보다 앞섭니다.");
   return { since, before };
 }
+
+/**
+ * 한 메일에 같은 이름의 첨부가 여러 개 온다(KB 는 계좌마다 KBSC_<날짜>.html 을
+ * 똑같은 이름으로 보낸다). 그대로 쓰면 서로 덮어써서 마지막 하나만 남는다.
+ * 이미 쓰인 이름이면 확장자 앞에 _1, _2 … 를 붙여 비켜 간다.
+ */
+export function uniqueFilename(filename: string, taken: ReadonlySet<string>): string {
+  if (!taken.has(filename)) return filename;
+  const dot = filename.lastIndexOf(".");
+  const stem = dot > 0 ? filename.slice(0, dot) : filename;
+  const ext = dot > 0 ? filename.slice(dot) : "";
+  for (let i = 1; i < 10000; i++) {
+    const candidate = `${stem}_${i}${ext}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+  throw new Error(`같은 이름의 첨부가 너무 많습니다: ${filename}`);
+}

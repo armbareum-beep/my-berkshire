@@ -6,6 +6,7 @@ import {
   safeFilename,
   monthRange,
   DEFAULT_RULES,
+  uniqueFilename,
   type BrokerRule,
 } from "./match";
 
@@ -136,5 +137,35 @@ describe("monthRange", () => {
 describe("DEFAULT_RULES", () => {
   it("KB·키움 두 증권사를 덮는다", () => {
     expect(DEFAULT_RULES.map((r) => r.broker).sort()).toEqual(["KB증권", "키움증권"]);
+  });
+});
+
+describe("uniqueFilename", () => {
+  it("겹치지 않으면 그대로 둔다", () => {
+    expect(uniqueFilename("KBSC_20261106.html", new Set())).toBe("KBSC_20261106.html");
+  });
+
+  it("같은 이름이면 확장자 앞에 번호를 붙인다 — KB 는 계좌마다 같은 이름으로 보낸다", () => {
+    const taken = new Set(["KBSC_20261106.html"]);
+    expect(uniqueFilename("KBSC_20261106.html", taken)).toBe("KBSC_20261106_1.html");
+  });
+
+  it("번호가 이미 쓰였으면 다음 번호로 넘어간다", () => {
+    const taken = new Set(["a.html", "a_1.html", "a_2.html"]);
+    expect(uniqueFilename("a.html", taken)).toBe("a_3.html");
+  });
+
+  it("확장자가 없어도 처리한다", () => {
+    expect(uniqueFilename("noext", new Set(["noext"]))).toBe("noext_1");
+  });
+
+  it("여섯 개가 연달아 와도 서로 덮어쓰지 않는다", () => {
+    const taken = new Set<string>();
+    const names = Array.from({ length: 6 }, () => {
+      const n = uniqueFilename("KBSC_20261106.html", taken);
+      taken.add(n);
+      return n;
+    });
+    expect(new Set(names).size).toBe(6);
   });
 });

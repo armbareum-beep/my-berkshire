@@ -8,7 +8,7 @@
  */
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import {
   DEFAULT_RULES,
@@ -16,6 +16,7 @@ import {
   isStatementAttachment,
   classifyAttachment,
   safeFilename,
+  uniqueFilename,
   monthRange,
   type BrokerRule,
 } from "./match";
@@ -114,6 +115,8 @@ async function main() {
   await client.connect();
 
   const saved: SavedAttachment[] = [];
+  /** 디렉터리별로 이미 쓴 이름. 같은 이름의 첨부가 서로를 덮어쓰지 않게 한다. */
+  const usedNames = new Map<string, Set<string>>();
   const discovered: { date: string; from: string; subject: string; attachments: string[] }[] = [];
   let scanned = 0;
 
@@ -145,10 +148,13 @@ async function main() {
       for (const attachment of attachments) {
         const original = attachment.filename as string;
         if (!isStatementAttachment(original)) continue;
-        const filename = safeFilename(original);
         // 첨부는 외부에서 온 데이터다. 증권사·날짜별 빈 디렉터리에만 쓴다.
         const dir = path.resolve(args.out, broker, dateIso);
         await mkdir(dir, { recursive: true });
+        const used = usedNames.get(dir) ?? new Set(await readdir(dir).catch(() => []));
+        usedNames.set(dir, used);
+        const filename = uniqueFilename(safeFilename(original), used);
+        used.add(filename);
         const savedTo = path.join(dir, filename);
         await writeFile(savedTo, attachment.content);
         saved.push({
