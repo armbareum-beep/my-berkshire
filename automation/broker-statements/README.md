@@ -29,6 +29,15 @@ IMAP 은 네이버가 공식 지원하는 인터페이스다. 한 번 설정해 
 2. **네이버 메일 → 환경설정 → POP3/IMAP 설정 → IMAP 사용**을 **ON** 으로 바꾼다.
    이걸 빠뜨리면 아이디·비밀번호가 맞아도 연결이 거부된다.
 
+### 사용자명은 '아이디'다
+
+네이버 메일 → 환경설정 → IMAP/SMTP 설정 화면의 **계정 정보**가 사용자명을 알려준다. 거기에는
+전체 주소가 아니라 **아이디**(예: `coach0179`)가 적혀 있다. 전체 주소로 보내면 계정에 따라
+`Authentication failed` 가 난다.
+
+`setup.ts` 는 입력한 형태를 먼저 시도하고, 자격증명 문제로 실패하면 다른 형태로 한 번 더
+시도한 뒤 성공한 쪽을 저장한다. 그러니 어느 쪽으로 적든 된다.
+
 ### 2. 명령어 하나
 
 ```bash
@@ -52,7 +61,7 @@ npx tsx automation/broker-statements/setup.ts
 `setup.ts` 가 저장한 `.env.local` 이 있으면 `fetch.ts` 가 알아서 읽는다. 셸에서 직접 넣으려면:
 
 ```bash
-export NAVER_MAIL_USER='아이디@naver.com'        # 전체 주소. 네이버 ID 만 넣으면 실패한다
+export NAVER_MAIL_USER='coach0179'                # 네이버 메일 IMAP 안내 화면이 적어주는 '아이디'
 export NAVER_MAIL_APP_PASSWORD='XXXXXXXXXXXX'     # 12자리 앱 비밀번호
 ```
 

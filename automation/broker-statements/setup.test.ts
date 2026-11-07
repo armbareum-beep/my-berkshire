@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mergeEnv, explain } from "./setup";
+import { mergeEnv, explain, usernameCandidates, isAuthFailure } from "./setup";
 
 describe("mergeEnv", () => {
   it("빈 파일이면 두 줄만 쓴다", () => {
@@ -104,5 +104,48 @@ describe("explain", () => {
   it("객체가 아닌 값도 터지지 않는다", () => {
     expect(() => explain("문자열 오류")).not.toThrow();
     expect(() => explain(null)).not.toThrow();
+  });
+});
+
+describe("usernameCandidates", () => {
+  it("아이디만 주면 아이디 먼저, 전체 주소를 다음으로", () => {
+    expect(usernameCandidates("coach0179")).toEqual(["coach0179", "coach0179@naver.com"]);
+  });
+
+  it("전체 주소를 주면 그걸 먼저, 아이디를 다음으로", () => {
+    expect(usernameCandidates("coach0179@naver.com")).toEqual([
+      "coach0179@naver.com",
+      "coach0179",
+    ]);
+  });
+
+  it("앞뒤 공백을 떼어낸다", () => {
+    expect(usernameCandidates("  coach0179  ")[0]).toBe("coach0179");
+  });
+
+  it("빈 입력이면 후보가 없다", () => {
+    expect(usernameCandidates("   ")).toEqual([]);
+  });
+
+  it("중복을 만들지 않는다", () => {
+    const out = usernameCandidates("coach0179");
+    expect(new Set(out).size).toBe(out.length);
+  });
+});
+
+describe("isAuthFailure", () => {
+  it("네이버의 실제 거부 응답을 인증 실패로 읽는다", () => {
+    const error = Object.assign(new Error("Command failed"), {
+      responseText: '"coach0179@naver.com": Authentication failed. (Please check your username, password)',
+      serverResponseCode: "AUTH",
+    });
+    expect(isAuthFailure(error)).toBe(true);
+  });
+
+  it("네트워크 오류는 인증 실패가 아니다 — 다른 아이디로 재시도해도 소용없다", () => {
+    const error = Object.assign(new Error("connect ECONNREFUSED 1.2.3.4:993"), {
+      code: "ECONNREFUSED",
+    });
+    expect(isAuthFailure(error)).toBe(false);
   });
 });

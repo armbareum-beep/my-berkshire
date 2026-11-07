@@ -125,6 +125,36 @@ function detailsOf(error: unknown): { text: string; authFailed: boolean } {
   return { text: parts.join(" / "), authFailed };
 }
 
+/** 자격증명 문제인가(= 다른 사용자명으로 재시도할 가치가 있는가). */
+export function isAuthFailure(error: unknown): boolean {
+  const { text, authFailed } = detailsOf(error);
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    authFailed ||
+    /AUTHENTICATIONFAILED|Authentication failed|LOGIN failed|Invalid credentials|\[AUTH\]|Command failed/i.test(
+      message + " " + text,
+    )
+  );
+}
+
+/**
+ * 네이버 메일의 IMAP 안내 화면은 사용자명으로 '아이디'(coach0179)를 쓰라고 적는다.
+ * 전체 주소가 통하는 계정도 있어 어느 쪽이 맞는지 미리 알 수 없으므로, 입력한 형태를
+ * 먼저 시도하고 실패하면 다른 형태로 한 번 더 시도한다.
+ */
+export function usernameCandidates(input: string): string[] {
+  const trimmed = input.trim();
+  if (!trimmed) return [];
+  const out: string[] = [];
+  const add = (value: string) => {
+    if (value && !out.includes(value)) out.push(value);
+  };
+  add(trimmed);
+  if (trimmed.includes("@")) add(trimmed.split("@")[0]);
+  else add(`${trimmed}@naver.com`);
+  return out;
+}
+
 export function explain(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   const { text: detail, authFailed } = detailsOf(error);
@@ -139,20 +169,15 @@ export function explain(error: unknown): string {
       "본인 컴퓨터 터미널에서 돌려 주세요.",
     ]);
   }
-  if (
-    authFailed ||
-    /AUTHENTICATIONFAILED|LOGIN failed|Invalid credentials|AUTHENTICATE|Command failed/i.test(
-      message + " " + detail,
-    )
-  ) {
+  if (authFailed || isAuthFailure(error)) {
     return withDetail([
-      "네이버가 로그인을 거부했습니다. 흔한 원인 순서대로:",
+      "네이버가 로그인을 거부했습니다. 아이디·비밀번호 두 형태를 모두 시도했습니다.",
       "",
-      "  1. 메일 환경설정 → POP3/IMAP 설정에서 'IMAP 사용'이 꺼져 있다 → 켜고 저장했는지 확인",
-      "     (ID 설정이 아니라 '메일' 쪽 환경설정입니다. 저장 버튼까지 눌러야 적용됩니다.)",
-      "  2. 일반 로그인 비밀번호를 넣었다 → 2단계 인증의 '애플리케이션 비밀번호'(12자리, 대문자+숫자)가 필요",
-      "  3. 앱 비밀번호를 새로 발급하고 예전 것을 넣었다 → 가장 최근 것으로",
-      "  4. 붙여넣을 때 앞뒤 공백이나 줄바꿈이 섞였다 → 12자만 정확히",
+      "  1. 일반 로그인 비밀번호를 넣었다 → 2단계 인증의 '애플리케이션 비밀번호'(12자리, 대문자+숫자)가 필요",
+      "  2. 앱 비밀번호를 새로 발급하고 예전 것을 넣었다 → 가장 최근 것으로",
+      "  3. 붙여넣을 때 앞뒤 공백이나 줄바꿈이 섞였다 → 12자만 정확히",
+      "  4. 메일 환경설정 → POP3/IMAP 설정에서 'IMAP 사용'을 켜고 저장했는지 확인",
+      "     (ID 설정이 아니라 '메일' 쪽 환경설정입니다.)",
     ]);
   }
   return withDetail([message]);
@@ -194,14 +219,11 @@ async function main() {
   console.log("  · 메일 환경설정 → POP3/IMAP 설정 → IMAP 사용 ON\n");
 
   let user = process.env[USER_KEY] ?? "";
-  for (let attempt = 0; !user.includes("@") && attempt < 3; attempt++) {
-    if (attempt > 0) {
-      console.log("전체 주소로 넣어 주세요 — 네이버 ID 만 쓰면 로그인이 거부됩니다.");
-    }
-    user = await ask("네이버 메일 주소 (아이디@naver.com): ");
+  for (let attempt = 0; !user && attempt < 3; attempt++) {
+    user = await ask("네이버 아이디 또는 메일 주소 (예: coach0179): ");
   }
-  if (!user.includes("@")) {
-    console.error("\n주소를 받지 못했습니다. 다시 돌려 주세요.");
+  if (!user) {
+    console.error("\n아이디를 받지 못했습니다. 다시 돌려 주세요.");
     process.exit(1);
   }
   const pass = process.env[PASS_KEY] ?? (await askHidden("애플리케이션 비밀번호 (화면에 안 보입니다): "));
@@ -210,16 +232,34 @@ async function main() {
     process.exit(1);
   }
 
-  process.stdout.write("\n접속 확인 중... ");
-  try {
-    await testConnection(user, pass);
-  } catch (error) {
-    console.log("실패\n");
-    console.error(explain(error));
+  const candidates = usernameCandidates(user);
+  let working = "";
+  let lastError: unknown;
+  for (const candidate of candidates) {
+    process.stdout.write(`\n접속 확인 중 (${candidate})... `);
+    try {
+      await testConnection(candidate, pass);
+      working = candidate;
+      console.log("성공");
+      break;
+    } catch (error) {
+      lastError = error;
+      console.log("실패");
+      // 자격증명 문제가 아니면(네트워크 등) 다른 아이디 형태로 바꿔도 소용없다.
+      if (!isAuthFailure(error)) break;
+    }
+  }
+  if (!working) {
+    console.log("");
+    console.error(explain(lastError));
     console.error("\n고친 뒤 다시 돌려 주세요. 저장된 건 없습니다.");
     process.exit(1);
   }
-  console.log("성공\n");
+  if (working !== user.trim()) {
+    console.log(`→ '${working}' 형태로 로그인됐습니다. 이 값으로 저장합니다.`);
+  }
+  user = working;
+  console.log("");
 
   const file = await saveEnv(user, pass);
   console.log(`저장: ${file} (소유자만 읽기, git 에는 올라가지 않습니다)\n`);
