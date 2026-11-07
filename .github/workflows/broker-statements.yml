@@ -11,7 +11,7 @@ on:
         description: "이 날짜 이후 기간의 명세서만 본다 (YYYY-MM-DD)"
         required: false
       apply:
-        description: "1이면 장부를 실제로 고친다. 비우면 보고만 한다."
+        description: "0이면 보고만 한다. 비우면 장부를 고친다."
         default: ""
 
 jobs:
@@ -44,8 +44,9 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           SINCE="${{ inputs.since }}"
-          APPLY=""
-          if [ "${{ inputs.apply }}" = "1" ]; then APPLY="--apply"; fi
+          # 매달 자동 실행은 고쳐 넣는 것이 목적이다. 손으로 돌릴 때 apply=0 이면 보고만 한다.
+          APPLY="--apply"
+          if [ "${{ inputs.apply }}" = "0" ]; then APPLY=""; fi
           npx tsx automation/broker-statements/sync.ts ${SINCE:+--since "$SINCE"} $APPLY
 
       # 받은 명세서는 금융 원본이라 저장소에도 artifact 에도 남기지 않는다.
