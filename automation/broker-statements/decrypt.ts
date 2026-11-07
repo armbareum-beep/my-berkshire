@@ -90,7 +90,23 @@ export async function decryptStatement(
   passwords: string[],
 ): Promise<DecryptResult> {
   if (!passwords.length) throw new Error("보안메일 비밀번호 후보가 비어 있습니다.");
-  const browser = await chromium.launch();
+  // 보통은 Playwright 가 받아둔 브라우저를 쓴다. 다른 곳에 깔려 있으면
+  // PLAYWRIGHT_CHROMIUM_PATH 로 알려줄 수 있다.
+  const executablePath = process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined;
+  let browser: Browser;
+  try {
+    browser = await chromium.launch(executablePath ? { executablePath } : {});
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/Executable doesn't exist|install/i.test(message)) {
+      throw new Error(
+        "보안메일을 열 브라우저가 없습니다. 아래를 한 번만 돌려 주세요:\n\n" +
+          "  npx playwright install chromium\n\n" +
+          `(원래 오류: ${message.split("\n")[0]})`,
+      );
+    }
+    throw error;
+  }
   try {
     for (let i = 0; i < passwords.length; i++) {
       const rows = await tryPassword(browser, filePath, passwords[i]);
