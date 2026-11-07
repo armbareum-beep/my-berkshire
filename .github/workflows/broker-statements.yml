@@ -1,0 +1,54 @@
+name: broker-statements
+
+# 증권사 월간 명세서는 매달 초(키움 3~6일, KB 7~10일)에 온다.
+# 둘 다 도착한 뒤인 12일에 받아서 장부와 대조한다.
+on:
+  schedule:
+    - cron: "37 20 11 * *" # 매달 12일 05:37 KST (UTC 11일 20:37)
+  workflow_dispatch:
+    inputs:
+      since:
+        description: "이 날짜 이후 기간의 명세서만 본다 (YYYY-MM-DD)"
+        required: false
+      apply:
+        description: "1이면 장부를 실제로 고친다. 비우면 보고만 한다."
+        default: ""
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      # 보안메일은 브라우저 안에서만 풀린다.
+      - run: npx playwright install --with-deps chromium
+
+      - name: 메일에서 명세서 받기
+        env:
+          NAVER_MAIL_USER: ${{ secrets.NAVER_MAIL_USER }}
+          NAVER_MAIL_APP_PASSWORD: ${{ secrets.NAVER_MAIL_APP_PASSWORD }}
+        run: |
+          FROM=$(date -u -d "2 months ago" +%Y-%m)
+          TO=$(date -u +%Y-%m)
+          npx tsx automation/broker-statements/fetch.ts --from "$FROM" --to "$TO"
+
+      - name: 장부와 대조
+        env:
+          STATEMENT_PASSWORDS: ${{ secrets.STATEMENT_PASSWORDS }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          SINCE="${{ inputs.since }}"
+          APPLY=""
+          if [ "${{ inputs.apply }}" = "1" ]; then APPLY="--apply"; fi
+          npx tsx automation/broker-statements/sync.ts ${SINCE:+--since "$SINCE"} $APPLY
+
+      # 받은 명세서는 금융 원본이라 저장소에도 artifact 에도 남기지 않는다.
+      - name: 받은 파일 지우기
+        if: always()
+        run: rm -rf automation/broker-statements/downloads
