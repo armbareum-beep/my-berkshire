@@ -208,3 +208,37 @@ describe("normalizeName", () => {
     expect(normalizeName("TIGER200")).toBe(normalizeName("TIGER 200"));
   });
 });
+
+describe("외화는 자동으로 넣지 않는다", () => {
+  it("달러 입금은 flow-missing 이 아니라 currency-unsupported 로 낸다", () => {
+    const usd = statement({
+      events: [
+        { date: "2026-10-05", type: "DEPOSIT", label: "외화입금", amount: 1000, currency: "USD", fee: 0, tax: 0 },
+      ],
+    });
+    const diffs = reconcileFlows(usd, "A", []);
+    expect(diffs).toHaveLength(1);
+    expect(diffs[0].kind).toBe("currency-unsupported");
+    // 핵심: 자동 반영 대상(flow-missing)에 섞이면 달러가 원화로 적힌다
+    expect(diffs.some((d) => d.kind === "flow-missing")).toBe(false);
+    expect(diffs[0].message).toContain("USD");
+  });
+
+  it("원화 입금은 그대로 flow-missing 이다", () => {
+    const krw = statement({
+      events: [
+        { date: "2026-10-05", type: "DEPOSIT", label: "이체입금", amount: 1000, currency: "KRW", fee: 0, tax: 0 },
+      ],
+    });
+    expect(reconcileFlows(krw, "A", [])[0].kind).toBe("flow-missing");
+  });
+
+  it("외화 예수금은 원화 장부와 비교하지 않는다", () => {
+    const usd = statement({ currency: "USD", cash: 7092.22 });
+    const account: VaultAccount = { id: "A", cash: 9500000, valuationDate: "2026-10-31" };
+    const diffs = reconcileCash(usd, account);
+    expect(diffs).toHaveLength(1);
+    expect(diffs[0].kind).toBe("currency-unsupported");
+    expect(diffs[0].kind).not.toBe("cash");
+  });
+});

@@ -181,7 +181,14 @@ async function main() {
     console.log("  장부는 계좌별 누적만 들고 있어 월별 대조는 못 합니다. 눈으로 확인해 주세요.");
   }
 
+  // 자동으로 넣는 것은 "빠진 원화 현금흐름"뿐이다. 외화(currency-unsupported)와
+  // 금액·수량이 다른 항목은 사람이 판단할 일이라 보고만 한다.
   const fixable = allDiffs.filter((d) => d.kind === "flow-missing");
+  const foreign = allDiffs.filter((d) => d.kind === "currency-unsupported");
+  if (foreign.length) {
+    console.log(`\n외화라 자동으로 넣지 않은 항목 ${foreign.length}건 — 환율은 직접 적용해 주세요:`);
+    for (const d of foreign) console.log(`  ${d.message}`);
+  }
   if (!fixable.length) {
     console.log("\n자동으로 고칠 것이 없습니다.");
     return;

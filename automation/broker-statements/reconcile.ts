@@ -35,6 +35,7 @@ export interface VaultFlow {
 
 export type DiffKind =
   | "account-unmatched"
+  | "currency-unsupported"
   | "cash"
   | "flow-missing"
   | "flow-amount"
@@ -158,6 +159,21 @@ export function reconcileFlows(
   const diffs: Diff[] = [];
   for (const event of statement.events) {
     if (event.type !== "DEPOSIT" && event.type !== "WITHDRAWAL") continue;
+    // 외화 거래는 환율 없이 장부(원화)에 넣을 수 없다. 숫자만 옮기면 달러를
+    // 원화로 적는 셈이 된다. 알리기만 하고 절대 자동으로 넣지 않는다.
+    if ((event.currency || "KRW") !== "KRW") {
+      diffs.push({
+        kind: "currency-unsupported",
+        account: accountId,
+        label: `${event.date} ${event.label}`,
+        current: null,
+        expected: event.amount,
+        message:
+          `${event.date} ${event.label} ${event.currency} ${event.amount.toLocaleString()} — ` +
+          "외화라 자동으로 넣지 않습니다. 환율 적용은 직접 해주세요.",
+      });
+      continue;
+    }
     const expected = { date: event.date, amount: toFlowAmount(event.type, event.amount) };
     if (mine.some((f) => sameFlow(f, expected))) continue;
     const sameDay = mine.filter((f) => f.date === expected.date);
@@ -190,6 +206,21 @@ export function reconcileFlows(
  */
 export function reconcileCash(statement: ParsedStatement, account: VaultAccount): Diff[] {
   if (!account.valuationDate || account.valuationDate !== statement.asOf) return [];
+  // 외화 예수금은 장부의 원화 값과 단위가 달라 비교 자체가 뜻이 없다.
+  if ((statement.currency || "KRW") !== "KRW") {
+    return [
+      {
+        kind: "currency-unsupported",
+        account: account.id,
+        label: `예수금 (${statement.asOf})`,
+        current: account.cash ?? null,
+        expected: statement.cash,
+        message:
+          `예수금이 ${statement.currency} 표시라 원화 장부와 비교하지 않았습니다 ` +
+          `(명세서 ${statement.cash.toLocaleString()} ${statement.currency}).`,
+      },
+    ];
+  }
   const current = Math.round(account.cash ?? 0);
   const expected = Math.round(statement.cash);
   if (current === expected) return [];
